@@ -41,6 +41,7 @@ class AuthenticationManager: ObservableObject {
                 if let error = error {
                     self?.errorMessage = error.localizedDescription
                 } else if let user = result?.user {
+                    // Create user profile
                     let changeRequest = user.createProfileChangeRequest()
                     changeRequest.displayName = name
                     changeRequest.commitChanges { _ in }
@@ -56,4 +57,18 @@ class AuthenticationManager: ObservableObject {
             errorMessage = error.localizedDescription
         }
     }
-}
+    
+    func resetPassword(email: String) {
+        isLoading = true
+        errorMessage = nil
+        
+        Auth.auth().sendPasswordReset(withEmail: email) { [weak self] error in
+            DispatchQueue.main.async {
+                self?.isLoading = false
+                if let error = error {
+                    self?.errorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+} 
