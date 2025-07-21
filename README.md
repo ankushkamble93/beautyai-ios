@@ -1,4 +1,4 @@
-# BeautyAI iOS App
+# Nura iOS App
 
 A mobile-first iOS app that helps users track and improve their skin health using AI-powered analysis and personalized recommendations.
 
@@ -53,8 +53,8 @@ A mobile-first iOS app that helps users track and improve their skin health usin
 ## Project Structure
 
 ```
-BeautyAI/
-├── BeautyAIApp.swift              # Main app entry point
+Nura/
+├── NuraApp.swift              # Main app entry point
 ├── ContentView.swift              # Root view with tab navigation
 ├── Models/
 │   └── DataModels.swift           # All data models and structures
@@ -84,18 +84,18 @@ BeautyAI/
 
 1. **Clone the repository**
    ```bash
-   git clone git@github.com:ankushkamble93/beautyai-ios.git
-   cd beautyai-ios
+   git clone git@github.com:ankushkamble93/nura-ios.git
+   cd nura-ios
    ```
 
 2. **Open in Xcode**
    ```bash
-   open BeautyAI.xcodeproj
+   open Nura.xcodeproj
    ```
 
 3. **Configure Firebase**
    - Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
-   - Add iOS app with bundle ID: `com.beautyai.ios`
+   - Add iOS app with bundle ID: `com.nura.ios`
    - Download `GoogleService-Info.plist` and replace the placeholder
    - Enable Authentication (Email/Password)
    - Enable Storage for image uploads
@@ -220,4 +220,4 @@ For support and questions:
 
 ---
 
-**BeautyAI** - Your AI-powered skin health companion ✨ 
+**Nura** - Your AI-powered skin health companion ✨ 

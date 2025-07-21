@@ -128,7 +128,7 @@ struct WelcomeSection: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Welcome back!")
+            Text("Welcome back! ✨")
                 .font(.title2)
                 .fontWeight(.bold)
             
@@ -501,7 +501,7 @@ struct UpcomingTasksCard: View {
                             Spacer().frame(width: 28)
                             VStack(alignment: .leading, spacing: 2) {
                                 ForEach(routineItems, id: \.self) { item in
-                                    Text(item)
+                                    Text("• " + item)
                                         .font(.caption2)
                                         .foregroundColor(.secondary)
                                 }
@@ -593,7 +593,7 @@ struct UpcomingTasksCard: View {
                         Spacer().frame(width: 28)
                         VStack(alignment: .leading, spacing: 2) {
                             ForEach(weeklyRoutine, id: \.self) { item in
-                                Text(item)
+                                Text("• " + item)
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
                             }

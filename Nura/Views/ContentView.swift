@@ -37,7 +37,7 @@ struct ContentView: View {
             }
             .accentColor(.purple)
         } else {
-            AuthenticationView()
+            LoginView()
         }
     }
 }

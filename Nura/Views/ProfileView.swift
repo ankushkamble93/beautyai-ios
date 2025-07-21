@@ -292,7 +292,7 @@ struct SubscriptionSectionView: View {
             
             VStack(spacing: 0) {
                 SettingsRow(
-                    title: "BeautyAI Premium",
+                    title: "Nura Premium",
                     subtitle: "Unlock advanced features",
                     icon: "crown.fill",
                     color: .yellow
@@ -427,7 +427,7 @@ struct SubscriptionView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
-                Text("BeautyAI Premium")
+                Text("Nura Premium")
                     .font(.title)
                     .fontWeight(.bold)
                 
@@ -456,7 +456,7 @@ struct SettingsView: View {
                     .font(.title)
                     .fontWeight(.bold)
                 
-                Text("Customize your BeautyAI experience")
+                Text("Customize your Nura experience")
                     .multilineTextAlignment(.center)
                     .foregroundColor(.secondary)
                 

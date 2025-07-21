@@ -1,8 +1,9 @@
 import SwiftUI
+import Nura.Views.ContentView
 // import Firebase // Temporarily disabled until Firebase is set up
 
 @main
-struct BeautyAIApp: App {
+struct NuraApp: App {
     @StateObject private var authManager = AuthenticationManager()
     @StateObject private var skinAnalysisManager = SkinAnalysisManager()
     @StateObject private var chatManager = ChatManager()
@@ -13,7 +14,7 @@ struct BeautyAIApp: App {
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            LoginView()
                 .environmentObject(authManager)
                 .environmentObject(skinAnalysisManager)
                 .environmentObject(chatManager)
