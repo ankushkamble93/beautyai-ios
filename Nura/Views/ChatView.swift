@@ -20,15 +20,15 @@ struct ChatView: View {
                             if chatManager.isLoading {
                                 HStack {
                                     ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .purple))
+                                        .progressViewStyle(CircularProgressViewStyle(tint: NuraColors.primary))
                                         .scaleEffect(0.8)
                                     
                                     Text("AI is thinking...")
                                         .font(.caption)
-                                        .foregroundColor(.secondary)
+                                        .foregroundColor(NuraColors.textSecondary)
                                 }
                                 .padding()
-                                .background(Color.gray.opacity(0.1))
+                                .background(NuraColors.card.opacity(0.1))
                                 .cornerRadius(20)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal)
@@ -46,7 +46,7 @@ struct ChatView: View {
                 // Error message
                 if let errorMessage = chatManager.errorMessage {
                     Text(errorMessage)
-                        .foregroundColor(.red)
+                        .foregroundColor(NuraColors.error)
                         .font(.caption)
                         .padding(.horizontal)
                 }
@@ -65,7 +65,7 @@ struct ChatView: View {
                             Image(systemName: "paperplane.fill")
                                 .foregroundColor(.white)
                                 .padding(10)
-                                .background(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.gray : Color.purple)
+                                .background(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? NuraColors.textSecondary : NuraColors.primary)
                                 .cornerRadius(20)
                         }
                         .disabled(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || chatManager.isLoading)
@@ -73,7 +73,7 @@ struct ChatView: View {
                     .padding(.horizontal)
                     .padding(.vertical, 8)
                 }
-                .background(Color(.systemBackground))
+                .background(NuraColors.card)
             }
             .navigationTitle("AI Skin Assistant")
             .navigationBarTitleDisplayMode(.large)
@@ -105,35 +105,35 @@ struct MessageBubble: View {
                     Text(message.content)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
-                        .background(Color.purple)
+                        .background(NuraColors.primary)
                         .foregroundColor(.white)
                         .cornerRadius(20)
                         .cornerRadius(4, corners: [.topLeft, .topRight, .bottomLeft])
                     
                     Text(formatTime(message.timestamp))
                         .font(.caption2)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(NuraColors.textSecondary)
                 }
             } else {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: "sparkles")
-                            .foregroundColor(.purple)
+                            .foregroundColor(NuraColors.primary)
                             .font(.caption)
                             .padding(.top, 2)
                         
                         Text(message.content)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
-                            .background(Color.gray.opacity(0.1))
-                            .foregroundColor(.primary)
+                            .background(NuraColors.card.opacity(0.1))
+                            .foregroundColor(NuraColors.textPrimary)
                             .cornerRadius(20)
                             .cornerRadius(4, corners: [.topLeft, .topRight, .bottomRight])
                     }
                     
                     Text(formatTime(message.timestamp))
                         .font(.caption2)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(NuraColors.textSecondary)
                         .padding(.leading, 24)
                 }
                 

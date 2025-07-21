@@ -38,7 +38,7 @@ struct SkinAnalysisResult: Codable {
 }
 
 struct SkinCondition: Codable, Identifiable {
-    let id = UUID()
+    let id: UUID
     let name: String
     let severity: Severity
     let confidence: Double
@@ -94,7 +94,7 @@ struct SkincareRecommendations: Codable {
 }
 
 struct SkincareStep: Codable, Identifiable {
-    let id = UUID()
+    let id: UUID
     let name: String
     let description: String
     let category: StepCategory
@@ -121,7 +121,7 @@ struct SkincareStep: Codable, Identifiable {
 }
 
 struct ProductRecommendation: Codable, Identifiable {
-    let id = UUID()
+    let id: UUID
     let name: String
     let brand: String
     let category: String
@@ -150,7 +150,7 @@ struct DashboardData: Codable {
 }
 
 struct DashboardTask: Codable, Identifiable {
-    let id = UUID()
+    let id: UUID
     let title: String
     let description: String
     let dueDate: Date
@@ -165,7 +165,7 @@ struct DashboardTask: Codable, Identifiable {
 }
 
 struct Insight: Codable, Identifiable {
-    let id = UUID()
+    let id: UUID
     let title: String
     let description: String
     let type: InsightType

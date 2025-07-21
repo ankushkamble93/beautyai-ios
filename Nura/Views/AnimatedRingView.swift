@@ -28,7 +28,7 @@ struct AnimatedRingView: View {
         .onAppear {
             animatedProgress = progress
         }
-        .onChange(of: progress) { newValue in
+        .onChange(of: progress, initial: false) { oldValue, newValue in
             animatedProgress = newValue
         }
     }

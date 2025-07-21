@@ -14,6 +14,7 @@ struct DashboardView: View {
         recentAnalysis: nil,
         upcomingTasks: [
             DashboardTask(
+                id: UUID(),
                 title: "Morning Routine",
                 description: "Complete your morning skincare routine",
                 dueDate: Date(),
@@ -21,6 +22,7 @@ struct DashboardView: View {
                 isCompleted: false
             ),
             DashboardTask(
+                id: UUID(),
                 title: "Evening Routine",
                 description: "Complete your evening skincare routine",
                 dueDate: Date().addingTimeInterval(43200), // 12 hours
@@ -31,18 +33,21 @@ struct DashboardView: View {
         ],
         insights: [
             Insight(
+                id: UUID(),
                 title: "Great Progress!",
                 description: "Your skin health score improved by 15% this week",
                 type: .improvement,
                 date: Date()
             ),
             Insight(
+                id: UUID(),
                 title: "Weather Alert",
                 description: "High UV index today - don't forget sunscreen!",
                 type: .warning,
                 date: Date()
             ),
             Insight(
+                id: UUID(),
                 title: "Hydration Tip",
                 description: "Drink more water to improve skin hydration",
                 type: .tip,
@@ -56,6 +61,7 @@ struct DashboardView: View {
     // Weekly Mask state
     @State private var weeklyMaskCompletedAt: Date? = nil
     private let weeklyMaskTask = DashboardTask(
+        id: UUID(),
         title: "Weekly Mask",
         description: "Apply your weekly treatment mask",
         dueDate: Date().addingTimeInterval(86400 * 3), // 3 days
@@ -134,7 +140,7 @@ struct WelcomeSection: View {
             
             Text("Ready to take care of your skin today?")
                 .font(.subheadline)
-                .foregroundColor(.secondary)
+                .foregroundColor(NuraColors.textSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
@@ -185,7 +191,7 @@ struct ProgressOverviewCard: View {
                         ForEach(progress.improvementAreas, id: \.self) { area in
                             HStack {
                                 Image(systemName: "arrow.up.circle.fill")
-                                    .foregroundColor(.green)
+                                    .foregroundColor(NuraColors.success)
                                     .font(.caption)
                                 Text(area)
                                     .font(.caption)
@@ -212,7 +218,7 @@ struct ProgressOverviewCard: View {
             }
         }
         .padding()
-        .background(Color(.systemBackground))
+        .background(NuraColors.card)
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
     }
@@ -264,7 +270,7 @@ struct CurrentRoutineCard: View {
             ForEach(routine.prefix(3)) { step in
                 HStack {
                     Image(systemName: stepIcon(for: step.category))
-                        .foregroundColor(.purple)
+                        .foregroundColor(NuraColors.primary)
                         .frame(width: 20)
                     
                     VStack(alignment: .leading, spacing: 2) {
@@ -274,7 +280,7 @@ struct CurrentRoutineCard: View {
                         
                         Text(step.description)
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(NuraColors.textSecondary)
                     }
                     
                     Spacer()
@@ -284,7 +290,7 @@ struct CurrentRoutineCard: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(Color.purple.opacity(0.2))
-                        .foregroundColor(.purple)
+                        .foregroundColor(NuraColors.primary)
                         .cornerRadius(8)
                 }
             }
@@ -294,11 +300,11 @@ struct CurrentRoutineCard: View {
                     // Navigate to full routine view
                 }
                 .font(.caption)
-                .foregroundColor(.purple)
+                .foregroundColor(NuraColors.primary)
             }
         }
         .padding()
-        .background(Color(.systemBackground))
+        .background(NuraColors.card)
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
     }
@@ -333,14 +339,14 @@ struct RecentAnalysisCard: View {
                     
                     Text("Confidence: \(Int(analysis.confidence * 100))%")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(NuraColors.textSecondary)
                 }
                 
                 Spacer()
                 
                 Text(formatDate(analysis.analysisDate))
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(NuraColors.textSecondary)
             }
             
             if !analysis.conditions.isEmpty {
@@ -362,7 +368,7 @@ struct RecentAnalysisCard: View {
                             }
                             .padding(.horizontal, 8)
                             .padding(.vertical, 6)
-                            .background(Color.gray.opacity(0.1))
+                            .background(NuraColors.card)
                             .cornerRadius(8)
                         }
                     }
@@ -370,7 +376,7 @@ struct RecentAnalysisCard: View {
             }
         }
         .padding()
-        .background(Color(.systemBackground))
+        .background(NuraColors.card)
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
     }
@@ -465,7 +471,7 @@ struct UpcomingTasksCard: View {
                             Image(systemName: checkedStates[idx] ? "checkmark.circle.fill" : "circle")
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
-                                .foregroundColor(checkedStates[idx] ? .green : .gray)
+                                .foregroundColor(checkedStates[idx] ? NuraColors.success : NuraColors.textSecondary)
                                 .frame(width: 20, height: 20)
                                 .scaleEffect(taskPopIndex == idx ? 1.2 : 1.0)
                                 .animation(.spring(response: 0.25, dampingFraction: 0.5), value: taskPopIndex == idx)
@@ -480,7 +486,7 @@ struct UpcomingTasksCard: View {
                                 }
                             Text(task.description)
                                 .font(.caption)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(NuraColors.textSecondary)
                             if checkedStates[idx], let time = timeRemainingForTask[idx], !canCompleteTask[idx] {
                                 HStack(spacing: 4) {
                                     Image(systemName: "timer")
@@ -503,12 +509,12 @@ struct UpcomingTasksCard: View {
                                 ForEach(routineItems, id: \.self) { item in
                                     Text("• " + item)
                                         .font(.caption2)
-                                        .foregroundColor(.secondary)
+                                        .foregroundColor(NuraColors.textSecondary)
                                 }
                             }
                             .padding(.vertical, 4)
                             .padding(.horizontal, 8)
-                            .background(Color.gray.opacity(0.12))
+                            .background(NuraColors.card)
                             .cornerRadius(8)
                             .frame(minWidth: 220, maxWidth: 320, alignment: .leading) // Consistent width for all dropdowns
                         }
@@ -555,7 +561,7 @@ struct UpcomingTasksCard: View {
                                 Image(systemName: "circle")
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
-                                    .foregroundColor(.gray)
+                                    .foregroundColor(NuraColors.textSecondary)
                             }
                         }
                         .frame(width: 20, height: 20)
@@ -572,7 +578,7 @@ struct UpcomingTasksCard: View {
                             }
                         Text(weeklyMaskTask.description)
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(NuraColors.textSecondary)
                         if !canComplete, let time = timeRemaining {
                             HStack(spacing: 4) {
                                 Image(systemName: "timer")
@@ -595,12 +601,12 @@ struct UpcomingTasksCard: View {
                             ForEach(weeklyRoutine, id: \.self) { item in
                                 Text("• " + item)
                                     .font(.caption2)
-                                    .foregroundColor(.secondary)
+                                    .foregroundColor(NuraColors.textSecondary)
                             }
                         }
                         .padding(.vertical, 4)
                         .padding(.horizontal, 8)
-                        .background(Color.gray.opacity(0.12))
+                        .background(NuraColors.card)
                         .cornerRadius(8)
                         .frame(minWidth: 220, maxWidth: 320, alignment: .leading)
                     }
@@ -611,7 +617,7 @@ struct UpcomingTasksCard: View {
             now = input
         }
         .padding()
-        .background(Color(.systemBackground))
+        .background(NuraColors.card)
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
     }
@@ -666,7 +672,7 @@ struct InsightsCard: View {
                         
                         Text(insight.description)
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(NuraColors.textSecondary)
                     }
                     
                     Spacer()
@@ -674,7 +680,7 @@ struct InsightsCard: View {
             }
         }
         .padding()
-        .background(Color(.systemBackground))
+        .background(NuraColors.card)
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
     }

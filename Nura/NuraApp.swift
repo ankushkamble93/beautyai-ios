@@ -1,5 +1,4 @@
 import SwiftUI
-import Nura.Views.ContentView
 // import Firebase // Temporarily disabled until Firebase is set up
 
 @main
@@ -14,10 +13,17 @@ struct NuraApp: App {
     
     var body: some Scene {
         WindowGroup {
-            LoginView()
-                .environmentObject(authManager)
-                .environmentObject(skinAnalysisManager)
-                .environmentObject(chatManager)
+            if authManager.isAuthenticated {
+                ContentView()
+                    .environmentObject(authManager)
+                    .environmentObject(skinAnalysisManager)
+                    .environmentObject(chatManager)
+            } else {
+                LoginView()
+                    .environmentObject(authManager)
+                    .environmentObject(skinAnalysisManager)
+                    .environmentObject(chatManager)
+            }
         }
     }
 }

@@ -1,18 +1,19 @@
 import SwiftUI
 
 struct LoginView: View {
+    @EnvironmentObject var authManager: AuthenticationManager
     @State private var showSignUp = false
     @State private var showForgotPassword = false
     @State private var email = ""
     @State private var password = ""
-    @State private var isLoggedIn = false
+    @State private var showHeart = false
+    
+    var canLogin: Bool { !email.isEmpty && !password.isEmpty }
     
     var body: some View {
         ZStack {
-            // Motion background: animated skincare product silhouettes
-            SkincareMotionBackground()
+            NuraHingeBackground()
                 .ignoresSafeArea()
-            
             VStack {
                 // Top right actions
                 HStack {
@@ -21,69 +22,90 @@ struct LoginView: View {
                         Button("Sign up") { showSignUp = true }
                             .font(.subheadline)
                             .fontWeight(.semibold)
-                            .foregroundColor(Color(red: 0.85, green: 0.4, blue: 0.0))
+                            .foregroundColor(NuraColors.primary)
                             .padding(.top, 12)
                             .padding(.trailing, 24)
                         Button("Forgot password") { showForgotPassword = true }
                             .font(.caption)
-                            .foregroundColor(.gray)
+                            .foregroundColor(NuraColors.textSecondary)
                             .padding(.trailing, 24)
                     }
                 }
                 Spacer()
-                // App logo or name (optional)
-                Text("Nura")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                    .foregroundColor(Color(red: 0.45, green: 0.35, blue: 0.25))
-                    .padding(.bottom, 32)
-                // Social login buttons
+                // Centered, large, cursive Nura title
+                HStack {
+                    Spacer()
+                    Text("Nura")
+                        .font(.system(size: 54, weight: .bold, design: .serif))
+                        .italic()
+                        .foregroundColor(NuraColors.primary)
+                        .padding(.bottom, 32)
+                    Spacer()
+                }
                 VStack(spacing: 18) {
                     SignInWithAppleButton()
                     SignInWithGoogleButton()
                 }
-                .padding(.bottom, 32)
-                // Email/password fields (modern, rounded)
+                // Add space between Google button and login fields
+                Spacer().frame(height: 24)
+                // Login bubble, centered and aligned with Google button
                 VStack(spacing: 14) {
                     TextField("Email", text: $email)
                         .padding()
-                        .background(Color.white.opacity(0.85))
+                        .background(NuraColors.card.opacity(0.95))
                         .cornerRadius(18)
                         .overlay(
                             RoundedRectangle(cornerRadius: 18)
-                                .stroke(Color(red: 0.85, green: 0.4, blue: 0.0).opacity(0.25), lineWidth: 2)
+                                .stroke(NuraColors.primary.opacity(0.25), lineWidth: 2)
                         )
-                        .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 2)
+                        .shadow(color: NuraColors.primary.opacity(0.08), radius: 4, x: 0, y: 2)
                         .autocapitalization(.none)
                         .keyboardType(.emailAddress)
                         .padding(.horizontal, 32)
                     SecureField("Password", text: $password)
                         .padding()
-                        .background(Color.white.opacity(0.85))
+                        .background(NuraColors.card.opacity(0.95))
                         .cornerRadius(18)
                         .overlay(
                             RoundedRectangle(cornerRadius: 18)
-                                .stroke(Color(red: 0.85, green: 0.4, blue: 0.0).opacity(0.25), lineWidth: 2)
+                                .stroke(NuraColors.primary.opacity(0.25), lineWidth: 2)
                         )
-                        .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 2)
+                        .shadow(color: NuraColors.primary.opacity(0.08), radius: 4, x: 0, y: 2)
                         .padding(.horizontal, 32)
-                    Button("Log in") { isLoggedIn = true }
+                    Button("Log in") {
+                        if canLogin {
+                            authManager.isAuthenticated = true
+                        }
+                    }
                         .font(.headline)
                         .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color(red: 0.85, green: 0.4, blue: 0.0))
-                        .cornerRadius(10)
+                        .frame(maxWidth: 220)
+                        .padding(.vertical, 10)
+                        .background(canLogin ? NuraColors.primary : NuraColors.primary.opacity(0.4))
+                        .cornerRadius(18)
+                        .shadow(color: NuraColors.primary.opacity(0.12), radius: 4, x: 0, y: 2)
                         .padding(.horizontal, 32)
+                        .disabled(!canLogin)
                 }
                 Spacer()
-            }
-            // Simulate navigation to main app after login
-            if isLoggedIn {
-                Color.clear
-                    .fullScreenCover(isPresented: $isLoggedIn) {
-                        ContentView()
+                // Animated heart above the quote
+                VStack(spacing: 8) {
+                    AnimatedHeartView(show: $showHeart)
+                        .frame(width: 48, height: 48)
+                        .padding(.bottom, 2)
+                    Text("Nurture your natural beauty with Nura ✨")
+                        .font(.footnote)
+                        .foregroundColor(NuraColors.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.bottom, 24)
+                }
+                .onAppear {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        withAnimation(.easeInOut(duration: 1.2)) {
+                            showHeart = true
+                        }
                     }
+                }
             }
         }
         .sheet(isPresented: $showSignUp) {
@@ -95,88 +117,106 @@ struct LoginView: View {
     }
 }
 
-// MARK: - Skincare Motion Background
-struct SkincareMotionBackground: View {
-    @State private var bottleOffset: CGSize = .zero
-    @State private var jarOffset: CGSize = .zero
-    @State private var tubeOffset: CGSize = .zero
+// MARK: - Animated Heart
+struct AnimatedHeartView: View {
+    @Binding var show: Bool
+    @State private var drawAmount: CGFloat = 0
     var body: some View {
-        ZStack {
-            LinearGradient(
-                gradient: Gradient(colors: [Color(red: 0.98, green: 0.93, blue: 0.85), Color(red: 0.93, green: 0.87, blue: 0.77)]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .opacity(0.9)
-            // Animated skincare bottle
-            SkincareBottleShape()
-                .fill(Color(red: 0.95, green: 0.85, blue: 0.65).opacity(0.22))
-                .frame(width: 80, height: 180)
-                .offset(bottleOffset)
-                .blur(radius: 6)
-                .animation(.easeInOut(duration: 7).repeatForever(autoreverses: true), value: bottleOffset)
-            // Animated skincare jar
-            SkincareJarShape()
-                .fill(Color(red: 0.85, green: 0.7, blue: 0.5).opacity(0.18))
-                .frame(width: 120, height: 60)
-                .offset(jarOffset)
-                .blur(radius: 8)
-                .animation(.easeInOut(duration: 10).repeatForever(autoreverses: true), value: jarOffset)
-            // Animated skincare tube
-            SkincareTubeShape()
-                .fill(Color(red: 0.98, green: 0.93, blue: 0.85).opacity(0.18))
-                .frame(width: 60, height: 140)
-                .offset(tubeOffset)
-                .blur(radius: 7)
-                .animation(.easeInOut(duration: 12).repeatForever(autoreverses: true), value: tubeOffset)
-        }
-        .onAppear {
-            bottleOffset = CGSize(width: -60, height: -100)
-            jarOffset = CGSize(width: 90, height: 120)
-            tubeOffset = CGSize(width: 60, height: -120)
-            // Animate to new positions
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                bottleOffset = CGSize(width: 40, height: -40)
-                jarOffset = CGSize(width: -50, height: 80)
-                tubeOffset = CGSize(width: -80, height: 100)
+        HeartCursiveShape()
+            .trim(from: 0, to: drawAmount)
+            .stroke(NuraColors.primary, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+            .frame(width: 48, height: 48)
+            .opacity(drawAmount > 0 ? 1 : 0)
+            .onChange(of: show, initial: false) { oldValue, newValue in
+                if newValue {
+                    withAnimation(.easeInOut(duration: 1.2)) {
+                        drawAmount = 1
+                    }
+                } else {
+                    drawAmount = 0
+                }
             }
-        }
+            .onAppear {
+                if show {
+                    withAnimation(.easeInOut(duration: 1.2)) {
+                        drawAmount = 1
+                    }
+                }
+            }
     }
 }
 
-// MARK: - Abstract Skincare Product Shapes
-struct SkincareBottleShape: Shape {
+struct HeartCursiveShape: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        // Bottle body
-        path.addRoundedRect(in: CGRect(x: rect.midX - rect.width * 0.18, y: rect.minY + rect.height * 0.18, width: rect.width * 0.36, height: rect.height * 0.64), cornerSize: CGSize(width: rect.width * 0.18, height: rect.width * 0.18))
-        // Bottle neck
-        path.addRect(CGRect(x: rect.midX - rect.width * 0.09, y: rect.minY, width: rect.width * 0.18, height: rect.height * 0.18))
+        let width = rect.width
+        let height = rect.height
+        // Cursive, classic heart
+        path.move(to: CGPoint(x: width * 0.5, y: height * 0.8))
+        path.addCurve(to: CGPoint(x: 0, y: height * 0.3),
+                      control1: CGPoint(x: width * 0.2, y: height),
+                      control2: CGPoint(x: 0, y: height * 0.6))
+        path.addCurve(to: CGPoint(x: width * 0.5, y: height * 0.2),
+                      control1: CGPoint(x: 0, y: height * 0.1),
+                      control2: CGPoint(x: width * 0.2, y: height * 0.1))
+        path.addCurve(to: CGPoint(x: width, y: height * 0.3),
+                      control1: CGPoint(x: width * 0.8, y: height * 0.1),
+                      control2: CGPoint(x: width, y: height * 0.1))
+        path.addCurve(to: CGPoint(x: width * 0.5, y: height * 0.8),
+                      control1: CGPoint(x: width, y: height * 0.6),
+                      control2: CGPoint(x: width * 0.8, y: height))
         return path
     }
 }
-struct SkincareJarShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        // Jar base
-        path.addRoundedRect(in: CGRect(x: rect.minX + rect.width * 0.1, y: rect.midY - rect.height * 0.18, width: rect.width * 0.8, height: rect.height * 0.36), cornerSize: CGSize(width: rect.height * 0.18, height: rect.height * 0.18))
-        // Jar lid
-        path.addRect(CGRect(x: rect.minX + rect.width * 0.18, y: rect.midY - rect.height * 0.28, width: rect.width * 0.64, height: rect.height * 0.12))
-        return path
+
+// MARK: - Nura Hinge-Inspired Animated Background
+struct NuraHingeBackground: View {
+    @State private var animate = false
+    var body: some View {
+        ZStack {
+            // Dark base
+            Color(red: 31/255, green: 29/255, blue: 27/255)
+                .ignoresSafeArea()
+            // Blurred, moving mauve ellipse
+            Ellipse()
+                .fill(Color(red: 168/255, green: 139/255, blue: 163/255).opacity(0.22))
+                .frame(width: 340, height: 180)
+                .blur(radius: 48)
+                .offset(x: animate ? -60 : 60, y: animate ? -120 : -80)
+                .animation(Animation.easeInOut(duration: 7).repeatForever(autoreverses: true), value: animate)
+            // Blurred, moving sage ellipse
+            Ellipse()
+                .fill(Color(red: 157/255, green: 169/255, blue: 158/255).opacity(0.18))
+                .frame(width: 260, height: 120)
+                .blur(radius: 36)
+                .offset(x: animate ? 80 : -80, y: animate ? 100 : 60)
+                .animation(Animation.easeInOut(duration: 9).repeatForever(autoreverses: true), value: animate)
+            // Subtle grain overlay
+            GrainOverlay()
+                .blendMode(.overlay)
+                .opacity(0.12)
+        }
+        .onAppear { animate = true }
     }
 }
-struct SkincareTubeShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        // Tube body
-        path.move(to: CGPoint(x: rect.midX - rect.width * 0.18, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.midX + rect.width * 0.18, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.midX + rect.width * 0.28, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.midX - rect.width * 0.28, y: rect.maxY))
-        path.closeSubpath()
-        // Tube cap
-        path.addRoundedRect(in: CGRect(x: rect.midX - rect.width * 0.12, y: rect.maxY - rect.height * 0.08, width: rect.width * 0.24, height: rect.height * 0.08), cornerSize: CGSize(width: rect.width * 0.04, height: rect.width * 0.04))
-        return path
+
+struct GrainOverlay: View {
+    var body: some View {
+        // Simulate grain with noise using a random dot pattern
+        GeometryReader { geo in
+            Canvas { context, size in
+                for _ in 0..<400 {
+                    let x = CGFloat.random(in: 0..<size.width)
+                    let y = CGFloat.random(in: 0..<size.height)
+                    let opacity = Double.random(in: 0.04...0.12)
+                    let color = Color.white.opacity(opacity)
+                    context.fill(
+                        Path(ellipseIn: CGRect(x: x, y: y, width: 1.2, height: 1.2)),
+                        with: .color(color)
+                    )
+                }
+            }
+        }
     }
 }
 

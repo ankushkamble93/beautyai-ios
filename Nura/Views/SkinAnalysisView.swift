@@ -15,7 +15,7 @@ struct SkinAnalysisView: View {
                     VStack(spacing: 15) {
                         Image(systemName: "camera.circle.fill")
                             .font(.system(size: 60))
-                            .foregroundColor(.purple)
+                            .foregroundColor(NuraColors.primary)
                         
                         Text("Skin Analysis")
                             .font(.title)
@@ -23,7 +23,7 @@ struct SkinAnalysisView: View {
                         
                         Text("Upload 3 selfies from different angles for AI-powered skin analysis")
                             .font(.subheadline)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(NuraColors.textSecondary)
                             .multilineTextAlignment(.center)
                     }
                     .padding(.top, 20)
@@ -35,23 +35,23 @@ struct SkinAnalysisView: View {
                             VStack(spacing: 15) {
                                 Image(systemName: "photo.on.rectangle.angled")
                                     .font(.system(size: 40))
-                                    .foregroundColor(.gray)
+                                    .foregroundColor(NuraColors.textSecondary)
                                 
                                 Text("Upload 3 Selfies")
                                     .font(.headline)
                                 
                                 Text("Front, left side, and right side views for best results")
                                     .font(.caption)
-                                    .foregroundColor(.secondary)
+                                    .foregroundColor(NuraColors.textSecondary)
                                     .multilineTextAlignment(.center)
                             }
                             .frame(height: 200)
                             .frame(maxWidth: .infinity)
-                            .background(Color.gray.opacity(0.1))
+                            .background(NuraColors.card.opacity(0.1))
                             .cornerRadius(12)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.gray.opacity(0.3), style: StrokeStyle(lineWidth: 2, dash: [5]))
+                                    .stroke(NuraColors.textSecondary.opacity(0.3), style: StrokeStyle(lineWidth: 2, dash: [5]))
                             )
                         } else {
                             // Uploaded images
@@ -65,7 +65,7 @@ struct SkinAnalysisView: View {
                                         .cornerRadius(8)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: 8)
-                                                .stroke(Color.purple, lineWidth: 2)
+                                                .stroke(NuraColors.primary, lineWidth: 2)
                                         )
                                 }
                             }
@@ -79,7 +79,7 @@ struct SkinAnalysisView: View {
                             }
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color.purple)
+                            .background(NuraColors.primary)
                             .foregroundColor(.white)
                             .cornerRadius(12)
                         }
@@ -110,7 +110,7 @@ struct SkinAnalysisView: View {
                             }
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color.purple)
+                            .background(NuraColors.primary)
                             .foregroundColor(.white)
                             .cornerRadius(12)
                         }
@@ -121,7 +121,7 @@ struct SkinAnalysisView: View {
                     // Error message
                     if let errorMessage = skinAnalysisManager.errorMessage {
                         Text(errorMessage)
-                            .foregroundColor(.red)
+                            .foregroundColor(NuraColors.error)
                             .font(.caption)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
@@ -204,36 +204,36 @@ struct ConditionCard: View {
             
             Text(condition.description)
                 .font(.subheadline)
-                .foregroundColor(.secondary)
+                .foregroundColor(NuraColors.textSecondary)
             
             if !condition.affectedAreas.isEmpty {
                 Text("Affected areas: \(condition.affectedAreas.joined(separator: ", "))")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(NuraColors.textSecondary)
             }
             
             HStack {
                 Text("Confidence: \(Int(condition.confidence * 100))%")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(NuraColors.textSecondary)
                 
                 Spacer()
                 
                 ProgressView(value: condition.confidence)
-                    .progressViewStyle(LinearProgressViewStyle(tint: .purple))
+                    .progressViewStyle(LinearProgressViewStyle(tint: NuraColors.primary))
                     .frame(width: 60)
             }
         }
         .padding()
-        .background(Color.gray.opacity(0.05))
+        .background(NuraColors.card.opacity(0.05))
         .cornerRadius(12)
     }
     
     private var severityColor: Color {
         switch condition.severity {
-        case .mild: return .green
+        case .mild: return NuraColors.success
         case .moderate: return .orange
-        case .severe: return .red
+        case .severe: return NuraColors.error
         }
     }
 }
@@ -316,14 +316,14 @@ struct StepCard: View {
                     .font(.caption)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Color.purple.opacity(0.2))
-                    .foregroundColor(.purple)
+                    .background(NuraColors.primary.opacity(0.2))
+                    .foregroundColor(NuraColors.primary)
                     .cornerRadius(6)
             }
             
             Text(step.description)
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundColor(NuraColors.textSecondary)
             
             if !step.tips.isEmpty {
                 Text("💡 \(step.tips.first ?? "")")
@@ -332,7 +332,7 @@ struct StepCard: View {
             }
         }
         .padding()
-        .background(Color.gray.opacity(0.05))
+        .background(NuraColors.card.opacity(0.05))
         .cornerRadius(8)
         .padding(.horizontal)
     }

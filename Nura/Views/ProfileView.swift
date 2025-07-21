@@ -76,16 +76,16 @@ struct ProfileHeaderView: View {
                 
                 Text(authManager.currentUser?.email ?? "")
                     .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(NuraColors.textSecondary)
             }
             
             // Member since
             Text("Member since \(formatDate(Date()))")
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundColor(NuraColors.textSecondary)
         }
         .padding()
-        .background(Color(.systemBackground))
+        .background(NuraColors.card)
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
     }
@@ -109,7 +109,7 @@ struct QuickActionsView: View {
                     title: "New Analysis",
                     subtitle: "Upload photos",
                     icon: "camera.fill",
-                    color: .purple
+                    color: NuraColors.primary
                 ) {
                     // Navigate to analysis
                 }
@@ -118,7 +118,7 @@ struct QuickActionsView: View {
                     title: "Chat with AI",
                     subtitle: "Get advice",
                     icon: "message.fill",
-                    color: .blue
+                    color: NuraColors.secondary
                 ) {
                     // Navigate to chat
                 }
@@ -127,7 +127,7 @@ struct QuickActionsView: View {
                     title: "View Progress",
                     subtitle: "Track results",
                     icon: "chart.line.uptrend.xyaxis",
-                    color: .green
+                    color: NuraColors.success
                 ) {
                     // Navigate to progress
                 }
@@ -136,14 +136,14 @@ struct QuickActionsView: View {
                     title: "Routine",
                     subtitle: "Daily steps",
                     icon: "list.bullet",
-                    color: .orange
+                    color: NuraColors.secondary
                 ) {
                     // Navigate to routine
                 }
             }
         }
         .padding()
-        .background(Color(.systemBackground))
+        .background(NuraColors.card)
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
     }
@@ -169,7 +169,7 @@ struct QuickActionCard: View {
                 
                 Text(subtitle)
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(NuraColors.textSecondary)
             }
             .frame(maxWidth: .infinity)
             .padding()
@@ -194,7 +194,7 @@ struct SettingsSectionView: View {
                     title: "Personal Information",
                     subtitle: "Update your profile",
                     icon: "person.circle.fill",
-                    color: .blue
+                    color: NuraColors.secondary
                 ) {
                     showingSettings = true
                 }
@@ -206,7 +206,7 @@ struct SettingsSectionView: View {
                     title: "Notifications",
                     subtitle: "Manage alerts",
                     icon: "bell.fill",
-                    color: .orange
+                    color: NuraColors.secondary
                 ) {
                     // Navigate to notifications
                 }
@@ -218,7 +218,7 @@ struct SettingsSectionView: View {
                     title: "Privacy & Security",
                     subtitle: "Data and privacy settings",
                     icon: "lock.fill",
-                    color: .green
+                    color: NuraColors.success
                 ) {
                     // Navigate to privacy
                 }
@@ -230,12 +230,12 @@ struct SettingsSectionView: View {
                     title: "App Preferences",
                     subtitle: "Customize your experience",
                     icon: "gearshape.fill",
-                    color: .gray
+                    color: NuraColors.textSecondary
                 ) {
                     // Navigate to preferences
                 }
             }
-            .background(Color(.systemBackground))
+            .background(NuraColors.card)
             .cornerRadius(12)
             .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
         }
@@ -266,14 +266,14 @@ struct SettingsRow: View {
                     
                     Text(subtitle)
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(NuraColors.textSecondary)
                 }
                 
                 Spacer()
                 
                 Image(systemName: "chevron.right")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(NuraColors.textSecondary)
             }
             .padding()
         }
@@ -295,7 +295,7 @@ struct SubscriptionSectionView: View {
                     title: "Nura Premium",
                     subtitle: "Unlock advanced features",
                     icon: "crown.fill",
-                    color: .yellow
+                    color: NuraColors.secondary
                 ) {
                     showingSubscription = true
                 }
@@ -307,7 +307,7 @@ struct SubscriptionSectionView: View {
                     title: "Payment Methods",
                     subtitle: "Manage billing",
                     icon: "creditcard.fill",
-                    color: .purple
+                    color: NuraColors.primary
                 ) {
                     // Navigate to payment methods
                 }
@@ -319,12 +319,12 @@ struct SubscriptionSectionView: View {
                     title: "Billing History",
                     subtitle: "View past invoices",
                     icon: "doc.text.fill",
-                    color: .blue
+                    color: NuraColors.secondary
                 ) {
                     // Navigate to billing history
                 }
             }
-            .background(Color(.systemBackground))
+            .background(NuraColors.card)
             .cornerRadius(12)
             .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
         }
@@ -348,7 +348,7 @@ struct SupportSectionView: View {
                     title: "Help & FAQ",
                     subtitle: "Find answers",
                     icon: "questionmark.circle.fill",
-                    color: .blue
+                    color: NuraColors.secondary
                 ) {
                     showingHelp = true
                 }
@@ -360,7 +360,7 @@ struct SupportSectionView: View {
                     title: "Contact Support",
                     subtitle: "Get in touch",
                     icon: "envelope.fill",
-                    color: .green
+                    color: NuraColors.success
                 ) {
                     // Open email or contact form
                 }
@@ -372,7 +372,7 @@ struct SupportSectionView: View {
                     title: "Rate App",
                     subtitle: "Share your feedback",
                     icon: "star.fill",
-                    color: .yellow
+                    color: NuraColors.secondary
                 ) {
                     // Open App Store rating
                 }
@@ -384,12 +384,12 @@ struct SupportSectionView: View {
                     title: "About",
                     subtitle: "Version 1.0.0",
                     icon: "info.circle.fill",
-                    color: .gray
+                    color: NuraColors.textSecondary
                 ) {
                     // Show about page
                 }
             }
-            .background(Color(.systemBackground))
+            .background(NuraColors.card)
             .cornerRadius(12)
             .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
         }
@@ -414,7 +414,7 @@ struct SignOutButton: View {
             .frame(maxWidth: .infinity)
             .padding()
             .background(Color.red.opacity(0.1))
-            .foregroundColor(.red)
+            .foregroundColor(NuraColors.error)
             .cornerRadius(12)
         }
     }
@@ -433,7 +433,7 @@ struct SubscriptionView: View {
                 
                 Text("Unlock advanced features and personalized recommendations")
                     .multilineTextAlignment(.center)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(NuraColors.textSecondary)
                 
                 Spacer()
             }
@@ -458,7 +458,7 @@ struct SettingsView: View {
                 
                 Text("Customize your Nura experience")
                     .multilineTextAlignment(.center)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(NuraColors.textSecondary)
                 
                 Spacer()
             }
@@ -483,7 +483,7 @@ struct HelpView: View {
                 
                 Text("Find answers to common questions")
                     .multilineTextAlignment(.center)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(NuraColors.textSecondary)
                 
                 Spacer()
             }

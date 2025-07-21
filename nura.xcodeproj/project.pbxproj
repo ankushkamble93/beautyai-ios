@@ -28,15 +28,15 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		7B6171EA2E2DB4E6006557B8 /* beautyAI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = beautyAI.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7B6171EA2E2DB4E6006557B8 /* nura.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = nura.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7B6171F72E2DB4E7006557B8 /* beautyAITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = beautyAITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7B6172012E2DB4E7006557B8 /* beautyAIUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = beautyAIUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		7B6171EC2E2DB4E6006557B8 /* beautyAI */ = {
+		7B6171EC2E2DB4E6006557B8 /* nura */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = beautyAI;
+			path = nura;
 			sourceTree = "<group>";
 		};
 		7B6171FA2E2DB4E7006557B8 /* beautyAITests */ = {
@@ -80,7 +80,7 @@
 		7B6171E12E2DB4E6006557B8 = {
 			isa = PBXGroup;
 			children = (
-				7B6171EC2E2DB4E6006557B8 /* beautyAI */,
+				7B6171EC2E2DB4E6006557B8 /* nura */,
 				7B6171FA2E2DB4E7006557B8 /* beautyAITests */,
 				7B6172042E2DB4E7006557B8 /* beautyAIUITests */,
 				7B6171EB2E2DB4E6006557B8 /* Products */,
@@ -90,7 +90,7 @@
 		7B6171EB2E2DB4E6006557B8 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				7B6171EA2E2DB4E6006557B8 /* beautyAI.app */,
+				7B6171EA2E2DB4E6006557B8 /* nura.app */,
 				7B6171F72E2DB4E7006557B8 /* beautyAITests.xctest */,
 				7B6172012E2DB4E7006557B8 /* beautyAIUITests.xctest */,
 			);
@@ -100,9 +100,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		7B6171E92E2DB4E6006557B8 /* beautyAI */ = {
+		7B6171E92E2DB4E6006557B8 /* nura */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 7B61720B2E2DB4E7006557B8 /* Build configuration list for PBXNativeTarget "beautyAI" */;
+			buildConfigurationList = 7B61720B2E2DB4E7006557B8 /* Build configuration list for PBXNativeTarget "nura" */;
 			buildPhases = (
 				7B6171E62E2DB4E6006557B8 /* Sources */,
 				7B6171E72E2DB4E6006557B8 /* Frameworks */,
@@ -113,14 +113,14 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				7B6171EC2E2DB4E6006557B8 /* beautyAI */,
+				7B6171EC2E2DB4E6006557B8 /* nura */,
 			);
-			name = beautyAI;
+			name = nura;
 			packageProductDependencies = (
 				7B61723C2E2DF1DF006557B8 /* ConfettiSwiftUI */,
 			);
 			productName = beautyAI;
-			productReference = 7B6171EA2E2DB4E6006557B8 /* beautyAI.app */;
+			productReference = 7B6171EA2E2DB4E6006557B8 /* nura.app */;
 			productType = "com.apple.product-type.application";
 		};
 		7B6171F62E2DB4E7006557B8 /* beautyAITests */ = {
@@ -192,7 +192,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 7B6171E52E2DB4E6006557B8 /* Build configuration list for PBXProject "beautyAI" */;
+			buildConfigurationList = 7B6171E52E2DB4E6006557B8 /* Build configuration list for PBXProject "nura" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -209,7 +209,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				7B6171E92E2DB4E6006557B8 /* beautyAI */,
+				7B6171E92E2DB4E6006557B8 /* nura */,
 				7B6171F62E2DB4E7006557B8 /* beautyAITests */,
 				7B6172002E2DB4E7006557B8 /* beautyAIUITests */,
 			);
@@ -267,12 +267,12 @@
 /* Begin PBXTargetDependency section */
 		7B6171F92E2DB4E7006557B8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 7B6171E92E2DB4E6006557B8 /* beautyAI */;
+			target = 7B6171E92E2DB4E6006557B8 /* nura */;
 			targetProxy = 7B6171F82E2DB4E7006557B8 /* PBXContainerItemProxy */;
 		};
 		7B6172032E2DB4E7006557B8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 7B6171E92E2DB4E6006557B8 /* beautyAI */;
+			target = 7B6171E92E2DB4E6006557B8 /* nura */;
 			targetProxy = 7B6172022E2DB4E7006557B8 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -409,18 +409,17 @@
 				DEVELOPMENT_TEAM = 279RZA2YRH;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = BeautyAI;
+				INFOPLIST_KEY_CFBundleDisplayName = Nura;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.ankushkamble93.beautyAI;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ankushkamble93.nura;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -438,18 +437,17 @@
 				DEVELOPMENT_TEAM = 279RZA2YRH;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = BeautyAI;
+				INFOPLIST_KEY_CFBundleDisplayName = Nura;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.ankushkamble93.beautyAI;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ankushkamble93.nura;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -460,7 +458,6 @@
 		7B61720F2E2DB4E7006557B8 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 279RZA2YRH;
@@ -472,14 +469,13 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/beautyAI.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/beautyAI";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/nura.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/nura";
 			};
 			name = Debug;
 		};
 		7B6172102E2DB4E7006557B8 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 279RZA2YRH;
@@ -491,7 +487,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/beautyAI.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/beautyAI";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/nura.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/nura";
 			};
 			name = Release;
 		};
@@ -505,10 +501,11 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ankushkamble93.beautyAIUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE = "";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = beautyAI;
+				TEST_TARGET_NAME = nura;
 			};
 			name = Debug;
 		};
@@ -522,17 +519,18 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ankushkamble93.beautyAIUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE = "";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = beautyAI;
+				TEST_TARGET_NAME = nura;
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		7B6171E52E2DB4E6006557B8 /* Build configuration list for PBXProject "beautyAI" */ = {
+		7B6171E52E2DB4E6006557B8 /* Build configuration list for PBXProject "nura" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				7B6172092E2DB4E7006557B8 /* Debug */,
@@ -541,7 +539,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		7B61720B2E2DB4E7006557B8 /* Build configuration list for PBXNativeTarget "beautyAI" */ = {
+		7B61720B2E2DB4E7006557B8 /* Build configuration list for PBXNativeTarget "nura" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				7B61720C2E2DB4E7006557B8 /* Debug */,
