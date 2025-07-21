@@ -1,6 +1,6 @@
 import Foundation
 import UIKit
-import FirebaseStorage
+// import FirebaseStorage // Temporarily disabled until Firebase is set up
 
 class SkinAnalysisManager: ObservableObject {
     @Published var isAnalyzing = false
@@ -9,7 +9,7 @@ class SkinAnalysisManager: ObservableObject {
     @Published var recommendations: SkincareRecommendations?
     @Published var errorMessage: String?
     
-    private let storage = Storage.storage()
+    // private let storage = Storage.storage() // Temporarily disabled until Firebase is set up
     private let apiBaseURL = "https://your-fastapi-backend.com"
     
     func uploadImages(_ images: [UIImage]) {
@@ -17,51 +17,57 @@ class SkinAnalysisManager: ObservableObject {
         errorMessage = nil
         uploadedImages = images
         
-        uploadImagesToStorage(images) { [weak self] imageURLs in
-            self?.analyzeSkinConditions(imageURLs: imageURLs)
+        // uploadImagesToStorage(images) { [weak self] imageURLs in
+        //     self?.analyzeSkinConditions(imageURLs: imageURLs)
+        // }
+        
+        // Temporary mock analysis
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            self.isAnalyzing = false
+            // Mock results
         }
     }
     
-    private func uploadImagesToStorage(_ images: [UIImage], completion: @escaping ([String]) -> Void) {
-        let group = DispatchGroup()
-        var imageURLs: [String] = []
-        
-        for (index, image) in images.enumerated() {
-            group.enter()
-            
-            guard let imageData = image.jpegData(compressionQuality: 0.8) else {
-                group.leave()
-                continue
-            }
-            
-            let imageName = "skin_analysis_$(Date().timeIntervalSince1970)_$(index).jpg"
-            let storageRef = storage.reference().child("skin_analysis/$(imageName)")
-            
-            storageRef.putData(imageData, metadata: nil) { _, error in
-                if let error = error {
-                    DispatchQueue.main.async {
-                        self.errorMessage = "Failed to upload image: $(error.localizedDescription)"
-                    }
-                    group.leave()
-                    return
-                }
-                
-                storageRef.downloadURL { url, error in
-                    if let url = url {
-                        imageURLs.append(url.absoluteString)
-                    }
-                    group.leave()
-                }
-            }
-        }
-        
-        group.notify(queue: .main) {
-            completion(imageURLs)
-        }
-    }
+    // private func uploadImagesToStorage(_ images: [UIImage], completion: @escaping ([String]) -> Void) {
+    //     let group = DispatchGroup()
+    //     var imageURLs: [String] = []
+    //     
+    //     for (_, image) in images.enumerated() {
+    //         group.enter()
+    //             
+    //         guard let imageData = image.jpegData(compressionQuality: 0.8) else {
+    //             group.leave()
+    //             continue
+    //         }
+    //             
+    //         let imageName = "skin_analysis_\(Date().timeIntervalSince1970)_\(UUID().uuidString).jpg"
+    //         let storageRef = storage.reference().child("skin_analysis/\(imageName)")
+    //             
+    //         storageRef.putData(imageData, metadata: nil) { _, error in
+    //             if let error = error {
+    //                 DispatchQueue.main.async {
+    //                     self.errorMessage = "Failed to upload image: \(error.localizedDescription)"
+    //                 }
+    //                 group.leave()
+    //                 return
+    //             }
+    //                 
+    //             storageRef.downloadURL { url, error in
+    //                 if let url = url {
+    //                         imageURLs.append(url.absoluteString)
+    //                 }
+    //                 group.leave()
+    //             }
+    //         }
+    //     }
+    //         
+    //     group.notify(queue: .main) {
+    //         completion(imageURLs)
+    //     }
+    // }
     
     private func analyzeSkinConditions(imageURLs: [String]) {
-        guard let url = URL(string: "$(apiBaseURL)/analyze-skin") else {
+        guard let url = URL(string: "\(apiBaseURL)/analyze-skin") else {
             isAnalyzing = false
             errorMessage = "Invalid API URL"
             return
@@ -103,14 +109,14 @@ class SkinAnalysisManager: ObservableObject {
                     self?.analysisResults = result
                     self?.generateRecommendations(result: result)
                 } catch {
-                    self?.errorMessage = "Failed to decode response: $(error.localizedDescription)"
+                    self?.errorMessage = "Failed to decode response: \(error.localizedDescription)"
                 }
             }
         }.resume()
     }
     
     private func generateRecommendations(result: SkinAnalysisResult) {
-        guard let url = URL(string: "$(apiBaseURL)/generate-recommendations") else {
+        guard let url = URL(string: "\(apiBaseURL)/generate-recommendations") else {
             errorMessage = "Invalid API URL"
             return
         }
@@ -148,7 +154,7 @@ class SkinAnalysisManager: ObservableObject {
                     let recommendations = try JSONDecoder().decode(SkincareRecommendations.self, from: data)
                     self?.recommendations = recommendations
                 } catch {
-                    self?.errorMessage = "Failed to decode recommendations: $(error.localizedDescription)"
+                    self?.errorMessage = "Failed to decode recommendations: \(error.localizedDescription)"
                 }
             }
         }.resume()
@@ -160,7 +166,10 @@ class SkinAnalysisManager: ObservableObject {
             gender: "female",
             skinType: "combination",
             race: "asian",
-            location: "San Francisco, CA"
+            location: "San Francisco, CA",
+            concerns: ["acne", "dark spots"],
+            allergies: ["fragrance"],
+            currentProducts: ["cleanser", "moisturizer"]
         )
     }
     
@@ -168,7 +177,8 @@ class SkinAnalysisManager: ObservableObject {
         return WeatherData(
             temperature: 22.0,
             humidity: 65.0,
-            uvIndex: 5.0
+            uvIndex: 5.0,
+            condition: "sunny"
         )
     }
 }

@@ -48,7 +48,7 @@ class ChatManager: ObservableObject {
     }
     
     private func sendToGPT4o(content: String, completion: @escaping (String?) -> Void) {
-        guard let url = URL(string: "$(apiBaseURL)/chat") else {
+        guard let url = URL(string: "\(apiBaseURL)/chat") else {
             completion(nil)
             return
         }
@@ -72,7 +72,7 @@ class ChatManager: ObservableObject {
         
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                print("Chat error: $(error)")
+                print("Chat error: \(error)")
                 completion(nil)
                 return
             }
@@ -86,7 +86,7 @@ class ChatManager: ObservableObject {
                 let response = try JSONDecoder().decode(ChatResponse.self, from: data)
                 completion(response.message)
             } catch {
-                print("Decode error: $(error)")
+                print("Decode error: \(error)")
                 completion(nil)
             }
         }.resume()

@@ -80,7 +80,7 @@ struct ProfileHeaderView: View {
             }
             
             // Member since
-            Text("Member since \(formatDate(authManager.currentUser?.metadata.creationDate ?? Date()))")
+            Text("Member since \(formatDate(Date()))")
                 .font(.caption)
                 .foregroundColor(.secondary)
         }

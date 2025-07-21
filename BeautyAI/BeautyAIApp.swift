@@ -1,5 +1,5 @@
 import SwiftUI
-import Firebase
+// import Firebase // Temporarily disabled until Firebase is set up
 
 @main
 struct BeautyAIApp: App {
@@ -8,7 +8,7 @@ struct BeautyAIApp: App {
     @StateObject private var chatManager = ChatManager()
     
     init() {
-        FirebaseApp.configure()
+        // FirebaseApp.configure() // Temporarily disabled until Firebase is set up
     }
     
     var body: some Scene {
