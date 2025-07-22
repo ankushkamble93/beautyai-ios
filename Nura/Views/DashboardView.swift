@@ -73,6 +73,14 @@ struct DashboardView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
+                    // Custom large, centered title
+                    HStack {
+                        Spacer()
+                        Text("Dashboard")
+                            .font(.largeTitle).fontWeight(.bold)
+                            .padding(.top, 8)
+                        Spacer()
+                    }
                     // Welcome section
                     WelcomeSection()
                     
@@ -105,16 +113,16 @@ struct DashboardView: View {
                     Spacer()
                 }
                 .padding()
-                .onChange(of: Int(dashboardData.progress.skinHealthScore * 100)) { newScore in
+                .onChange(of: Int(dashboardData.progress.skinHealthScore * 100)) { oldValue, newValue in
                     let milestones: [Int] = [75, 80, 85, 90, 100]
-                    if let milestone = milestones.first(where: { $0 > lastMilestone && newScore >= $0 }) {
+                    if let milestone = milestones.first(where: { $0 > lastMilestone && newValue >= $0 }) {
                         confettiCounter += 1
                         lastMilestone = milestone
                     }
                 }
             }
-            .navigationTitle("Dashboard")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("")
             .refreshable {
                 // Refresh dashboard data
                 await refreshDashboard()
@@ -191,7 +199,7 @@ struct ProgressOverviewCard: View {
                         ForEach(progress.improvementAreas, id: \.self) { area in
                             HStack {
                                 Image(systemName: "arrow.up.circle.fill")
-                                    .foregroundColor(NuraColors.success)
+                                    .foregroundColor(Color(red: 0.11, green: 0.60, blue: 0.36))
                                     .font(.caption)
                                 Text(area)
                                     .font(.caption)
@@ -218,7 +226,18 @@ struct ProgressOverviewCard: View {
             }
         }
         .padding()
-        .background(NuraColors.card)
+        .background(
+            ZStack {
+                Color(red: 1.0, green: 0.913, blue: 0.839) // #FFE9D6
+                LinearGradient(
+                    gradient: Gradient(colors: [Color.white.opacity(0.08), Color.clear]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color(red: 0.98, green: 0.839, blue: 0.706).opacity(0.2), lineWidth: 1.2) // #FAD6B4 20%
+            }
+        )
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
     }
@@ -304,7 +323,21 @@ struct CurrentRoutineCard: View {
             }
         }
         .padding()
-        .background(NuraColors.card)
+        .background(
+            ZStack {
+                // Solid base color
+                Color(red: 1.0, green: 0.913, blue: 0.839) // #FFE9D6
+                // Faint top-to-bottom gradient for depth
+                LinearGradient(
+                    gradient: Gradient(colors: [Color.white.opacity(0.08), Color.clear]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                // Subtle border
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color(red: 0.98, green: 0.839, blue: 0.706).opacity(0.2), lineWidth: 1.2) // #FAD6B4 20%
+            }
+        )
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
     }
@@ -376,7 +409,21 @@ struct RecentAnalysisCard: View {
             }
         }
         .padding()
-        .background(NuraColors.card)
+        .background(
+            ZStack {
+                // Solid base color
+                Color(red: 1.0, green: 0.913, blue: 0.839) // #FFE9D6
+                // Faint top-to-bottom gradient for depth
+                LinearGradient(
+                    gradient: Gradient(colors: [Color.white.opacity(0.08), Color.clear]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                // Subtle border
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color(red: 0.98, green: 0.839, blue: 0.706).opacity(0.2), lineWidth: 1.2) // #FAD6B4 20%
+            }
+        )
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
     }
@@ -471,7 +518,7 @@ struct UpcomingTasksCard: View {
                             Image(systemName: checkedStates[idx] ? "checkmark.circle.fill" : "circle")
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
-                                .foregroundColor(checkedStates[idx] ? NuraColors.success : NuraColors.textSecondary)
+                                .foregroundColor(checkedStates[idx] ? Color(red: 0.11, green: 0.60, blue: 0.36) : NuraColors.textSecondary)
                                 .frame(width: 20, height: 20)
                                 .scaleEffect(taskPopIndex == idx ? 1.2 : 1.0)
                                 .animation(.spring(response: 0.25, dampingFraction: 0.5), value: taskPopIndex == idx)
@@ -617,7 +664,18 @@ struct UpcomingTasksCard: View {
             now = input
         }
         .padding()
-        .background(NuraColors.card)
+        .background(
+            ZStack {
+                Color(red: 1.0, green: 0.882, blue: 0.765) // #FFE1C3
+                LinearGradient(
+                    gradient: Gradient(colors: [Color.white.opacity(0.08), Color.clear]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color(red: 0.98, green: 0.82, blue: 0.67).opacity(0.2), lineWidth: 1.2) // #FAD1A9 20%
+            }
+        )
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
     }
@@ -680,7 +738,18 @@ struct InsightsCard: View {
             }
         }
         .padding()
-        .background(NuraColors.card)
+        .background(
+            ZStack {
+                Color(red: 1.0, green: 0.847, blue: 0.729) // #FFD8BA
+                LinearGradient(
+                    gradient: Gradient(colors: [Color.white.opacity(0.08), Color.clear]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color(red: 0.98, green: 0.78, blue: 0.60).opacity(0.2), lineWidth: 1.2) // #F9C89B 20%
+            }
+        )
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
     }

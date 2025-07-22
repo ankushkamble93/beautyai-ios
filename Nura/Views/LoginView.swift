@@ -7,6 +7,10 @@ struct LoginView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var showHeart = false
+    // Add state for arrow fill progress
+    @State private var arrowFill: CGFloat = 0.0
+    // Add state to control one-time animation
+    @State private var animateArrow = false
     
     var canLogin: Bool { !email.isEmpty && !password.isEmpty }
     
@@ -32,14 +36,19 @@ struct LoginView: View {
                     }
                 }
                 Spacer()
-                // Centered, large, cursive Nura title
+                // Shift Nura app title higher, center between top actions and sign-in buttons, and use Google cursive style
                 HStack {
                     Spacer()
-                    Text("Nura")
-                        .font(.system(size: 54, weight: .bold, design: .serif))
-                        .italic()
-                        .foregroundColor(NuraColors.primary)
-                        .padding(.bottom, 32)
+                    Text("nura.")
+                        .font(.custom("DancingScript-Bold", size: 64))
+                        .foregroundColor(Color(red: 0.976, green: 0.965, blue: 0.949)) // #F9F6F2 creamy off-white
+                        .padding(.top, 12)
+                        .padding(.bottom, 8)
+                        .minimumScaleFactor(0.5)
+                        .lineLimit(1)
+                        .kerning(2)
+                        .shadow(color: NuraColors.primary.opacity(0.18), radius: 8, x: 0, y: 3)
+                        .accessibilityAddTraits(.isHeader)
                     Spacer()
                 }
                 VStack(spacing: 18) {
@@ -48,7 +57,7 @@ struct LoginView: View {
                 }
                 // Add space between Google button and login fields
                 Spacer().frame(height: 24)
-                // Login bubble, centered and aligned with Google button
+                // Username and password fields remain in their current position
                 VStack(spacing: 14) {
                     TextField("Email", text: $email)
                         .padding()
@@ -72,28 +81,51 @@ struct LoginView: View {
                         )
                         .shadow(color: NuraColors.primary.opacity(0.08), radius: 4, x: 0, y: 2)
                         .padding(.horizontal, 32)
-                    Button("Log in") {
-                        if canLogin {
-                            authManager.isAuthenticated = true
+                }
+                // Update arrowFill as the user types password
+                .onChange(of: password) { oldValue, newValue in
+                    // Fill progress based on password length (max 1.0 at 8+ chars)
+                    withAnimation(.easeOut(duration: 0.7)) {
+                        arrowFill = min(CGFloat(newValue.count) / 8.0, 1.0)
+                    }
+                }
+                // Login button arrow: straight, primary color, transparent background, shine and shadow pop when password is typed (always animating for testing)
+                HStack {
+                    Spacer()
+                    if !password.isEmpty || true { // keep always visible for testing
+                        Button(action: { authManager.isAuthenticated = true }) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color.clear)
+                                    .frame(width: 64, height: 64)
+                                    .shadow(color: NuraColors.primary.opacity(0.18), radius: 10, x: 0, y: 4)
+                                // Arrow with shine and pop
+                                Image(systemName: "arrow.right")
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 44, height: 44)
+                                    .foregroundColor(NuraColors.primary)
+                                    .modifier(ShineAndPopEffect(animate: animateArrow))
+                            }
+                        }
+                        .frame(width: 64, height: 64)
+                        .padding(.trailing, 36)
+                        .padding(.top, 4)
+                        .onAppear {
+                            animateArrow = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) {
+                                animateArrow = false
+                            }
                         }
                     }
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: 220)
-                        .padding(.vertical, 10)
-                        .background(canLogin ? NuraColors.primary : NuraColors.primary.opacity(0.4))
-                        .cornerRadius(18)
-                        .shadow(color: NuraColors.primary.opacity(0.12), radius: 4, x: 0, y: 2)
-                        .padding(.horizontal, 32)
-                        .disabled(!canLogin)
                 }
-                Spacer()
+                Spacer().frame(height: 8)
                 // Animated heart above the quote
                 VStack(spacing: 8) {
                     AnimatedHeartView(show: $showHeart)
                         .frame(width: 48, height: 48)
                         .padding(.bottom, 2)
-                    Text("Nurture your natural beauty with Nura ✨")
+                    Text("unlock the next you")
                         .font(.footnote)
                         .foregroundColor(NuraColors.textSecondary)
                         .multilineTextAlignment(.center)
@@ -266,4 +298,48 @@ struct SignInWithGoogleButton: View {
 // MARK: - Preview
 #Preview {
     LoginView()
+} 
+
+// HandwrittenArrow shape
+struct HandwrittenArrow: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let w = rect.width
+        let h = rect.height
+        // Elegant, professional, hand-drawn right arrow
+        path.move(to: CGPoint(x: w * 0.15, y: h * 0.5))
+        path.addCurve(to: CGPoint(x: w * 0.75, y: h * 0.5),
+                      control1: CGPoint(x: w * 0.35, y: h * 0.15),
+                      control2: CGPoint(x: w * 0.55, y: h * 0.85))
+        path.move(to: CGPoint(x: w * 0.55, y: h * 0.32))
+        path.addLine(to: CGPoint(x: w * 0.85, y: h * 0.5))
+        path.addLine(to: CGPoint(x: w * 0.55, y: h * 0.68))
+        return path
+    }
+} 
+
+// Shine and pop effect modifier
+struct ShineAndPopEffect: ViewModifier {
+    var animate: Bool
+    @State private var shine: CGFloat = 0.0
+    @State private var pop: CGFloat = 1.0
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(animate ? 1.12 : 1.0)
+            .shadow(color: NuraColors.primary.opacity(animate ? 0.35 : 0.18), radius: animate ? 18 : 10, x: 0, y: 4)
+            .overlay(
+                LinearGradient(
+                    gradient: Gradient(colors: [Color.white.opacity(0.0), Color.white.opacity(0.5), Color.white.opacity(0.0)]),
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .blendMode(.plusLighter)
+                .mask(
+                    Rectangle()
+                        .frame(width: animate ? 44 : 0, height: 44)
+                        .offset(x: animate ? 0 : -44)
+                        .animation(Animation.easeInOut(duration: 1.2).repeatForever(autoreverses: false), value: animate)
+                )
+            )
+    }
 } 

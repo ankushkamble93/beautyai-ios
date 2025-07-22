@@ -11,22 +11,32 @@ struct SkinAnalysisView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 30) {
-                    // Header
-                    VStack(spacing: 15) {
-                        Image(systemName: "camera.circle.fill")
-                            .font(.system(size: 60))
-                            .foregroundColor(NuraColors.primary)
-                        
+                    // Custom large, centered title
+                    HStack {
+                        Spacer()
                         Text("Skin Analysis")
-                            .font(.title)
-                            .fontWeight(.bold)
-                        
-                        Text("Upload 3 selfies from different angles for AI-powered skin analysis")
-                            .font(.subheadline)
+                            .font(.largeTitle).fontWeight(.bold)
+                            .padding(.top, 8)
+                        Spacer()
+                    }
+                    // Reduce space between title and camera icon
+                    Spacer().frame(height: 0)
+                    Image(systemName: "camera.circle.fill")
+                        .font(.system(size: 60))
+                        .foregroundColor(NuraColors.primary)
+                    
+                    Text("Upload 3 selfies")
+                        .font(.subheadline)
+                        .foregroundColor(NuraColors.textSecondary)
+                        .multilineTextAlignment(.center)
+                    // Only show selfie tips if no images are uploaded
+                    if skinAnalysisManager.uploadedImages.isEmpty {
+                        Text("Tips for best results:\n• Use a well-lit room (natural light is best)\n• Remove glasses, hats, and heavy makeup\n• Keep your face centered and visible\n• Take a front, left, and right side photo")
+                            .font(.caption)
                             .foregroundColor(NuraColors.textSecondary)
                             .multilineTextAlignment(.center)
+                            .padding(.top, 4)
                     }
-                    .padding(.top, 20)
                     
                     // Image upload section
                     VStack(spacing: 20) {
@@ -60,7 +70,7 @@ struct SkinAnalysisView: View {
                                     Image(uiImage: image)
                                         .resizable()
                                         .aspectRatio(contentMode: .fill)
-                                        .frame(width: 100, height: 100)
+                                        .frame(width: 100, height: 180)
                                         .clipped()
                                         .cornerRadius(8)
                                         .overlay(
@@ -71,6 +81,38 @@ struct SkinAnalysisView: View {
                             }
                         }
                         
+                        // Add a helpful timer above the 'Select Photos' button if images are uploaded
+                        let now = Date()
+                        let calendar = Calendar.current
+                        let nextDay = calendar.nextDate(after: now, matching: DateComponents(hour: 0, minute: 0, second: 0), matchingPolicy: .nextTime) ?? now
+                        let formatter: DateFormatter = {
+                            let f = DateFormatter()
+                            f.timeStyle = .short
+                            f.dateStyle = .medium
+                            return f
+                        }()
+                        if !skinAnalysisManager.uploadedImages.isEmpty {
+                            VStack(spacing: 4) {
+                                Text("You can upload new photos again tomorrow.")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                                    .multilineTextAlignment(.center)
+                                Text("Next upload available: \(formatter.string(from: nextDay))")
+                                    .font(.caption2)
+                                    .foregroundColor(.gray)
+                            }
+                            .padding(.bottom, 8)
+                        }
+                        
+                        // Compute if the select photos button should be disabled (uploaded and before nextDay)
+                        let isUploadLocked: Bool = {
+                            if skinAnalysisManager.uploadedImages.isEmpty { return false }
+                            let now = Date()
+                            let calendar = Calendar.current
+                            let nextDay = calendar.nextDate(after: now, matching: DateComponents(hour: 0, minute: 0, second: 0), matchingPolicy: .nextTime) ?? now
+                            return now < nextDay
+                        }()
+                        
                         // Upload button
                         PhotosPicker(selection: $selectedImages, maxSelectionCount: 3, matching: .images) {
                             HStack {
@@ -79,13 +121,14 @@ struct SkinAnalysisView: View {
                             }
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(NuraColors.primary)
+                            .background(isUploadLocked ? Color.gray.opacity(0.4) : NuraColors.primary)
                             .foregroundColor(.white)
                             .cornerRadius(12)
                         }
-                        .onChange(of: selectedImages) { items in
+                        .disabled(isUploadLocked)
+                        .onChange(of: selectedImages) { oldValue, newValue in
                             Task {
-                                await loadImages(from: items)
+                                await loadImages(from: newValue)
                             }
                         }
                     }
@@ -110,7 +153,7 @@ struct SkinAnalysisView: View {
                             }
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(NuraColors.primary)
+                            .background(Color(red: 0.45, green: 0.32, blue: 0.60)) // Slightly darker purple
                             .foregroundColor(.white)
                             .cornerRadius(12)
                         }
@@ -140,8 +183,8 @@ struct SkinAnalysisView: View {
                     Spacer()
                 }
             }
-            .navigationTitle("Skin Analysis")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("")
         }
     }
     

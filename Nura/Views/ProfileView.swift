@@ -10,6 +10,14 @@ struct ProfileView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
+                    // Custom large, centered title
+                    HStack {
+                        Spacer()
+                        Text("Profile")
+                            .font(.largeTitle).fontWeight(.bold)
+                            .padding(.top, 8)
+                        Spacer()
+                    }
                     // Profile header
                     ProfileHeaderView()
                     
@@ -32,8 +40,8 @@ struct ProfileView: View {
                 }
                 .padding()
             }
-            .navigationTitle("Profile")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("")
             .sheet(isPresented: $showingSubscription) {
                 SubscriptionView()
             }
@@ -85,7 +93,13 @@ struct ProfileHeaderView: View {
                 .foregroundColor(NuraColors.textSecondary)
         }
         .padding()
-        .background(NuraColors.card)
+        .background(
+            LinearGradient(
+                gradient: Gradient(colors: [Color.purple.opacity(0.10), Color.blue.opacity(0.10)]),
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
     }
@@ -143,7 +157,13 @@ struct QuickActionsView: View {
             }
         }
         .padding()
-        .background(NuraColors.card)
+        .background(
+            LinearGradient(
+                gradient: Gradient(colors: [Color.purple.opacity(0.10), Color.blue.opacity(0.10)]),
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
     }
@@ -235,7 +255,13 @@ struct SettingsSectionView: View {
                     // Navigate to preferences
                 }
             }
-            .background(NuraColors.card)
+            .background(
+                LinearGradient(
+                    gradient: Gradient(colors: [Color.purple.opacity(0.10), Color.blue.opacity(0.10)]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
             .cornerRadius(12)
             .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
         }
@@ -324,7 +350,13 @@ struct SubscriptionSectionView: View {
                     // Navigate to billing history
                 }
             }
-            .background(NuraColors.card)
+            .background(
+                LinearGradient(
+                    gradient: Gradient(colors: [Color.purple.opacity(0.10), Color.blue.opacity(0.10)]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
             .cornerRadius(12)
             .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
         }
@@ -389,7 +421,13 @@ struct SupportSectionView: View {
                     // Show about page
                 }
             }
-            .background(NuraColors.card)
+            .background(
+                LinearGradient(
+                    gradient: Gradient(colors: [Color.purple.opacity(0.10), Color.blue.opacity(0.10)]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
             .cornerRadius(12)
             .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
         }

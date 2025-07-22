@@ -10,7 +10,7 @@ class ChatManager: ObservableObject {
     init() {
         messages.append(ChatMessage(
             id: UUID(),
-            content: "Hi! I am your AI skin assistant. I can help you with skincare questions, analyze your skin concerns, and provide personalized advice. What would you like to know?",
+            content: "Hi, I’m Nura. Your personal skin concierge. I’m here to help you with all things skin—routine, products, and confidence. What’s on your mind today?",
             isUser: false,
             timestamp: Date()
         ))
