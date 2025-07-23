@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 struct ProfileView: View {
     @EnvironmentObject var authManager: AuthenticationManager
@@ -57,42 +58,68 @@ struct ProfileView: View {
 
 struct ProfileHeaderView: View {
     @EnvironmentObject var authManager: AuthenticationManager
+    @State private var showingImagePicker = false
+    @State private var profileImage: Image? = nil
+    @State private var inputImage: UIImage? = nil
     
     var body: some View {
         VStack(spacing: 15) {
-            // Profile image
-            Circle()
-                .fill(
-                    LinearGradient(
-                        gradient: Gradient(colors: [Color.purple, Color.pink]),
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: 100, height: 100)
-                .overlay(
-                    Image(systemName: "person.fill")
-                        .font(.system(size: 40))
-                        .foregroundColor(.white)
-                )
-            
+            ZStack(alignment: .topTrailing) {
+                // Profile image
+                if let profileImage = profileImage {
+                    profileImage
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 100, height: 100)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                        .shadow(radius: 4)
+                } else {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                gradient: Gradient(colors: [Color.purple, Color.pink]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 100, height: 100)
+                        .overlay(
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 40))
+                                .foregroundColor(.white)
+                        )
+                }
+                // Edit icon overlay
+                Button(action: { showingImagePicker = true }) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 28, height: 28)
+                            .shadow(radius: 2)
+                        Image(systemName: "pencil")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(Color.purple)
+                    }
+                }
+                .offset(x: 8, y: -8)
+            }
             // User info
             VStack(spacing: 5) {
                 Text(authManager.currentUser?.displayName ?? "User")
                     .font(.title2)
                     .fontWeight(.bold)
-                
                 Text(authManager.currentUser?.email ?? "")
                     .font(.subheadline)
                     .foregroundColor(NuraColors.textSecondary)
             }
-            
             // Member since
             Text("Member since \(formatDate(Date()))")
                 .font(.caption)
                 .foregroundColor(NuraColors.textSecondary)
         }
         .padding()
+        .frame(maxWidth: .infinity)
         .background(
             LinearGradient(
                 gradient: Gradient(colors: [Color.purple.opacity(0.10), Color.blue.opacity(0.10)]),
@@ -100,8 +127,12 @@ struct ProfileHeaderView: View {
                 endPoint: .bottomTrailing
             )
         )
-        .cornerRadius(12)
+        .cornerRadius(18)
         .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
+        .padding(.horizontal, 8)
+        .sheet(isPresented: $showingImagePicker, onDismiss: loadImage) {
+            ImagePicker(image: $inputImage)
+        }
     }
     
     private func formatDate(_ date: Date) -> String {
@@ -109,50 +140,36 @@ struct ProfileHeaderView: View {
         formatter.dateStyle = .medium
         return formatter.string(from: date)
     }
+    
+    private func loadImage() {
+        guard let inputImage = inputImage else { return }
+        profileImage = Image(uiImage: inputImage)
+    }
 }
 
 struct QuickActionsView: View {
+    @State private var showRoutine = false
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
             Text("Quick Actions")
                 .font(.headline)
                 .fontWeight(.semibold)
-            
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 12) {
-                QuickActionCard(
-                    title: "New Analysis",
-                    subtitle: "Upload photos",
-                    icon: "camera.fill",
-                    color: NuraColors.primary
-                ) {
-                    // Navigate to analysis
-                }
-                
-                QuickActionCard(
-                    title: "Chat with AI",
-                    subtitle: "Get advice",
-                    icon: "message.fill",
-                    color: NuraColors.secondary
-                ) {
-                    // Navigate to chat
-                }
-                
                 QuickActionCard(
                     title: "View Progress",
                     subtitle: "Track results",
                     icon: "chart.line.uptrend.xyaxis",
                     color: NuraColors.success
                 ) {
-                    // Navigate to progress
+                    // Navigation for progress will be implemented later
                 }
-                
                 QuickActionCard(
                     title: "Routine",
                     subtitle: "Daily steps",
                     icon: "list.bullet",
                     color: NuraColors.secondary
                 ) {
-                    // Navigate to routine
+                    showRoutine = true
                 }
             }
         }
@@ -166,6 +183,9 @@ struct QuickActionsView: View {
         )
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
+        .sheet(isPresented: $showRoutine) {
+            RoutineView()
+        }
     }
 }
 
@@ -530,6 +550,35 @@ struct HelpView: View {
             .navigationBarItems(trailing: Button("Done") {
                 dismiss()
             })
+        }
+    }
+}
+
+// Add ImagePicker for profile photo selection
+struct ImagePicker: UIViewControllerRepresentable {
+    @Binding var image: UIImage?
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var config = PHPickerConfiguration()
+        config.filter = .images
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = context.coordinator
+        return picker
+    }
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        let parent: ImagePicker
+        init(_ parent: ImagePicker) { self.parent = parent }
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            picker.dismiss(animated: true)
+            guard let provider = results.first?.itemProvider, provider.canLoadObject(ofClass: UIImage.self) else { return }
+            provider.loadObject(ofClass: UIImage.self) { image, _ in
+                DispatchQueue.main.async {
+                    self.parent.image = image as? UIImage
+                }
+            }
         }
     }
 }
