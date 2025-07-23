@@ -6,6 +6,8 @@ struct NuraApp: App {
     @StateObject private var authManager = AuthenticationManager()
     @StateObject private var skinAnalysisManager = SkinAnalysisManager()
     @StateObject private var chatManager = ChatManager()
+    @StateObject private var appearanceManager = AppearanceManager()
+    @AppStorage("colorSchemePreference") private var colorSchemePreference: String = "system"
     
     init() {
         // FirebaseApp.configure() // Temporarily disabled until Firebase is set up
@@ -13,17 +15,27 @@ struct NuraApp: App {
     
     var body: some Scene {
         WindowGroup {
-            if authManager.isAuthenticated {
-                ContentView()
-                    .environmentObject(authManager)
-                    .environmentObject(skinAnalysisManager)
-                    .environmentObject(chatManager)
-            } else {
-            LoginView()
-                .environmentObject(authManager)
-                .environmentObject(skinAnalysisManager)
-                .environmentObject(chatManager)
+            Group {
+                if authManager.isAuthenticated {
+                    ContentView()
+                        .environmentObject(authManager)
+                        .environmentObject(skinAnalysisManager)
+                        .environmentObject(chatManager)
+                        .environmentObject(appearanceManager)
+                } else {
+                    LoginView()
+                        .environmentObject(authManager)
+                        .environmentObject(skinAnalysisManager)
+                        .environmentObject(chatManager)
+                        .environmentObject(appearanceManager)
+                }
             }
+            .preferredColorScheme(
+                authManager.isAuthenticated ?
+                    (appearanceManager.colorSchemePreference == "dark" ? .dark :
+                        (appearanceManager.colorSchemePreference == "light" ? .light : nil))
+                    : .light
+            )
         }
     }
 }
