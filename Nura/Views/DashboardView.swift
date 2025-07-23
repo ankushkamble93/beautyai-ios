@@ -1,8 +1,10 @@
 import SwiftUI
 import ConfettiSwiftUI
+import Combine
 
 struct DashboardView: View {
     @EnvironmentObject var skinAnalysisManager: SkinAnalysisManager
+    @EnvironmentObject var appearanceManager: AppearanceManager
     @State private var dashboardData = DashboardData(
         currentRoutine: [],
         progress: ProgressMetrics(
@@ -68,7 +70,12 @@ struct DashboardView: View {
         priority: .medium,
         isCompleted: false
     )
-    
+    // Computed property for dark mode
+    private var isDark: Bool {
+        appearanceManager.colorSchemePreference == "dark" ||
+        (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark)
+    }
+
     var body: some View {
         NavigationView {
             ScrollView {
@@ -79,36 +86,39 @@ struct DashboardView: View {
                         Text("Dashboard")
                             .font(.largeTitle).fontWeight(.bold)
                             .padding(.top, 8)
+                            .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
                         Spacer()
                     }
                     // Welcome section
-                    WelcomeSection()
+                    WelcomeSection(isDark: isDark)
                     
                     // Progress overview
                     ProgressOverviewCard(
                         progress: dashboardData.progress,
-                        confettiCounter: $confettiCounter
+                        confettiCounter: $confettiCounter,
+                        isDark: isDark
                     )
                     
                     // Current routine
                     if !dashboardData.currentRoutine.isEmpty {
-                        CurrentRoutineCard(routine: dashboardData.currentRoutine)
+                        CurrentRoutineCard(routine: dashboardData.currentRoutine, isDark: isDark)
                     }
                     
                     // Recent analysis
                     if let recentAnalysis = skinAnalysisManager.analysisResults {
-                        RecentAnalysisCard(analysis: recentAnalysis)
+                        RecentAnalysisCard(analysis: recentAnalysis, isDark: isDark)
                     }
                     
                     // Upcoming tasks (including weekly mask at the end)
                     UpcomingTasksCard(
                         tasks: dashboardData.upcomingTasks,
                         weeklyMaskCompletedAt: $weeklyMaskCompletedAt,
-                        weeklyMaskTask: weeklyMaskTask
+                        weeklyMaskTask: weeklyMaskTask,
+                        isDark: isDark
                     )
                     
                     // Insights
-                    InsightsCard(insights: dashboardData.insights)
+                    InsightsCard(insights: dashboardData.insights, isDark: isDark)
                     
                     Spacer()
                 }
@@ -128,6 +138,7 @@ struct DashboardView: View {
                 await refreshDashboard()
             }
         }
+        .id(appearanceManager.colorSchemePreference)
     }
     
     private func refreshDashboard() async {
@@ -139,25 +150,31 @@ struct DashboardView: View {
 
 struct WelcomeSection: View {
     @EnvironmentObject var authManager: AuthenticationManager
-    
+    var isDark: Bool
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Welcome back! ✨")
                 .font(.title2)
                 .fontWeight(.bold)
-            
+                .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
             Text("Ready to take care of your skin today?")
                 .font(.subheadline)
-                .foregroundColor(NuraColors.textSecondary)
+                .foregroundColor(isDark ? NuraColors.textSecondaryDark : NuraColors.textSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .background(
-            LinearGradient(
-                gradient: Gradient(colors: [Color.purple.opacity(0.1), Color.pink.opacity(0.1)]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            ZStack {
+                if isDark {
+                    NuraColors.cardDark
+                } else {
+                    LinearGradient(
+                        gradient: Gradient(colors: [Color.purple.opacity(0.1), Color.pink.opacity(0.1)]),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                }
+            }
         )
         .cornerRadius(12)
     }
@@ -166,6 +183,7 @@ struct WelcomeSection: View {
 struct ProgressOverviewCard: View {
     let progress: ProgressMetrics
     @Binding var confettiCounter: Int
+    var isDark: Bool
 
     private func ringColor(for score: Double) -> Color {
         let percent = score * 100
@@ -192,17 +210,20 @@ struct ProgressOverviewCard: View {
                         .font(.headline)
                         .fontWeight(.semibold)
                         .underline()
+                        .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
                     if !progress.improvementAreas.isEmpty {
                         Text("Improving Areas:")
                             .font(.subheadline)
                             .fontWeight(.medium)
+                            .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
                         ForEach(progress.improvementAreas, id: \.self) { area in
                             HStack {
                                 Image(systemName: "arrow.up.circle.fill")
-                                    .foregroundColor(Color(red: 0.11, green: 0.60, blue: 0.36))
+                                    .foregroundColor(isDark ? NuraColors.successDark : Color(red: 0.11, green: 0.60, blue: 0.36))
                                     .font(.caption)
                                 Text(area)
                                     .font(.caption)
+                                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : .primary)
                             }
                         }
                     }
@@ -214,7 +235,7 @@ struct ProgressOverviewCard: View {
                     Spacer()
                     AnimatedRingView(
                         progress: Double(progress.skinHealthScore),
-                        ringColor: ringColor(for: progress.skinHealthScore),
+                        ringColor: isDark ? NuraColors.successDark : ringColor(for: progress.skinHealthScore),
                         ringWidth: 16,
                         label: "\(Int(progress.skinHealthScore * 100))%"
                     )
@@ -228,14 +249,18 @@ struct ProgressOverviewCard: View {
         .padding()
         .background(
             ZStack {
-                Color(red: 1.0, green: 0.913, blue: 0.839) // #FFE9D6
-                LinearGradient(
-                    gradient: Gradient(colors: [Color.white.opacity(0.08), Color.clear]),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color(red: 0.98, green: 0.839, blue: 0.706).opacity(0.2), lineWidth: 1.2) // #FAD6B4 20%
+                if isDark {
+                    NuraColors.cardDark
+                } else {
+                    Color(red: 1.0, green: 0.913, blue: 0.839) // #FFE9D6
+                    LinearGradient(
+                        gradient: Gradient(colors: [Color.white.opacity(0.08), Color.clear]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color(red: 0.98, green: 0.839, blue: 0.706).opacity(0.2), lineWidth: 1.2) // #FAD6B4 20%
+                }
             }
         )
         .cornerRadius(12)
@@ -279,6 +304,7 @@ struct CircularProgressView: View {
 
 struct CurrentRoutineCard: View {
     let routine: [SkincareStep]
+    var isDark: Bool
     
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
@@ -325,17 +351,18 @@ struct CurrentRoutineCard: View {
         .padding()
         .background(
             ZStack {
-                // Solid base color
-                Color(red: 1.0, green: 0.913, blue: 0.839) // #FFE9D6
-                // Faint top-to-bottom gradient for depth
-                LinearGradient(
-                    gradient: Gradient(colors: [Color.white.opacity(0.08), Color.clear]),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                // Subtle border
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color(red: 0.98, green: 0.839, blue: 0.706).opacity(0.2), lineWidth: 1.2) // #FAD6B4 20%
+                if isDark {
+                    NuraColors.cardDark
+                } else {
+                    Color(red: 1.0, green: 0.913, blue: 0.839) // #FFE9D6
+                    LinearGradient(
+                        gradient: Gradient(colors: [Color.white.opacity(0.08), Color.clear]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color(red: 0.98, green: 0.839, blue: 0.706).opacity(0.2), lineWidth: 1.2) // #FAD6B4 20%
+                }
             }
         )
         .cornerRadius(12)
@@ -357,6 +384,7 @@ struct CurrentRoutineCard: View {
 
 struct RecentAnalysisCard: View {
     let analysis: SkinAnalysisResult
+    var isDark: Bool = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
@@ -401,7 +429,7 @@ struct RecentAnalysisCard: View {
                             }
                             .padding(.horizontal, 8)
                             .padding(.vertical, 6)
-                            .background(NuraColors.card)
+                            .background(isDark ? NuraColors.cardDark : NuraColors.card)
                             .cornerRadius(8)
                         }
                     }
@@ -411,17 +439,18 @@ struct RecentAnalysisCard: View {
         .padding()
         .background(
             ZStack {
-                // Solid base color
-                Color(red: 1.0, green: 0.913, blue: 0.839) // #FFE9D6
-                // Faint top-to-bottom gradient for depth
-                LinearGradient(
-                    gradient: Gradient(colors: [Color.white.opacity(0.08), Color.clear]),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                // Subtle border
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color(red: 0.98, green: 0.839, blue: 0.706).opacity(0.2), lineWidth: 1.2) // #FAD6B4 20%
+                if isDark {
+                    NuraColors.cardDark
+                } else {
+                    Color(red: 1.0, green: 0.913, blue: 0.839) // #FFE9D6
+                    LinearGradient(
+                        gradient: Gradient(colors: [Color.white.opacity(0.08), Color.clear]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color(red: 0.98, green: 0.839, blue: 0.706).opacity(0.2), lineWidth: 1.2) // #FAD6B4 20%
+                }
             }
         )
         .cornerRadius(12)
@@ -447,6 +476,7 @@ struct UpcomingTasksCard: View {
     let tasks: [DashboardTask]
     @Binding var weeklyMaskCompletedAt: Date?
     let weeklyMaskTask: DashboardTask
+    var isDark: Bool
     private let weekInterval: TimeInterval = 7 * 24 * 60 * 60
     @State private var maskPop: Bool = false
     @State private var taskPopIndex: Int? = nil
@@ -674,14 +704,18 @@ struct UpcomingTasksCard: View {
         .padding()
         .background(
             ZStack {
-                Color(red: 1.0, green: 0.882, blue: 0.765) // #FFE1C3
-                LinearGradient(
-                    gradient: Gradient(colors: [Color.white.opacity(0.08), Color.clear]),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color(red: 0.98, green: 0.82, blue: 0.67).opacity(0.2), lineWidth: 1.2) // #FAD1A9 20%
+                if isDark {
+                    NuraColors.cardDark
+                } else {
+                    Color(red: 1.0, green: 0.882, blue: 0.765) // #FFE1C3
+                    LinearGradient(
+                        gradient: Gradient(colors: [Color.white.opacity(0.08), Color.clear]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color(red: 0.98, green: 0.82, blue: 0.67).opacity(0.2), lineWidth: 1.2) // #FAD1A9 20%
+                }
             }
         )
         .cornerRadius(12)
@@ -717,6 +751,7 @@ struct UpcomingTasksCard: View {
 
 struct InsightsCard: View {
     let insights: [Insight]
+    var isDark: Bool
     
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
@@ -748,14 +783,18 @@ struct InsightsCard: View {
         .padding()
         .background(
             ZStack {
-                Color(red: 1.0, green: 0.847, blue: 0.729) // #FFD8BA
-                LinearGradient(
-                    gradient: Gradient(colors: [Color.white.opacity(0.08), Color.clear]),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color(red: 0.98, green: 0.78, blue: 0.60).opacity(0.2), lineWidth: 1.2) // #F9C89B 20%
+                if isDark {
+                    NuraColors.cardDark
+                } else {
+                    Color(red: 1.0, green: 0.847, blue: 0.729) // #FFD8BA
+                    LinearGradient(
+                        gradient: Gradient(colors: [Color.white.opacity(0.08), Color.clear]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color(red: 0.98, green: 0.78, blue: 0.60).opacity(0.2), lineWidth: 1.2) // #F9C89B 20%
+                }
             }
         )
         .cornerRadius(12)

@@ -1,8 +1,10 @@
 import SwiftUI
 import PhotosUI
+import Combine
 
 struct SkinAnalysisView: View {
     @EnvironmentObject var skinAnalysisManager: SkinAnalysisManager
+    @EnvironmentObject var appearanceManager: AppearanceManager
     @State private var selectedImages: [PhotosPickerItem] = []
     @State private var showingImagePicker = false
     @State private var showingResults = false
@@ -17,23 +19,24 @@ struct SkinAnalysisView: View {
                         Text("Skin Analysis")
                             .font(.largeTitle).fontWeight(.bold)
                             .padding(.top, 8)
+                            .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
                         Spacer()
                     }
                     // Reduce space between title and camera icon
                     Spacer().frame(height: 0)
                     Image(systemName: "camera.circle.fill")
                         .font(.system(size: 60))
-                        .foregroundColor(NuraColors.primary)
+                        .foregroundColor(isDark ? NuraColors.primaryDark : NuraColors.primary)
                         
                     Text("Upload 3 selfies")
                             .font(.subheadline)
-                            .foregroundColor(NuraColors.textSecondary)
+                            .foregroundColor(isDark ? NuraColors.textSecondaryDark : NuraColors.textSecondary)
                             .multilineTextAlignment(.center)
                     // Only show selfie tips if no images are uploaded
                     if skinAnalysisManager.uploadedImages.isEmpty {
                         Text("Tips for best results:\n• Use a well-lit room (natural light is best)\n• Remove glasses, hats, and heavy makeup\n• Keep your face centered and visible\n• Take a front, left, and right side photo")
                             .font(.caption)
-                            .foregroundColor(NuraColors.textSecondary)
+                            .foregroundColor(isDark ? NuraColors.textSecondaryDark : NuraColors.textSecondary)
                             .multilineTextAlignment(.center)
                             .padding(.top, 4)
                     }
@@ -45,23 +48,23 @@ struct SkinAnalysisView: View {
                             VStack(spacing: 15) {
                                 Image(systemName: "photo.on.rectangle.angled")
                                     .font(.system(size: 40))
-                                    .foregroundColor(NuraColors.textSecondary)
+                                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : NuraColors.textSecondary)
                                 
                                 Text("Upload 3 Selfies")
                                     .font(.headline)
                                 
                                 Text("Front, left side, and right side views for best results")
                                     .font(.caption)
-                                    .foregroundColor(NuraColors.textSecondary)
+                                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : NuraColors.textSecondary)
                                     .multilineTextAlignment(.center)
                             }
                             .frame(height: 200)
                             .frame(maxWidth: .infinity)
-                            .background(NuraColors.card.opacity(0.1))
+                            .background(isDark ? NuraColors.cardDark : NuraColors.card.opacity(0.1))
                             .cornerRadius(12)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12)
-                                    .stroke(NuraColors.textSecondary.opacity(0.3), style: StrokeStyle(lineWidth: 2, dash: [5]))
+                                    .stroke((isDark ? NuraColors.textSecondaryDark : NuraColors.textSecondary).opacity(0.3), style: StrokeStyle(lineWidth: 2, dash: [5]))
                             )
                         } else {
                             // Uploaded images
@@ -164,7 +167,7 @@ struct SkinAnalysisView: View {
                     // Error message
                     if let errorMessage = skinAnalysisManager.errorMessage {
                         Text(errorMessage)
-                            .foregroundColor(NuraColors.error)
+                            .foregroundColor(isDark ? NuraColors.errorDark : NuraColors.error)
                             .font(.caption)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
@@ -186,6 +189,7 @@ struct SkinAnalysisView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationTitle("")
         }
+        .id(appearanceManager.colorSchemePreference)
     }
     
     private func loadImages(from items: [PhotosPickerItem]) async {
@@ -202,6 +206,8 @@ struct SkinAnalysisView: View {
             skinAnalysisManager.uploadedImages = loadedImages
         }
     }
+    
+    private var isDark: Bool { appearanceManager.colorSchemePreference == "dark" || (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark) }
 }
 
 struct AnalysisResultsView: View {

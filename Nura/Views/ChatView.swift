@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ChatView: View {
     @EnvironmentObject var chatManager: ChatManager
+    @EnvironmentObject var appearanceManager: AppearanceManager
     @State private var messageText = ""
     @FocusState private var isTextFieldFocused: Bool
     @State private var hasPremium = false // Toggle for testing
@@ -11,6 +12,7 @@ struct ChatView: View {
             ZStack {
                 // Main content (chat UI and sample conversation)
                 VStack {
+                    let isDark = appearanceManager.colorSchemePreference == "dark" || (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark)
                     // Custom large, centered title
                     HStack {
                         Spacer()
@@ -75,7 +77,7 @@ struct ChatView: View {
                             TextField("Type your skin wish... 🪄", text: $messageText, axis: .vertical)
                                 .padding(.vertical, 16)
                                 .padding(.horizontal, 20)
-                                .background(Color(red: 0.976, green: 0.965, blue: 0.949)) // #F9F6F2
+                                .background(isDark ? NuraColors.cardDark : Color(red: 0.976, green: 0.965, blue: 0.949)) // #F9F6F2
                                 .cornerRadius(24)
                                 .focused($isTextFieldFocused)
                                 .lineLimit(1...4)
@@ -83,7 +85,7 @@ struct ChatView: View {
                                 Image(systemName: "paperplane.fill")
                                     .foregroundColor(.white)
                                     .padding(10)
-                                    .background(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? NuraColors.textSecondary : NuraColors.primary)
+                                    .background(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? (isDark ? NuraColors.textSecondaryDark : NuraColors.textSecondary) : (isDark ? NuraColors.primaryDark : NuraColors.primary))
                                     .cornerRadius(20)
                             }
                             .disabled(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || chatManager.isLoading)
@@ -91,7 +93,7 @@ struct ChatView: View {
                         .padding(.horizontal)
                         .padding(.vertical, 8)
                     }
-                    .background(NuraColors.card)
+                    .background(isDark ? NuraColors.cardDark : NuraColors.card)
                 }
                 // Full-screen paywall overlay (always topmost, covers everything, content perfectly centered)
                 if !hasPremium {
@@ -185,6 +187,7 @@ struct ChatView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationTitle("")
         }
+        .id(appearanceManager.colorSchemePreference)
     }
     
     private func sendMessage() {
@@ -199,8 +202,10 @@ struct ChatView: View {
 
 struct MessageBubble: View {
     let message: ChatMessage
+    @EnvironmentObject var appearanceManager: AppearanceManager
     
     var body: some View {
+        let isDark = appearanceManager.colorSchemePreference == "dark" || (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark)
         HStack {
             if message.isUser {
                 Spacer(minLength: 50)
@@ -209,20 +214,20 @@ struct MessageBubble: View {
                     Text(message.content)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
-                        .background(Color(red: 0.976, green: 0.965, blue: 0.949)) // #F9F6F2
-                        .foregroundColor(.black)
+                        .background(isDark ? NuraColors.cardDark : Color(red: 0.976, green: 0.965, blue: 0.949)) // #F9F6F2
+                        .foregroundColor(isDark ? NuraColors.textPrimaryDark : .black)
                         .cornerRadius(20)
                         .cornerRadius(4, corners: [.topLeft, .topRight, .bottomLeft])
                     
                     Text(formatTime(message.timestamp))
                         .font(.caption2)
-                        .foregroundColor(NuraColors.textSecondary)
+                        .foregroundColor(isDark ? NuraColors.textSecondaryDark : NuraColors.textSecondary)
                 }
             } else {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: "sparkles")
-                            .foregroundColor(NuraColors.primary)
+                            .foregroundColor(isDark ? NuraColors.primaryDark : NuraColors.primary)
                             .font(.caption)
                             .padding(.top, 2)
                         
@@ -230,15 +235,15 @@ struct MessageBubble: View {
                         Text(message.content)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
-                            .background(Color(red: 0.29, green: 0.56, blue: 0.89))
-                            .foregroundColor(.white)
+                            .background(isDark ? NuraColors.primaryDark : Color(red: 0.29, green: 0.56, blue: 0.89))
+                            .foregroundColor(isDark ? NuraColors.textPrimaryDark : .white)
                             .cornerRadius(20)
                             .cornerRadius(4, corners: [.topLeft, .topRight, .bottomRight])
                     }
                     
                     Text(formatTime(message.timestamp))
                         .font(.caption2)
-                        .foregroundColor(NuraColors.textSecondary)
+                        .foregroundColor(isDark ? NuraColors.textSecondaryDark : NuraColors.textSecondary)
                         .padding(.leading, 24)
                 }
                 
