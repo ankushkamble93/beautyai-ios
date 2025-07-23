@@ -4,7 +4,6 @@ import PhotosUI
 struct ProfileView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @EnvironmentObject var appearanceManager: AppearanceManager
-    @State private var refreshID = UUID()
     @State private var showingSettings = false
     @State private var showingHelp = false
     
@@ -32,6 +31,8 @@ struct ProfileView: View {
                     
                     // Subscription section
                     SubscriptionSectionView(isDark: isDark)
+                        .environmentObject(appearanceManager)
+                        .environmentObject(authManager)
                     
                     // Support section
                     SupportSectionView(isDark: isDark)
@@ -52,10 +53,7 @@ struct ProfileView: View {
                 HelpView()
             }
         }
-        .id(refreshID)
-        .onChange(of: appearanceManager.colorSchemePreference) { _ in
-            refreshID = UUID()
-        }
+        .id(appearanceManager.colorSchemePreference)
     }
     
     private var isDark: Bool { appearanceManager.colorSchemePreference == "dark" || (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark) }
@@ -234,9 +232,9 @@ struct QuickActionCard: View {
 struct SettingsSectionView: View {
     var isDark: Bool
     @EnvironmentObject var appearanceManager: AppearanceManager
+    @EnvironmentObject var authManager: AuthenticationManager
     @State private var showingSettings = false
     @State private var showingPersonalInfo = false
-    @State private var showAppPreferences = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
@@ -297,17 +295,6 @@ struct SettingsSectionView: View {
                 Divider()
                     .padding(.leading, 50)
                 
-                SettingsRow(
-                    title: "App Preferences",
-                    subtitle: "Customize your experience",
-                    icon: "gearshape.fill",
-                    color: NuraColors.textSecondary
-                ) {
-                    showAppPreferences = true
-                }
-                NavigationLink(destination: AppPreferencesPageView().environmentObject(appearanceManager), isActive: $showAppPreferences) {
-                    EmptyView()
-                }
             }
             .background(
                 isDark
@@ -369,7 +356,13 @@ struct SettingsRow: View {
 
 struct SubscriptionSectionView: View {
     var isDark: Bool
+    @EnvironmentObject var appearanceManager: AppearanceManager
+    @EnvironmentObject var authManager: AuthenticationManager
     @State private var showingSubscription = false
+    @State private var showingAppPreferences = false
+    @State private var showingPaymentMethods = false
+    @State private var showingBillingHistory = false
+    @State private var showingNuraPro = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
@@ -379,14 +372,33 @@ struct SubscriptionSectionView: View {
             
             VStack(spacing: 0) {
                 SettingsRow(
-                    title: "Nura Premium",
+                    title: "Nura Pro",
                     subtitle: "Unlock advanced features",
                     icon: "crown.fill",
                     color: NuraColors.secondary
                 ) {
-                    showingSubscription = true
+                    showingNuraPro = true
+                }
+                .sheet(isPresented: $showingNuraPro) {
+                    NuraProView()
                 }
                 
+                Divider()
+                    .padding(.leading, 50)
+                
+                SettingsRow(
+                    title: "App Preferences",
+                    subtitle: "Customize your experience",
+                    icon: "gearshape.fill",
+                    color: NuraColors.textSecondary
+                ) {
+                    showingAppPreferences = true
+                }
+                .sheet(isPresented: $showingAppPreferences) {
+                    AppPreferencesPageView(isPresented: $showingAppPreferences)
+                        .environmentObject(appearanceManager)
+                        .environmentObject(authManager)
+                }
                 Divider()
                     .padding(.leading, 50)
                 
@@ -396,7 +408,10 @@ struct SubscriptionSectionView: View {
                     icon: "creditcard.fill",
                     color: NuraColors.primary
                 ) {
-                    // Navigate to payment methods
+                    showingPaymentMethods = true
+                }
+                .sheet(isPresented: $showingPaymentMethods) {
+                    PaymentMethodsView()
                 }
                 
                 Divider()
@@ -408,8 +423,15 @@ struct SubscriptionSectionView: View {
                     icon: "doc.text.fill",
                     color: NuraColors.secondary
                 ) {
-                    // Navigate to billing history
+                    showingBillingHistory = true
                 }
+                .sheet(isPresented: $showingBillingHistory) {
+                    BillingHistoryView()
+                }
+                
+                Divider()
+                    .padding(.leading, 50)
+                
             }
             .background(
                 isDark
@@ -432,6 +454,7 @@ struct SubscriptionSectionView: View {
 struct SupportSectionView: View {
     var isDark: Bool
     @State private var showingHelp = false
+    @State private var showingHelpAndFAQ = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
@@ -446,7 +469,10 @@ struct SupportSectionView: View {
                     icon: "questionmark.circle.fill",
                     color: NuraColors.secondary
                 ) {
-                    showingHelp = true
+                    showingHelpAndFAQ = true
+                }
+                .sheet(isPresented: $showingHelpAndFAQ) {
+                    HelpAndFAQView()
                 }
                 
                 Divider()
@@ -497,9 +523,9 @@ struct SupportSectionView: View {
             .cornerRadius(12)
             .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
         }
-        .sheet(isPresented: $showingHelp) {
-            HelpView()
-        }
+        // .sheet(isPresented: $showingHelp) {
+        //     HelpView()
+        // }
     }
 }
 
@@ -1101,11 +1127,13 @@ struct PrivacyAndSecurityView: View {
 // 1. Create AppPreferencesPageView as a NavigationLink destination
 struct AppPreferencesPageView: View {
     @EnvironmentObject var appearanceManager: AppearanceManager
-    @Environment(\.presentationMode) var presentationMode
+    @EnvironmentObject var authManager: AuthenticationManager
+    @Binding var isPresented: Bool
     @State private var tempColorSchemePreference: String = "system"
     @State private var showSaved: Bool = false
     let colorOptions = ["light": "Light", "dark": "Dark", "system": "System Default"]
-    init() {
+    init(isPresented: Binding<Bool>) {
+        self._isPresented = isPresented
         _tempColorSchemePreference = State(initialValue: UserDefaults.standard.string(forKey: "colorSchemePreference") ?? "system")
     }
     var body: some View {
@@ -1114,13 +1142,15 @@ struct AppPreferencesPageView: View {
                 .font(.title)
                 .fontWeight(.bold)
                 .padding(.top, 16)
-                .foregroundColor(.black)
+                .foregroundColor(.primary)
                 .accessibilityAddTraits(.isHeader)
+                .animation(.easeInOut, value: tempColorSchemePreference)
             Text("Dark mode reduces eye strain and saves battery in low-light environments. Choose your preferred appearance below.")
                 .font(.subheadline)
                 .foregroundColor(tempColorSchemePreference == "dark" ? NuraColors.textSecondaryDark : NuraColors.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
+                .animation(.easeInOut, value: tempColorSchemePreference)
             VStack(spacing: 18) {
                 VStack(spacing: 16) {
                     AppearanceSwitchRow(
@@ -1151,6 +1181,22 @@ struct AppPreferencesPageView: View {
                 .shadow(color: .black.opacity(0.07), radius: 4, x: 0, y: 2)
                 .accessibilityElement(children: .combine)
                 .accessibilityHint("Choose between light, dark, or system default appearance.")
+                .animation(.easeInOut, value: tempColorSchemePreference)
+                // Info/warning message for logout
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.yellow)
+                        .font(.title3)
+                    Text("For your changes to take effect, you will be signed out and must log in again after saving your appearance settings.")
+                        .font(.footnote)
+                        .foregroundColor(NuraColors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
+                }
+                .padding(10)
+                .background(NuraColors.card.opacity(0.7))
+                .cornerRadius(8)
+                .padding(.bottom, 4)
                 Button(action: {
                     if appearanceManager.colorSchemePreference != tempColorSchemePreference {
                         appearanceManager.colorSchemePreference = tempColorSchemePreference
@@ -1159,9 +1205,10 @@ struct AppPreferencesPageView: View {
                         #if canImport(UIKit)
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         #endif
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        // Show 'Saved!' animation, then log out after a short delay
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                             showSaved = false
-                            presentationMode.wrappedValue.dismiss()
+                            authManager.signOut() // Log out the user after showing 'Saved!'
                         }
                     }
                 }) {
@@ -1242,6 +1289,7 @@ struct AppearanceSwitchRow: View {
 // - Consider accessibility: larger text, VoiceOver labels, etc.
 
 #Preview {
-    ProfileView()
+    AppPreferencesPageView(isPresented: .constant(true))
+        .environmentObject(AppearanceManager())
         .environmentObject(AuthenticationManager())
 } 

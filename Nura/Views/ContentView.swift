@@ -1,7 +1,9 @@
 import SwiftUI
+import Combine
 
 struct ContentView: View {
     @EnvironmentObject var authManager: AuthenticationManager
+    @EnvironmentObject var appearanceManager: AppearanceManager
     @State private var selectedTab = 0
     @State private var isTabBarVisible = true
     @State private var fadeOutWorkItem: DispatchWorkItem?
@@ -16,6 +18,7 @@ struct ContentView: View {
                     ChatView().tag(2)
                     ProfileView().tag(3)
                 }
+                .id(appearanceManager.colorSchemePreference) // <-- Add this line
                 .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea(edges: [.top, .bottom])
