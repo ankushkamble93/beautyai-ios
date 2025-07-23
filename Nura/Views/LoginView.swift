@@ -16,135 +16,263 @@ struct LoginView: View {
     
     var body: some View {
         ZStack {
-            NuraHingeBackground()
+            // Blurred, full-screen background image
+            Image("login_background")
+                .resizable()
+                .scaledToFill()
+                .blur(radius: 8)
                 .ignoresSafeArea()
-            VStack {
-                // Top right actions
-                HStack {
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 8) {
-                        Button("Sign up") { showSignUp = true }
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(NuraColors.primary)
-                            .padding(.top, 12)
-                            .padding(.trailing, 24)
-                        Button("Forgot password") { showForgotPassword = true }
-                            .font(.caption)
-                            .foregroundColor(NuraColors.textSecondary)
-                            .padding(.trailing, 24)
-                    }
-                }
-                Spacer()
-                // Shift Nura app title higher, center between top actions and sign-in buttons, and use Google cursive style
-                HStack {
-                    Spacer()
-                    Text("nura.")
-                        .font(.custom("DancingScript-Bold", size: 64))
-                        .foregroundColor(Color(red: 0.976, green: 0.965, blue: 0.949)) // #F9F6F2 creamy off-white
-                        .padding(.top, 12)
-                        .padding(.bottom, 8)
-                        .minimumScaleFactor(0.5)
-                        .lineLimit(1)
-                        .kerning(2)
-                        .shadow(color: NuraColors.primary.opacity(0.18), radius: 8, x: 0, y: 3)
-                        .accessibilityAddTraits(.isHeader)
-                    Spacer()
-                }
-                VStack(spacing: 18) {
-                    SignInWithAppleButton()
-                    SignInWithGoogleButton()
-                }
-                // Add space between Google button and login fields
-                Spacer().frame(height: 24)
-                // Username and password fields remain in their current position
-                VStack(spacing: 14) {
-                    TextField("Email", text: $email)
-                        .padding()
-                        .background(NuraColors.card.opacity(0.95))
-                        .cornerRadius(18)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 18)
-                                .stroke(NuraColors.primary.opacity(0.25), lineWidth: 2)
-                        )
-                        .shadow(color: NuraColors.primary.opacity(0.08), radius: 4, x: 0, y: 2)
-                        .autocapitalization(.none)
-                        .keyboardType(.emailAddress)
-                        .padding(.horizontal, 32)
-                    SecureField("Password", text: $password)
-                        .padding()
-                        .background(NuraColors.card.opacity(0.95))
-                        .cornerRadius(18)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 18)
-                                .stroke(NuraColors.primary.opacity(0.25), lineWidth: 2)
-                        )
-                        .shadow(color: NuraColors.primary.opacity(0.08), radius: 4, x: 0, y: 2)
-                        .padding(.horizontal, 32)
-                }
-                // Update arrowFill as the user types password
-                .onChange(of: password) { oldValue, newValue in
-                    // Fill progress based on password length (max 1.0 at 8+ chars)
-                    withAnimation(.easeOut(duration: 0.7)) {
-                        arrowFill = min(CGFloat(newValue.count) / 8.0, 1.0)
-                    }
-                }
-                // Login button arrow: straight, primary color, transparent background, shine and shadow pop when password is typed (always animating for testing)
-                HStack {
-                    Spacer()
-                    if !password.isEmpty || true { // keep always visible for testing
-                        Button(action: { authManager.isAuthenticated = true }) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color.clear)
-                                    .frame(width: 64, height: 64)
-                                    .shadow(color: NuraColors.primary.opacity(0.18), radius: 10, x: 0, y: 4)
-                                // Arrow with shine and pop
-                                Image(systemName: "arrow.right")
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(width: 44, height: 44)
-                                    .foregroundColor(NuraColors.primary)
-                                    .modifier(ShineAndPopEffect(animate: animateArrow))
-                            }
-                        }
-                        .frame(width: 64, height: 64)
-                        .padding(.trailing, 36)
-                        .padding(.top, 4)
-                        .onAppear {
-                            animateArrow = true
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) {
-                                animateArrow = false
-                            }
-                        }
-                    }
-                }
-                Spacer().frame(height: 8)
-                // Animated heart above the quote
-                VStack(spacing: 8) {
-                    AnimatedHeartView(show: $showHeart)
-                        .frame(width: 48, height: 48)
-                        .padding(.bottom, 2)
-                    Text("unlock the next you")
-                        .font(.footnote)
-                        .foregroundColor(NuraColors.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.bottom, 24)
-                }
-                .onAppear {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        withAnimation(.easeInOut(duration: 1.2)) {
-                            showHeart = true
-                        }
-                    }
-                }
-            }
+            // Semi-transparent black overlay for contrast
+            Color.black.opacity(0.4)
+                .ignoresSafeArea()
+            // Centered login card
+            LoginCardView(
+                showSignUp: $showSignUp,
+                showForgotPassword: $showForgotPassword,
+                email: $email,
+                password: $password,
+                arrowFill: $arrowFill,
+                animateArrow: $animateArrow,
+                showHeart: $showHeart
+            )
         }
         .sheet(isPresented: $showSignUp) {
             Text("Sign up flow coming soon!")
         }
         .sheet(isPresented: $showForgotPassword) {
             Text("Forgot password flow coming soon!")
+        }
+    }
+}
+
+private struct LoginCardView: View {
+    @Binding var showSignUp: Bool
+    @Binding var showForgotPassword: Bool
+    @Binding var email: String
+    @Binding var password: String
+    @Binding var arrowFill: CGFloat
+    @Binding var animateArrow: Bool
+    @Binding var showHeart: Bool
+    @EnvironmentObject var authManager: AuthenticationManager
+    var body: some View {
+        VStack(spacing: 0) {
+            // Title as floater (just floating text)
+            HStack {
+                Spacer()
+                Text("nura.")
+                    .font(.custom("DancingScript-Bold", size: 76)) // Increased font size
+                    .foregroundColor(NuraColors.textPrimary)
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+                    .kerning(2)
+                    .shadow(color: NuraColors.primary.opacity(0.18), radius: 8, x: 0, y: 3)
+                    .accessibilityAddTraits(.isHeader)
+                    .padding(.horizontal, 32)
+                    .padding(.vertical, 8)
+                Spacer()
+            }
+            .padding(.top, 92) // Move title even lower for better centering
+            Spacer(minLength: 12)
+            // Login elements stacked above the icon/quote
+            VStack(spacing: 18) {
+                SignInButtonsView(email: $email, password: $password)
+                LoginFieldsView(email: $email, password: $password)
+                // Sign up and Forgot password below fields, styled subtly
+                HStack(spacing: 16) {
+                    Button("Sign up") { showSignUp = true }
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(NuraColors.secondary)
+                    Button("Forgot password") { showForgotPassword = true }
+                        .font(.caption)
+                        .foregroundColor(NuraColors.accent)
+                }
+                .padding(.top, 2)
+                // Move arrow higher and a bit to the left, below forgot password row
+                HStack {
+                    Spacer(minLength: 0)
+                    LoginArrowView(password: $password, arrowFill: $arrowFill, animateArrow: $animateArrow)
+                        .padding(.leading, 32) // Move arrow a bit to the left
+                    Spacer()
+                }
+                .padding(.top, -8) // Move arrow higher (closer to forgot password)
+                .padding(.bottom, 4) // minimal gap above icon
+            }
+            .padding(.bottom, 0)
+            // Animated heart above the quote
+            VStack(spacing: 8) {
+                AnimatedHeartView(show: $showHeart)
+                    .frame(width: 48, height: 48)
+                    .padding(.bottom, 2)
+                    .foregroundColor(NuraColors.taupe)
+                Text("unlock the next you")
+                    .font(.footnote)
+                    .foregroundColor(NuraColors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.bottom, 32)
+            }
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    withAnimation(.easeInOut(duration: 1.2)) {
+                        showHeart = true
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 0)
+        .padding(.bottom, 0)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .foregroundColor(NuraColors.textPrimary)
+    }
+}
+
+private struct SignInButtonsView: View {
+    @Binding var email: String
+    @Binding var password: String
+    var body: some View {
+        VStack(spacing: 10) {
+            Button(action: { /* Apple sign-in action */ }) {
+                HStack(spacing: 10) {
+                    Image(systemName: "apple.logo")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.black.opacity(0.85))
+                    Text("Sign in with Apple")
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                        .foregroundColor(.black.opacity(0.85))
+                }
+                .frame(maxWidth: .infinity, minHeight: 48)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .background(
+                LinearGradient(gradient: Gradient(colors: [Color(red: 0.99, green: 0.99, blue: 0.97), Color(red: 0.95, green: 0.95, blue: 0.93)]), startPoint: .top, endPoint: .bottom)
+            )
+            .cornerRadius(22)
+            .shadow(color: Color.black.opacity(0.07), radius: 10, x: 0, y: 4)
+            .frame(maxWidth: 300)
+            .scaleEffect(1.0)
+            .contentShape(RoundedRectangle(cornerRadius: 22))
+            .padding(.horizontal, 0)
+            .animation(.easeInOut(duration: 0.15), value: false)
+            Button(action: { /* Google sign-in action */ }) {
+                HStack(spacing: 10) {
+                    Image(systemName: "globe")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.white)
+                    Text("Sign in with Google")
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                        .foregroundColor(.white)
+                }
+                .frame(maxWidth: .infinity, minHeight: 48)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .background(
+                LinearGradient(gradient: Gradient(colors: [Color.black, Color(red: 0.13, green: 0.13, blue: 0.13)]), startPoint: .top, endPoint: .bottom)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 22)
+                    .stroke(Color.white.opacity(0.85), lineWidth: 1.5)
+            )
+            .cornerRadius(22)
+            .shadow(color: Color.black.opacity(0.10), radius: 10, x: 0, y: 4)
+            .frame(maxWidth: 300)
+            .scaleEffect(1.0)
+            .contentShape(RoundedRectangle(cornerRadius: 22))
+            .padding(.horizontal, 0)
+            .animation(.easeInOut(duration: 0.15), value: false)
+        }
+        .padding(.top, 8)
+    }
+}
+
+private struct LoginFieldsView: View {
+    @Binding var email: String
+    @Binding var password: String
+    var body: some View {
+        VStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(NuraColors.card.opacity(0.12)) // Lighten the bubble
+                    .shadow(color: NuraColors.primary.opacity(0.06), radius: 10, x: 0, y: 4)
+                TextField("", text: $email)
+                    .frame(maxHeight: .infinity)
+                    .padding(.horizontal, 18)
+                    .foregroundColor(NuraColors.textPrimary)
+                    .font(.system(size: 16, weight: .regular, design: .rounded))
+                    .accentColor(NuraColors.primary)
+                    .autocapitalization(.none)
+                    .keyboardType(.emailAddress)
+                    .placeholder(when: email.isEmpty) {
+                        Text("Email")
+                            .foregroundColor(Color.gray.opacity(0.55))
+                            .italic()
+                            .font(.system(size: 16, weight: .regular, design: .rounded))
+                            .padding(.horizontal, 18)
+                    }
+            }
+            .frame(maxWidth: 300)
+            .frame(height: 48)
+            .padding(.horizontal, 0)
+            ZStack {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(NuraColors.card.opacity(0.12)) // Lighten the bubble
+                    .shadow(color: NuraColors.primary.opacity(0.06), radius: 10, x: 0, y: 4)
+                SecureField("", text: $password)
+                    .frame(maxHeight: .infinity)
+                    .padding(.horizontal, 18)
+                    .foregroundColor(NuraColors.textPrimary)
+                    .font(.system(size: 16, weight: .regular, design: .rounded))
+                    .accentColor(NuraColors.primary)
+                    .placeholder(when: password.isEmpty) {
+                        Text("Password")
+                            .foregroundColor(Color.gray.opacity(0.55))
+                            .italic()
+                            .font(.system(size: 16, weight: .regular, design: .rounded))
+                            .padding(.horizontal, 18)
+                    }
+            }
+            .frame(maxWidth: 300)
+            .frame(height: 48)
+            .padding(.horizontal, 0)
+        }
+    }
+}
+
+private struct LoginArrowView: View {
+    @Binding var password: String
+    @Binding var arrowFill: CGFloat
+    @Binding var animateArrow: Bool
+    @EnvironmentObject var authManager: AuthenticationManager
+    var body: some View {
+        Spacer().frame(height: 18)
+        HStack {
+            Spacer()
+            if !password.isEmpty || true { // keep always visible for testing
+                Button(action: { authManager.isAuthenticated = true }) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.clear)
+                            .frame(width: 64, height: 64)
+                            .shadow(color: NuraColors.primary.opacity(0.18), radius: 10, x: 0, y: 4)
+                        // Arrow with shine and pop
+                        Image(systemName: "arrow.right")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 44, height: 44)
+                            .foregroundColor(NuraColors.primary) // taupe arrow
+                            .modifier(ShineAndPopEffect(animate: animateArrow))
+                    }
+                }
+                .frame(width: 64, height: 64)
+                .padding(.trailing, 36)
+                .padding(.top, 4)
+                .onAppear {
+                    animateArrow = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) {
+                        animateArrow = false
+                    }
+                }
+            }
         }
     }
 }
@@ -253,45 +381,42 @@ struct GrainOverlay: View {
 }
 
 // MARK: - Social Login Buttons (UI only for now)
-struct SignInWithAppleButton: View {
+// Update the sign-in buttons to be content-sized and centered
+struct NuraAppleButton: View {
     var body: some View {
         Button(action: { /* Apple login logic */ }) {
-            HStack {
+            HStack(spacing: 8) {
                 Image(systemName: "applelogo")
-                    .font(.title2)
+                    .font(.system(size: 16, weight: .medium))
                 Text("Sign in with Apple")
-                    .fontWeight(.semibold)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
             }
-            .foregroundColor(.white)
-            .frame(maxWidth: .infinity)
-            .padding()
-            .background(Color.black)
-            .cornerRadius(10)
-            .padding(.horizontal, 32)
+            .foregroundColor(NuraColors.background)
+            .padding(.vertical, 7)
+            .padding(.horizontal, 18)
+            .background(Color.clear)
+            .cornerRadius(12)
         }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 
-struct SignInWithGoogleButton: View {
+struct NuraGoogleButton: View {
     var body: some View {
         Button(action: { /* Google login logic */ }) {
-            HStack {
+            HStack(spacing: 8) {
                 Image(systemName: "globe")
-                    .font(.title2)
+                    .font(.system(size: 16, weight: .medium))
                 Text("Sign in with Google")
-                    .fontWeight(.semibold)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
             }
-            .foregroundColor(.black)
-            .frame(maxWidth: .infinity)
-            .padding()
-            .background(Color.white)
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-            )
-            .cornerRadius(10)
-            .padding(.horizontal, 32)
+            .foregroundColor(NuraColors.textPrimary)
+            .padding(.vertical, 7)
+            .padding(.horizontal, 18)
+            .background(Color.clear)
+            .cornerRadius(12)
         }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 
@@ -341,5 +466,19 @@ struct ShineAndPopEffect: ViewModifier {
                         .animation(Animation.easeInOut(duration: 1.2).repeatForever(autoreverses: false), value: animate)
                 )
             )
+    }
+} 
+
+// Custom placeholder modifier for styled placeholder text
+extension View {
+    func placeholder<Content: View>(
+        when shouldShow: Bool,
+        alignment: Alignment = .leading,
+        @ViewBuilder placeholder: () -> Content
+    ) -> some View {
+        ZStack(alignment: alignment) {
+            placeholder().opacity(shouldShow ? 1 : 0)
+            self
+        }
     }
 } 

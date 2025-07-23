@@ -19,10 +19,10 @@ struct NuraApp: App {
                     .environmentObject(skinAnalysisManager)
                     .environmentObject(chatManager)
             } else {
-                LoginView()
-                    .environmentObject(authManager)
-                    .environmentObject(skinAnalysisManager)
-                    .environmentObject(chatManager)
+            LoginView()
+                .environmentObject(authManager)
+                .environmentObject(skinAnalysisManager)
+                .environmentObject(chatManager)
             }
         }
     }

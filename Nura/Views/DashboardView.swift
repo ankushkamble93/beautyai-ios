@@ -528,9 +528,6 @@ struct UpcomingTasksCard: View {
                                 .font(.subheadline)
                                 .fontWeight(.medium)
                                 .strikethrough(checkedStates[idx])
-                                .onTapGesture {
-                                    expandedTaskIndex = (expandedTaskIndex == idx) ? nil : idx
-                                }
                             Text(task.description)
                                 .font(.caption)
                                 .foregroundColor(NuraColors.textSecondary)
@@ -549,6 +546,12 @@ struct UpcomingTasksCard: View {
                             .font(.caption)
                             .foregroundColor(Color(red: 0.85, green: 0.4, blue: 0.0)) // Deep orange
                     }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.35)) {
+                            expandedTaskIndex = (expandedTaskIndex == idx) ? nil : idx
+                        }
+                    }
                     if expandedTaskIndex == idx {
                         HStack(alignment: .top, spacing: 0) {
                             Spacer().frame(width: 28)
@@ -556,14 +559,15 @@ struct UpcomingTasksCard: View {
                                 ForEach(routineItems, id: \.self) { item in
                                     Text("• " + item)
                                         .font(.caption2)
-                                        .foregroundColor(NuraColors.textSecondary)
+                                        .foregroundColor(Color(red: 0.13, green: 0.11, blue: 0.09))
                                 }
                             }
                             .padding(.vertical, 4)
                             .padding(.horizontal, 8)
-                            .background(NuraColors.card)
+                            .background(Color.white.opacity(0.22))
                             .cornerRadius(8)
-                            .frame(minWidth: 220, maxWidth: 320, alignment: .leading) // Consistent width for all dropdowns
+                            .frame(minWidth: 220, maxWidth: 320, alignment: .leading)
+                            .transition(.move(edge: .top).combined(with: .opacity))
                         }
                     }
                 }
@@ -620,9 +624,6 @@ struct UpcomingTasksCard: View {
                             .font(.subheadline)
                             .fontWeight(.medium)
                             .strikethrough(weeklyMaskCompletedAt != nil && !canComplete)
-                            .onTapGesture {
-                                expandedTaskIndex = (expandedTaskIndex == 9999) ? nil : 9999
-                            }
                         Text(weeklyMaskTask.description)
                             .font(.caption)
                             .foregroundColor(NuraColors.textSecondary)
@@ -641,6 +642,12 @@ struct UpcomingTasksCard: View {
                         .font(.caption)
                         .foregroundColor(Color(red: 0.85, green: 0.4, blue: 0.0)) // Deep orange
                 }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.35)) {
+                        expandedTaskIndex = (expandedTaskIndex == 9999) ? nil : 9999
+                    }
+                }
                 if expandedTaskIndex == 9999 {
                     HStack(alignment: .top, spacing: 0) {
                         Spacer().frame(width: 28)
@@ -648,14 +655,15 @@ struct UpcomingTasksCard: View {
                             ForEach(weeklyRoutine, id: \.self) { item in
                                 Text("• " + item)
                                     .font(.caption2)
-                                    .foregroundColor(NuraColors.textSecondary)
+                                    .foregroundColor(Color(red: 0.13, green: 0.11, blue: 0.09))
                             }
                         }
                         .padding(.vertical, 4)
                         .padding(.horizontal, 8)
-                        .background(NuraColors.card)
+                        .background(Color.white.opacity(0.22))
                         .cornerRadius(8)
                         .frame(minWidth: 220, maxWidth: 320, alignment: .leading)
+                        .transition(.move(edge: .top).combined(with: .opacity))
                     }
                 }
             }

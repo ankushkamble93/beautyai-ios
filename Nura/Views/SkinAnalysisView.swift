@@ -24,11 +24,11 @@ struct SkinAnalysisView: View {
                     Image(systemName: "camera.circle.fill")
                         .font(.system(size: 60))
                         .foregroundColor(NuraColors.primary)
-                    
+                        
                     Text("Upload 3 selfies")
-                        .font(.subheadline)
-                        .foregroundColor(NuraColors.textSecondary)
-                        .multilineTextAlignment(.center)
+                            .font(.subheadline)
+                            .foregroundColor(NuraColors.textSecondary)
+                            .multilineTextAlignment(.center)
                     // Only show selfie tips if no images are uploaded
                     if skinAnalysisManager.uploadedImages.isEmpty {
                         Text("Tips for best results:\n• Use a well-lit room (natural light is best)\n• Remove glasses, hats, and heavy makeup\n• Keep your face centered and visible\n• Take a front, left, and right side photo")
