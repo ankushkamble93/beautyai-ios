@@ -69,7 +69,6 @@ struct ChatView: View {
                             .font(.caption)
                             .padding(.horizontal)
                     }
-                    // Message input
                     VStack(spacing: 0) {
                         Divider()
                         HStack(spacing: 12) {
@@ -93,87 +92,92 @@ struct ChatView: View {
                         .padding(.vertical, 8)
                     }
                     .background(NuraColors.card)
-                    // Full-screen paywall overlay (covers everything, including nav bar)
-                    if !hasPremium {
-                        VisualEffectBlur(blurStyle: .systemUltraThinMaterialDark) {
-                            VStack(spacing: 24) {
+                }
+                // Full-screen paywall overlay (always topmost, covers everything, content perfectly centered)
+                if !hasPremium {
+                    VisualEffectBlur(blurStyle: .systemUltraThinMaterialDark) {
+                        GeometryReader { geo in
+                            VStack {
                                 Spacer()
-                                Image(systemName: "sparkles")
-                                    .font(.system(size: 48))
-                                    .foregroundColor(NuraColors.primary)
-                                    .padding(.bottom, 8)
-                                Text("Unlock Nura AI Chat ✨")
-                                    .font(.title2)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.white)
-                                    .multilineTextAlignment(.center)
-                                VStack(alignment: .center, spacing: 12) {
-                                    HStack(alignment: .top, spacing: 8) {
-                                        Text("📸")
-                                        Text("Personalized advice from your selfies")
-                                            .foregroundColor(.white)
-                                            .font(.body)
+                                VStack(spacing: 24) {
+                                    Image(systemName: "sparkles")
+                                        .font(.system(size: 48))
+                                        .foregroundColor(NuraColors.primary)
+                                        .padding(.bottom, 8)
+                                    Text("Unlock Nura AI Chat ✨")
+                                        .font(.title2)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(.white)
+                                        .multilineTextAlignment(.center)
+                                    VStack(alignment: .center, spacing: 12) {
+                                        HStack(alignment: .top, spacing: 8) {
+                                            Text("📸")
+                                            Text("Personalized advice from your selfies")
+                                                .foregroundColor(.white)
+                                                .font(.body)
+                                        }
+                                        HStack(alignment: .top, spacing: 8) {
+                                            Text("🌦️")
+                                            Text("Tips tailored to your local weather & skin type")
+                                                .foregroundColor(.white)
+                                                .font(.body)
+                                        }
+                                        HStack(alignment: .top, spacing: 8) {
+                                            Text("🤖")
+                                            Text("24/7 expert answers, curated for you")
+                                                .foregroundColor(.white)
+                                                .font(.body)
+                                        }
+                                        HStack(alignment: .top, spacing: 8) {
+                                            Text("💎")
+                                            Text("Feel confident in your skin, every day")
+                                                .foregroundColor(.white)
+                                                .font(.body)
+                                        }
                                     }
-                                    HStack(alignment: .top, spacing: 8) {
-                                        Text("🌦️")
-                                        Text("Tips tailored to your local weather & skin type")
-                                            .foregroundColor(.white)
-                                            .font(.body)
-                                    }
-                                    HStack(alignment: .top, spacing: 8) {
-                                        Text("🤖")
-                                        Text("24/7 expert answers, curated for you")
-                                            .foregroundColor(.white)
-                                            .font(.body)
-                                    }
-                                    HStack(alignment: .top, spacing: 8) {
-                                        Text("💎")
-                                        Text("Feel confident in your skin, every day")
-                                            .foregroundColor(.white)
-                                            .font(.body)
-                                    }
-                                }
-                                .padding(.top, 8)
-                                .padding(.horizontal, 12)
-                                Text("Upgrade to Nura Premium to unlock your personal AI skin coach. Your best skin is just a tap away.")
-                                    .font(.headline)
-                                    .foregroundColor(Color(red: 0.976, green: 0.965, blue: 0.949))
-                                    .multilineTextAlignment(.center)
                                     .padding(.top, 8)
-                                Spacer()
-                                HStack(spacing: 16) {
-                                    Button(action: { /* Attach payment flow later */ }) {
-                                        Text("Unlock Premium")
-                                            .font(.headline)
-                                            .foregroundColor(.white)
-                                            .padding(.vertical, 12)
-                                            .padding(.horizontal, 40)
-                                            .background(NuraColors.primary)
-                                            .cornerRadius(24)
-                                            .shadow(color: NuraColors.primary.opacity(0.18), radius: 8, x: 0, y: 2)
+                                    .padding(.horizontal, 12)
+                                    Text("Upgrade to Nura Premium to unlock your personal AI skin coach. Your best skin is just a tap away.")
+                                        .font(.headline)
+                                        .foregroundColor(Color(red: 0.976, green: 0.965, blue: 0.949))
+                                        .multilineTextAlignment(.center)
+                                        .padding(.top, 8)
+                                    HStack(spacing: 16) {
+                                        Button(action: { /* Attach payment flow later */ }) {
+                                            Text("Unlock Premium")
+                                                .font(.headline)
+                                                .foregroundColor(.white)
+                                                .padding(.vertical, 12)
+                                                .padding(.horizontal, 40)
+                                                .background(NuraColors.primary)
+                                                .cornerRadius(24)
+                                                .shadow(color: NuraColors.primary.opacity(0.18), radius: 8, x: 0, y: 2)
+                                        }
                                     }
+                                    .padding(.top, 24)
                                 }
-                                .padding(.bottom, 100)
+                                .frame(maxWidth: 420)
+                                .padding(.horizontal, 24)
+                                Spacer()
                             }
-                            .frame(maxWidth: 420)
-                            .padding(.horizontal, 24)
+                            .frame(width: geo.size.width, height: geo.size.height)
                         }
-                        .edgesIgnoringSafeArea(.all)
-                        .transition(.opacity)
                     }
-                    // Floating premium toggle in the bottom right corner, always visible
-                    VStack {
+                    .edgesIgnoringSafeArea(.all)
+                    .transition(.opacity)
+                }
+                // Floating premium toggle in the bottom right corner, always visible above the overlay
+                VStack {
+                    Spacer()
+                    HStack {
                         Spacer()
-                        HStack {
-                            Spacer()
-                            Toggle(isOn: $hasPremium) {
-                                Text("")
-                            }
-                            .labelsHidden()
-                            .toggleStyle(SwitchToggleStyle(tint: NuraColors.primary))
-                            .padding(.trailing, 24)
-                            .padding(.bottom, 32)
+                        Toggle(isOn: $hasPremium) {
+                            Text("")
                         }
+                        .labelsHidden()
+                        .toggleStyle(SwitchToggleStyle(tint: NuraColors.primary))
+                        .padding(.trailing, 24)
+                        .padding(.bottom, 32)
                     }
                 }
             }
