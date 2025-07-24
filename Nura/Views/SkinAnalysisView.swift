@@ -30,13 +30,13 @@ struct SkinAnalysisView: View {
                         
                     Text("Upload 3 selfies")
                             .font(.subheadline)
-                            .foregroundColor(isDark ? NuraColors.textSecondaryDark : NuraColors.textSecondary)
+                            .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.85))
                             .multilineTextAlignment(.center)
                     // Only show selfie tips if no images are uploaded
                     if skinAnalysisManager.uploadedImages.isEmpty {
                         Text("Tips for best results:\n• Use a well-lit room (natural light is best)\n• Remove glasses, hats, and heavy makeup\n• Keep your face centered and visible\n• Take a front, left, and right side photo")
                             .font(.caption)
-                            .foregroundColor(isDark ? NuraColors.textSecondaryDark : NuraColors.textSecondary)
+                            .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.85))
                             .multilineTextAlignment(.center)
                             .padding(.top, 4)
                     }
@@ -48,14 +48,14 @@ struct SkinAnalysisView: View {
                             VStack(spacing: 15) {
                                 Image(systemName: "photo.on.rectangle.angled")
                                     .font(.system(size: 40))
-                                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : NuraColors.textSecondary)
+                                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.85))
                                 
                                 Text("Upload 3 Selfies")
                                     .font(.headline)
                                 
                                 Text("Front, left side, and right side views for best results")
                                     .font(.caption)
-                                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : NuraColors.textSecondary)
+                                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.85))
                                     .multilineTextAlignment(.center)
                             }
                             .frame(height: 200)
@@ -64,7 +64,7 @@ struct SkinAnalysisView: View {
                             .cornerRadius(12)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12)
-                                    .stroke((isDark ? NuraColors.textSecondaryDark : NuraColors.textSecondary).opacity(0.3), style: StrokeStyle(lineWidth: 2, dash: [5]))
+                                    .stroke((isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75)).opacity(0.3), style: StrokeStyle(lineWidth: 2, dash: [5]))
                             )
                         } else {
                             // Uploaded images
@@ -232,7 +232,7 @@ struct AnalysisResultsView: View {
 
 struct ConditionCard: View {
     let condition: SkinCondition
-    
+    @Environment(\.colorScheme) private var colorScheme
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -253,18 +253,18 @@ struct ConditionCard: View {
             
             Text(condition.description)
                 .font(.subheadline)
-                .foregroundColor(NuraColors.textSecondary)
+                .foregroundColor(colorScheme == .dark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
             
             if !condition.affectedAreas.isEmpty {
                 Text("Affected areas: \(condition.affectedAreas.joined(separator: ", "))")
                     .font(.caption)
-                    .foregroundColor(NuraColors.textSecondary)
+                    .foregroundColor(colorScheme == .dark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
             }
             
             HStack {
                 Text("Confidence: \(Int(condition.confidence * 100))%")
                     .font(.caption)
-                    .foregroundColor(NuraColors.textSecondary)
+                    .foregroundColor(colorScheme == .dark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
                 
                 Spacer()
                 
@@ -351,7 +351,7 @@ struct RoutineSection: View {
 
 struct StepCard: View {
     let step: SkincareStep
-    
+    @Environment(\.colorScheme) private var colorScheme
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -372,7 +372,7 @@ struct StepCard: View {
             
             Text(step.description)
                 .font(.caption)
-                .foregroundColor(NuraColors.textSecondary)
+                .foregroundColor(colorScheme == .dark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
             
             if !step.tips.isEmpty {
                 Text("💡 \(step.tips.first ?? "")")

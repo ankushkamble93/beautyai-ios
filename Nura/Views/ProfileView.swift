@@ -25,6 +25,8 @@ struct ProfileView: View {
                     
                     // Quick actions
                     QuickActionsView(isDark: isDark)
+                        .environmentObject(appearanceManager)
+                        .environmentObject(authManager)
                     
                     // Settings sections
                     SettingsSectionView(isDark: isDark)
@@ -120,7 +122,7 @@ struct ProfileHeaderView: View {
             // Member since
             Text("Member since \(formatDate(Date()))")
                 .font(.caption)
-                .foregroundColor(isDark ? NuraColors.textSecondaryDark : NuraColors.textSecondary)
+                .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
         }
         .padding()
         .frame(maxWidth: .infinity)
@@ -155,7 +157,11 @@ struct ProfileHeaderView: View {
 
 struct QuickActionsView: View {
     var isDark: Bool
+    @EnvironmentObject var appearanceManager: AppearanceManager
+    @EnvironmentObject var authManager: AuthenticationManager
     @State private var showRoutine = false
+    @State private var showAppPreferences = false
+    @State private var showSkinDiary = false
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
             Text("Quick Actions")
@@ -178,7 +184,44 @@ struct QuickActionsView: View {
                 ) {
                     showRoutine = true
                 }
+                QuickActionCard(
+                    title: "App Preferences",
+                    subtitle: "Theme & Mode",
+                    icon: "gearshape.fill",
+                    color: NuraColors.textSecondary
+                ) {
+                    showAppPreferences = true
+                }
+                QuickActionCard(
+                    title: "Skin Diary",
+                    subtitle: "Log changes",
+                    icon: "book.closed.fill",
+                    color: NuraColors.secondary
+                ) {
+                    showSkinDiary = true
+                }
             }
+            // Add a smaller, soft, centered info pill below the grid
+            HStack {
+                Spacer()
+                Text("More stuff incoming…")
+                    .font(.footnote)
+                    .foregroundColor(Color.primary.opacity(0.55))
+                    .padding(.vertical, 7)
+                    .padding(.horizontal, 18)
+                    .background(Color.gray.opacity(0.05))
+                    .cornerRadius(16)
+                Spacer()
+            }
+            .padding(.top, 8)
+        .sheet(isPresented: $showAppPreferences) {
+            AppPreferencesPageView(isPresented: $showAppPreferences)
+                .environmentObject(appearanceManager)
+                .environmentObject(authManager)
+        }
+        .sheet(isPresented: $showSkinDiary) {
+            SkinDiaryView()
+        }
         }
         .padding()
         .background(
@@ -204,7 +247,7 @@ struct QuickActionCard: View {
     let icon: String
     let color: Color
     let action: () -> Void
-    
+    @Environment(\.colorScheme) private var colorScheme
     var body: some View {
         Button(action: action) {
             VStack(spacing: 8) {
@@ -218,7 +261,7 @@ struct QuickActionCard: View {
                 
                 Text(subtitle)
                     .font(.caption)
-                    .foregroundColor(NuraColors.textSecondary)
+                    .foregroundColor(colorScheme == .dark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
             }
             .frame(maxWidth: .infinity)
             .padding()
@@ -323,7 +366,7 @@ struct SettingsRow: View {
     let icon: String
     let color: Color
     let action: () -> Void
-    
+    @Environment(\.colorScheme) private var colorScheme
     var body: some View {
         Button(action: action) {
             HStack(spacing: 15) {
@@ -336,12 +379,12 @@ struct SettingsRow: View {
                         .fontWeight(.medium)
                     Text(subtitle)
                         .font(.caption)
-                        .foregroundColor(NuraColors.textSecondary)
+                        .foregroundColor(colorScheme == .dark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.caption)
-                    .foregroundColor(NuraColors.textSecondary)
+                    .foregroundColor(colorScheme == .dark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
             }
             .frame(maxWidth: .infinity)
             .padding()
@@ -383,22 +426,6 @@ struct SubscriptionSectionView: View {
                     NuraProView()
                 }
                 
-                Divider()
-                    .padding(.leading, 50)
-                
-                SettingsRow(
-                    title: "App Preferences",
-                    subtitle: "Customize your experience",
-                    icon: "gearshape.fill",
-                    color: NuraColors.textSecondary
-                ) {
-                    showingAppPreferences = true
-                }
-                .sheet(isPresented: $showingAppPreferences) {
-                    AppPreferencesPageView(isPresented: $showingAppPreferences)
-                        .environmentObject(appearanceManager)
-                        .environmentObject(authManager)
-                }
                 Divider()
                     .padding(.leading, 50)
                 
@@ -455,6 +482,9 @@ struct SupportSectionView: View {
     var isDark: Bool
     @State private var showingHelp = false
     @State private var showingHelpAndFAQ = false
+    @State private var showingContactSupport = false
+    @State private var showingRateNura = false
+    @State private var showingAbout = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
@@ -484,7 +514,10 @@ struct SupportSectionView: View {
                     icon: "envelope.fill",
                     color: NuraColors.success
                 ) {
-                    // Open email or contact form
+                    showingContactSupport = true
+                }
+                .sheet(isPresented: $showingContactSupport) {
+                    ContactSupportView()
                 }
                 
                 Divider()
@@ -496,7 +529,10 @@ struct SupportSectionView: View {
                     icon: "star.fill",
                     color: NuraColors.secondary
                 ) {
-                    // Open App Store rating
+                    showingRateNura = true
+                }
+                .sheet(isPresented: $showingRateNura) {
+                    RateNuraView()
                 }
                 
                 Divider()
@@ -508,7 +544,10 @@ struct SupportSectionView: View {
                     icon: "info.circle.fill",
                     color: NuraColors.textSecondary
                 ) {
-                    // Show about page
+                    showingAbout = true
+                }
+                .sheet(isPresented: $showingAbout) {
+                    AboutView()
                 }
             }
             .background(
@@ -554,6 +593,7 @@ struct SignOutButton: View {
 // Placeholder views for sheets
 struct SubscriptionView: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
         NavigationView {
@@ -564,7 +604,7 @@ struct SubscriptionView: View {
                 
                 Text("Unlock advanced features and personalized recommendations")
                     .multilineTextAlignment(.center)
-                    .foregroundColor(NuraColors.textSecondary)
+                    .foregroundColor(colorScheme == .dark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
                 
                 Spacer()
             }
@@ -579,6 +619,7 @@ struct SubscriptionView: View {
 
 struct SettingsView: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
         NavigationView {
@@ -589,7 +630,7 @@ struct SettingsView: View {
                 
                 Text("Customize your Nura experience")
                     .multilineTextAlignment(.center)
-                    .foregroundColor(NuraColors.textSecondary)
+                    .foregroundColor(colorScheme == .dark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
                 
                 Spacer()
             }
@@ -604,6 +645,7 @@ struct SettingsView: View {
 
 struct HelpView: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
         NavigationView {
@@ -614,7 +656,7 @@ struct HelpView: View {
                 
                 Text("Find answers to common questions")
                     .multilineTextAlignment(.center)
-                    .foregroundColor(NuraColors.textSecondary)
+                    .foregroundColor(colorScheme == .dark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
                 
                 Spacer()
             }
@@ -630,6 +672,7 @@ struct HelpView: View {
 // Elegant, aesthetic personal info view for future user auth integration
 struct PersonalInformationView: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @State private var name: String = ""
     @State private var email: String = ""
     @State private var phone: String = ""
@@ -639,7 +682,9 @@ struct PersonalInformationView: View {
     @State private var isSaving = false
     @State private var saveSuccess: Bool? = nil // nil: idle, true: success, false: error
     @State private var errorMessage: String? = nil
-    
+    private var cardBackground: Color {
+        colorScheme == .dark ? Color.black.opacity(0.7) : .white
+    }
     var body: some View {
         NavigationView {
             ZStack {
@@ -691,45 +736,63 @@ struct PersonalInformationView: View {
                     .sheet(isPresented: $showingImagePicker, onDismiss: loadImage) {
                         ImagePicker(image: $inputImage)
                     }
-                    
                     Text("Personal Information")
                         .font(.title)
                         .fontWeight(.bold)
                         .padding(.top, 8)
                         .accessibilityAddTraits(.isHeader)
+                    // Aligned fields
                     VStack(spacing: 16) {
-                        HStack {
-                            Image(systemName: "person.fill")
-                                .foregroundColor(NuraColors.secondary)
-                            TextField("Name *", text: $name)
-                                .textFieldStyle(PlainTextFieldStyle())
-                                .padding(10)
-                                .background(NuraColors.background.opacity(0.7))
-                                .cornerRadius(10)
-                                .accessibilityLabel("Name")
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Name *")
+                                .font(.caption)
+                                .foregroundColor(colorScheme == .dark ? .secondary : NuraColors.textSecondary)
+                            HStack(spacing: 10) {
+                                Image(systemName: "person.fill")
+                                    .foregroundColor(NuraColors.secondary)
+                                TextField("", text: $name)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                                    .padding(10)
+                                    .background(cardBackground)
+                                    .cornerRadius(10)
+                                    .accessibilityLabel("Name")
+                                    .foregroundColor(.primary)
+                            }
                         }
-                        HStack {
-                            Image(systemName: "envelope.fill")
-                                .foregroundColor(NuraColors.secondary)
-                            TextField("Email *", text: $email)
-                                .textFieldStyle(PlainTextFieldStyle())
-                                .padding(10)
-                                .background(NuraColors.background.opacity(0.7))
-                                .cornerRadius(10)
-                                .keyboardType(.emailAddress)
-                                .autocapitalization(.none)
-                                .accessibilityLabel("Email")
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Email *")
+                                .font(.caption)
+                                .foregroundColor(NuraColors.textSecondary)
+                            HStack(spacing: 10) {
+                                Image(systemName: "envelope.fill")
+                                    .foregroundColor(NuraColors.secondary)
+                                TextField("", text: $email)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                                    .padding(10)
+                                    .background(cardBackground)
+                                    .cornerRadius(10)
+                                    .keyboardType(.emailAddress)
+                                    .autocapitalization(.none)
+                                    .accessibilityLabel("Email")
+                                    .foregroundColor(.primary)
+                            }
                         }
-                        HStack {
-                            Image(systemName: "phone.fill")
-                                .foregroundColor(NuraColors.secondary)
-                            TextField("Phone (optional)", text: $phone)
-                                .textFieldStyle(PlainTextFieldStyle())
-                                .padding(10)
-                                .background(NuraColors.background.opacity(0.7))
-                                .cornerRadius(10)
-                                .keyboardType(.phonePad)
-                                .accessibilityLabel("Phone number")
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Phone (optional)")
+                                .font(.caption)
+                                .foregroundColor(NuraColors.textSecondary)
+                            HStack(spacing: 10) {
+                                Image(systemName: "phone.fill")
+                                    .foregroundColor(NuraColors.secondary)
+                                TextField("", text: $phone)
+                                    .textFieldStyle(PlainTextFieldStyle())
+                                    .padding(10)
+                                    .background(cardBackground)
+                                    .cornerRadius(10)
+                                    .keyboardType(.phonePad)
+                                    .accessibilityLabel("Phone number")
+                                    .foregroundColor(.primary)
+                            }
                         }
                     }
                     .padding(.horizontal, 12)
@@ -850,6 +913,7 @@ struct ImagePicker: UIViewControllerRepresentable {
 
 struct NotificationsView: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @State private var pushEnabled: Bool = true
     @State private var emailEnabled: Bool = false
     @State private var smsEnabled: Bool = false
@@ -857,6 +921,9 @@ struct NotificationsView: View {
     // Placeholder values for now
     @State private var storedEmail: String = "user@email.com"
     @State private var storedPhone: String = "+1 555-123-4567"
+    private var cardBackground: Color {
+        colorScheme == .dark ? Color.black.opacity(0.7) : .white
+    }
     var body: some View {
         NavigationView {
             ZStack {
@@ -887,26 +954,26 @@ struct NotificationsView: View {
                                 systemImage: "envelope.fill"
                             )
                             if emailEnabled {
-                                AnimatedDropdown {
+                                AnimatedDropdown(cardBackground: cardBackground) {
                                     VStack(alignment: .leading, spacing: 4) {
                                         HStack(spacing: 8) {
                                             Image(systemName: "envelope")
                                                 .foregroundColor(NuraColors.secondary)
                                             Text(storedEmail)
                                                 .font(.subheadline)
-                                                .foregroundColor(NuraColors.textPrimary)
+                                                .foregroundColor(.primary)
                                         }
                                         Button(action: { showPersonalInfoSheet = true }) {
                                             Text("Edit")
                                                 .font(.caption)
-                                                .foregroundColor(NuraColors.primary)
+                                                .foregroundColor(Color.accentColor)
                                                 .underline()
                                         }
                                         .padding(.leading, 28)
                                         .accessibilityLabel("Edit email")
                                     }
                                     .padding(10)
-                                    .background(NuraColors.background.opacity(0.95))
+                                    .background(cardBackground)
                                     .cornerRadius(10)
                                     .shadow(color: .black.opacity(0.06), radius: 2, x: 0, y: 1)
                                 }
@@ -920,26 +987,26 @@ struct NotificationsView: View {
                                 systemImage: "message.fill"
                             )
                             if smsEnabled {
-                                AnimatedDropdown {
+                                AnimatedDropdown(cardBackground: cardBackground) {
                                     VStack(alignment: .leading, spacing: 4) {
                                         HStack(spacing: 8) {
                                             Image(systemName: "phone")
                                                 .foregroundColor(NuraColors.secondary)
                                             Text(storedPhone)
                                                 .font(.subheadline)
-                                                .foregroundColor(NuraColors.textPrimary)
+                                                .foregroundColor(.primary)
                                         }
                                         Button(action: { showPersonalInfoSheet = true }) {
                                             Text("Edit")
                                                 .font(.caption)
-                                                .foregroundColor(NuraColors.primary)
+                                                .foregroundColor(Color.accentColor)
                                                 .underline()
                                         }
                                         .padding(.leading, 28)
                                         .accessibilityLabel("Edit phone number")
                                     }
                                     .padding(10)
-                                    .background(NuraColors.background.opacity(0.95))
+                                    .background(cardBackground)
                                     .cornerRadius(10)
                                     .shadow(color: .black.opacity(0.06), radius: 2, x: 0, y: 1)
                                 }
@@ -947,7 +1014,7 @@ struct NotificationsView: View {
                         }
                     }
                     .padding()
-                    .background(NuraColors.card)
+                    .background(cardBackground)
                     .cornerRadius(14)
                     .shadow(color: .black.opacity(0.07), radius: 4, x: 0, y: 2)
                     Spacer()
@@ -965,11 +1032,14 @@ struct NotificationsView: View {
 
 // Animated dropdown for notification details
 struct AnimatedDropdown<Content: View>: View {
+    let cardBackground: Color
     @ViewBuilder let content: () -> Content
     @State private var show: Bool = false
     var body: some View {
         VStack {
             content()
+                .background(cardBackground)
+                .cornerRadius(10)
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .animation(.spring(response: 0.35, dampingFraction: 0.85), value: show)
         }
@@ -983,6 +1053,7 @@ struct NotificationToggleRow: View {
     let subtitle: String
     @Binding var isOn: Bool
     let systemImage: String
+    @Environment(\.colorScheme) private var colorScheme
     var body: some View {
         Button(action: { isOn.toggle() }) {
             HStack(spacing: 16) {
@@ -995,7 +1066,7 @@ struct NotificationToggleRow: View {
                         .fontWeight(.medium)
                     Text(subtitle)
                         .font(.caption)
-                        .foregroundColor(NuraColors.textSecondary)
+                        .foregroundColor(colorScheme == .dark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
                 }
                 Spacer()
                 Toggle("", isOn: $isOn)
@@ -1016,9 +1087,13 @@ struct NotificationToggleRow: View {
 
 struct PrivacyAndSecurityView: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @State private var trackingEnabled: Bool = false
     @State private var showDeleteAlert: Bool = false
     var onDeleteAccount: (() -> Void)? = nil // for easy backend connection
+    private var cardBackground: Color {
+        colorScheme == .dark ? Color.black.opacity(0.7) : .white
+    }
     var body: some View {
         NavigationView {
             ZStack {
@@ -1038,6 +1113,7 @@ struct PrivacyAndSecurityView: View {
                     VStack(alignment: .center, spacing: 8) {
                         Text("Allow App Tracking")
                             .font(.headline)
+                            .foregroundColor(.primary)
                         Toggle(isOn: $trackingEnabled) {
                             EmptyView()
                         }
@@ -1047,23 +1123,24 @@ struct PrivacyAndSecurityView: View {
                         .padding(.bottom, 2)
                         Text("Let Nura use Apple's App Tracking Transparency to personalize your experience. You can change this anytime in your device settings.")
                             .font(.caption)
-                            .foregroundColor(NuraColors.textSecondary)
+                            .foregroundColor(colorScheme == .dark ? .secondary : Color.primary.opacity(0.75))
                             .multilineTextAlignment(.center)
                         Text("Legal: We respect your privacy. Your data is never sold. See our Privacy Policy for details.")
                             .font(.caption2)
-                            .foregroundColor(NuraColors.textSecondary)
+                            .foregroundColor(colorScheme == .dark ? .secondary : Color.primary.opacity(0.75))
                             .multilineTextAlignment(.center)
                     }
                     .padding()
-                    .background(NuraColors.card)
+                    .background(cardBackground)
                     .cornerRadius(12)
                     // Data Download/Export
                     VStack(alignment: .center, spacing: 8) {
                         Text("Download Your Data")
                             .font(.headline)
+                            .foregroundColor(.primary)
                         Text("Request a copy of your personal data stored with Nura. We'll email you a download link.")
                             .font(.caption)
-                            .foregroundColor(NuraColors.textSecondary)
+                            .foregroundColor(colorScheme == .dark ? .secondary : Color.primary.opacity(0.75))
                             .multilineTextAlignment(.center)
                         Button(action: {/* TODO: Implement data export */}) {
                             Text("Request Data Export")
@@ -1077,7 +1154,7 @@ struct PrivacyAndSecurityView: View {
                         .accessibilityLabel("Request Data Export")
                     }
                     .padding()
-                    .background(NuraColors.card)
+                    .background(cardBackground)
                     .cornerRadius(12)
                     // Delete Account
                     VStack(alignment: .center, spacing: 8) {
@@ -1112,7 +1189,7 @@ struct PrivacyAndSecurityView: View {
                         }
                     }
                     .padding()
-                    .background(NuraColors.card)
+                    .background(cardBackground)
                     .cornerRadius(12)
                     Spacer()
                 }

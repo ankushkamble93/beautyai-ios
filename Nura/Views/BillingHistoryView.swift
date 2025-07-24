@@ -1,6 +1,10 @@
 import SwiftUI
 
 struct BillingHistoryView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    private var cardBackground: Color {
+        colorScheme == .dark ? Color.black.opacity(0.7) : .white
+    }
     @State private var invoices: [Invoice] = [
         Invoice(date: Date(timeIntervalSinceNow: -86400 * 2), description: "Nura Pro Monthly", amount: 9.99, status: .paid),
         Invoice(date: Date(timeIntervalSinceNow: -86400 * 32), description: "Nura Pro Monthly", amount: 9.99, status: .paid),
@@ -11,7 +15,7 @@ struct BillingHistoryView: View {
     
     var body: some View {
         ZStack {
-            Color(.systemGray6).ignoresSafeArea()
+            (colorScheme == .dark ? Color.black : Color(.systemGray6)).ignoresSafeArea()
             VStack(spacing: 0) {
                 // Header
                 VStack(spacing: 4) {
@@ -41,10 +45,10 @@ struct BillingHistoryView: View {
                     ScrollView {
                         VStack(spacing: 18) {
                             ForEach(invoices) { invoice in
-                                BillingRowView(invoice: invoice, animateDownload: $animateDownload)
+                                BillingRowView(invoice: invoice, animateDownload: $animateDownload, cardBackground: cardBackground)
                                     .background(
                                         RoundedRectangle(cornerRadius: 18)
-                                            .fill(Color.white)
+                                            .fill(cardBackground)
                                             .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
                                     )
                                     .padding(.horizontal, 8)
@@ -64,6 +68,7 @@ struct BillingHistoryView: View {
 struct BillingRowView: View {
     let invoice: Invoice
     @Binding var animateDownload: UUID?
+    let cardBackground: Color
     @State private var isHovered: Bool = false
     var body: some View {
         HStack(spacing: 0) {
@@ -97,7 +102,7 @@ struct BillingRowView: View {
                         .opacity(animateDownload == invoice.id ? 0.7 : 1.0)
                 }
                 .frame(width: 36, height: 36)
-                .background(Color(.systemGray6))
+                .background(cardBackground)
                 .clipShape(Circle())
                 .shadow(color: Color.black.opacity(0.07), radius: 2, x: 0, y: 1)
             }
@@ -114,7 +119,7 @@ struct BillingRowView: View {
         }
         .background(
             RoundedRectangle(cornerRadius: 18)
-                .fill(Color.white)
+                .fill(cardBackground)
                 .shadow(color: isHovered ? Color.accentColor.opacity(0.10) : Color.black.opacity(0.06), radius: isHovered ? 12 : 8, x: 0, y: 2)
         )
     }

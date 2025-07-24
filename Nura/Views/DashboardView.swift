@@ -159,7 +159,7 @@ struct WelcomeSection: View {
                 .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
             Text("Ready to take care of your skin today?")
                 .font(.subheadline)
-                .foregroundColor(isDark ? NuraColors.textSecondaryDark : NuraColors.textSecondary)
+                .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
@@ -325,7 +325,7 @@ struct CurrentRoutineCard: View {
                         
                         Text(step.description)
                             .font(.caption)
-                            .foregroundColor(NuraColors.textSecondary)
+                            .foregroundColor(isDark ? Color.white.opacity(0.82) : Color.primary.opacity(0.75))
                     }
                     
                     Spacer()
@@ -400,14 +400,14 @@ struct RecentAnalysisCard: View {
                     
                     Text("Confidence: \(Int(analysis.confidence * 100))%")
                         .font(.caption)
-                        .foregroundColor(NuraColors.textSecondary)
+                        .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
                 }
                 
                 Spacer()
                 
                 Text(formatDate(analysis.analysisDate))
                     .font(.caption)
-                    .foregroundColor(NuraColors.textSecondary)
+                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
             }
             
             if !analysis.conditions.isEmpty {
@@ -548,7 +548,7 @@ struct UpcomingTasksCard: View {
                             Image(systemName: checkedStates[idx] ? "checkmark.circle.fill" : "circle")
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
-                                .foregroundColor(checkedStates[idx] ? Color(red: 0.11, green: 0.60, blue: 0.36) : NuraColors.textSecondary)
+                                .foregroundColor(checkedStates[idx] ? Color(red: 0.11, green: 0.60, blue: 0.36) : (isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75)))
                                 .frame(width: 20, height: 20)
                                 .scaleEffect(taskPopIndex == idx ? 1.2 : 1.0)
                                 .animation(.spring(response: 0.25, dampingFraction: 0.5), value: taskPopIndex == idx)
@@ -560,7 +560,7 @@ struct UpcomingTasksCard: View {
                                 .strikethrough(checkedStates[idx])
                             Text(task.description)
                                 .font(.caption)
-                                .foregroundColor(NuraColors.textSecondary)
+                                .foregroundColor(isDark ? Color.white.opacity(0.82) : Color.primary.opacity(0.75))
                             if checkedStates[idx], let time = timeRemainingForTask[idx], !canCompleteTask[idx] {
                                 HStack(spacing: 4) {
                                     Image(systemName: "timer")
@@ -589,13 +589,12 @@ struct UpcomingTasksCard: View {
                                 ForEach(routineItems, id: \.self) { item in
                                     Text("• " + item)
                                         .font(.caption2)
-                                        .foregroundColor(Color(red: 0.13, green: 0.11, blue: 0.09))
+                                        .foregroundColor(isDark ? Color.white.opacity(0.82) : Color(red: 0.13, green: 0.11, blue: 0.09))
                                 }
                             }
                             .padding(.vertical, 4)
                             .padding(.horizontal, 8)
-                            .background(Color.white.opacity(0.22))
-                            .cornerRadius(8)
+                            // No background, just text on card
                             .frame(minWidth: 220, maxWidth: 320, alignment: .leading)
                             .transition(.move(edge: .top).combined(with: .opacity))
                         }
@@ -642,7 +641,7 @@ struct UpcomingTasksCard: View {
                                 Image(systemName: "circle")
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
-                                    .foregroundColor(NuraColors.textSecondary)
+                                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
                             }
                         }
                         .frame(width: 20, height: 20)
@@ -656,7 +655,7 @@ struct UpcomingTasksCard: View {
                             .strikethrough(weeklyMaskCompletedAt != nil && !canComplete)
                         Text(weeklyMaskTask.description)
                             .font(.caption)
-                            .foregroundColor(NuraColors.textSecondary)
+                            .foregroundColor(isDark ? Color.white.opacity(0.82) : Color.primary.opacity(0.75))
                         if !canComplete, let time = timeRemaining {
                             HStack(spacing: 4) {
                                 Image(systemName: "timer")
@@ -685,13 +684,12 @@ struct UpcomingTasksCard: View {
                             ForEach(weeklyRoutine, id: \.self) { item in
                                 Text("• " + item)
                                     .font(.caption2)
-                                    .foregroundColor(Color(red: 0.13, green: 0.11, blue: 0.09))
+                                    .foregroundColor(isDark ? Color.white.opacity(0.82) : Color(red: 0.13, green: 0.11, blue: 0.09))
                             }
                         }
                         .padding(.vertical, 4)
                         .padding(.horizontal, 8)
-                        .background(Color.white.opacity(0.22))
-                        .cornerRadius(8)
+                        // No background, just text on card
                         .frame(minWidth: 220, maxWidth: 320, alignment: .leading)
                         .transition(.move(edge: .top).combined(with: .opacity))
                     }
@@ -773,7 +771,7 @@ struct InsightsCard: View {
                         
                         Text(insight.description)
                             .font(.caption)
-                            .foregroundColor(NuraColors.textSecondary)
+                            .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
                     }
                     
                     Spacer()
