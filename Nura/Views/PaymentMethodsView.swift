@@ -1,6 +1,10 @@
 import SwiftUI
 
 struct PaymentMethodsView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    private var cardBackground: Color {
+        colorScheme == .dark ? Color.black.opacity(0.7) : .white
+    }
     @State private var cardNumber: String = ""
     @State private var expiry: String = ""
     @State private var cvv: String = ""
@@ -25,7 +29,7 @@ struct PaymentMethodsView: View {
 
     var body: some View {
         ZStack {
-            Color(.systemGray6).ignoresSafeArea()
+            (colorScheme == .dark ? Color.black : Color(.systemGray6)).ignoresSafeArea()
             ScrollView {
                 VStack(spacing: 28) {
                     // Header
@@ -56,7 +60,7 @@ struct PaymentMethodsView: View {
                                             .padding(.vertical, 12)
                                             .padding(.leading, 16)
                                             .padding(.trailing, 44)
-                                            .background(Color.white)
+                                            .background(cardBackground)
                                             .cornerRadius(12)
                                             .shadow(color: Color.black.opacity(0.04), radius: 2, x: 0, y: 1)
                                         if let brand = detectedBrand, showBrand {
@@ -73,7 +77,7 @@ struct PaymentMethodsView: View {
                                         .font(.system(size: 16, weight: .regular, design: .rounded))
                                         .padding(.vertical, 12)
                                         .padding(.horizontal, 16)
-                                        .background(Color.white)
+                                        .background(cardBackground)
                                         .cornerRadius(12)
                                         .shadow(color: Color.black.opacity(0.04), radius: 2, x: 0, y: 1)
                                     TextField("CVV", text: $cvv)
@@ -81,7 +85,7 @@ struct PaymentMethodsView: View {
                                         .font(.system(size: 16, weight: .regular, design: .rounded))
                                         .padding(.vertical, 12)
                                         .padding(.horizontal, 16)
-                                        .background(Color.white)
+                                        .background(cardBackground)
                                         .cornerRadius(12)
                                         .shadow(color: Color.black.opacity(0.04), radius: 2, x: 0, y: 1)
                                 }
@@ -90,7 +94,7 @@ struct PaymentMethodsView: View {
                                     .font(.system(size: 16, weight: .regular, design: .rounded))
                                     .padding(.vertical, 12)
                                     .padding(.horizontal, 16)
-                                    .background(Color.white)
+                                    .background(cardBackground)
                                     .cornerRadius(12)
                                     .shadow(color: Color.black.opacity(0.04), radius: 2, x: 0, y: 1)
                                 TextField("Address", text: $address)
@@ -98,7 +102,7 @@ struct PaymentMethodsView: View {
                                     .font(.system(size: 16, weight: .regular, design: .rounded))
                                     .padding(.vertical, 12)
                                     .padding(.horizontal, 16)
-                                    .background(Color.white)
+                                    .background(cardBackground)
                                     .cornerRadius(12)
                                     .shadow(color: Color.black.opacity(0.04), radius: 2, x: 0, y: 1)
                                 HStack(spacing: 12) {
@@ -107,7 +111,7 @@ struct PaymentMethodsView: View {
                                         .font(.system(size: 16, weight: .regular, design: .rounded))
                                         .padding(.vertical, 12)
                                         .padding(.horizontal, 16)
-                                        .background(Color.white)
+                                        .background(cardBackground)
                                         .cornerRadius(12)
                                         .shadow(color: Color.black.opacity(0.04), radius: 2, x: 0, y: 1)
                                         .overlay(
@@ -119,7 +123,7 @@ struct PaymentMethodsView: View {
                                         .font(.system(size: 16, weight: .regular, design: .rounded))
                                         .padding(.vertical, 12)
                                         .padding(.horizontal, 16)
-                                        .background(Color.white)
+                                        .background(cardBackground)
                                         .cornerRadius(12)
                                         .shadow(color: Color.black.opacity(0.04), radius: 2, x: 0, y: 1)
                                         .overlay(
@@ -131,7 +135,7 @@ struct PaymentMethodsView: View {
                                         .font(.system(size: 16, weight: .regular, design: .rounded))
                                         .padding(.vertical, 12)
                                         .padding(.horizontal, 16)
-                                        .background(Color.white)
+                                        .background(cardBackground)
                                         .cornerRadius(12)
                                         .shadow(color: Color.black.opacity(0.04), radius: 2, x: 0, y: 1)
                                         .overlay(
@@ -142,7 +146,7 @@ struct PaymentMethodsView: View {
                             }
                             .padding(20)
                         }
-                        .background(Color.white)
+                        .background(cardBackground)
                         .cornerRadius(20)
                         .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 6)
                     }
@@ -178,7 +182,7 @@ struct PaymentMethodsView: View {
                                     }
                                 }, onDelete: {
                                     showDeleteAlert = card.id
-                                })
+                                }, cardBackground: cardBackground)
                                 .alert(isPresented: Binding<Bool>(
                                     get: { showDeleteAlert == card.id },
                                     set: { newValue in if !newValue { showDeleteAlert = nil } }
@@ -299,6 +303,7 @@ struct SavedCardView: View {
     let expanded: Bool
     let onTap: () -> Void
     let onDelete: () -> Void
+    let cardBackground: Color
     var body: some View {
         VStack(spacing: 0) {
             Button(action: onTap) {
@@ -322,7 +327,7 @@ struct SavedCardView: View {
                         .padding(.leading, 4)
                 }
                 .padding(12)
-                .background(Color.white)
+                .background(cardBackground)
                 .cornerRadius(12)
                 .shadow(color: Color.black.opacity(0.04), radius: 2, x: 0, y: 1)
             }
@@ -392,7 +397,7 @@ struct SavedCardView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 10)
-                .background(Color.white)
+                .background(cardBackground)
                 .cornerRadius(12)
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
