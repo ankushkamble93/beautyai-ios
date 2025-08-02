@@ -3,11 +3,12 @@ import SwiftUI
 
 @main
 struct NuraApp: App {
-    @StateObject private var authManager = AuthenticationManager()
+    @StateObject private var authManager = AuthenticationManager.shared
     @StateObject private var skinAnalysisManager = SkinAnalysisManager()
     @StateObject private var chatManager = ChatManager()
     @StateObject private var appearanceManager = AppearanceManager()
-    @AppStorage("colorSchemePreference") private var colorSchemePreference: String = "system"
+    @StateObject private var urlHandler = URLHandler.shared
+    @AppStorage("colorSchemePreference") private var colorSchemePreference: String = "light"
     
     init() {
         // FirebaseApp.configure() // Temporarily disabled until Firebase is set up
@@ -36,6 +37,11 @@ struct NuraApp: App {
                         (appearanceManager.colorSchemePreference == "light" ? .light : nil))
                     : .light
             )
+            .environmentObject(urlHandler)
+            .onOpenURL { url in
+                print("🔗 NuraApp: Received URL: \(url)")
+                urlHandler.handleURL(url)
+            }
         }
     }
 }
