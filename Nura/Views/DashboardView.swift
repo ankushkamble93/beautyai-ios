@@ -5,6 +5,11 @@ import Combine
 struct DashboardView: View {
     @EnvironmentObject var skinAnalysisManager: SkinAnalysisManager
     @EnvironmentObject var appearanceManager: AppearanceManager
+    @EnvironmentObject var authManager: AuthenticationManager
+    
+    init() {
+        print("🔍 DashboardView: Initialized")
+    }
     @State private var dashboardData = DashboardData(
         currentRoutine: [],
         progress: ProgressMetrics(
@@ -139,6 +144,10 @@ struct DashboardView: View {
             }
         }
         .id(appearanceManager.colorSchemePreference)
+        .onAppear {
+            print("🔍 DashboardView: Appeared")
+            print("🔍 DashboardView: User profile - onboarding_complete = \(authManager.userProfile?.onboarding_complete ?? false)")
+        }
     }
     
     private func refreshDashboard() async {

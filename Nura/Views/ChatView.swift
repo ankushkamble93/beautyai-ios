@@ -6,6 +6,7 @@ struct ChatView: View {
     @State private var messageText = ""
     @FocusState private var isTextFieldFocused: Bool
     @State private var hasPremium = false // Toggle for testing
+    @State private var showNuraProSheet = false
     
     var body: some View {
         NavigationView {
@@ -145,7 +146,7 @@ struct ChatView: View {
                                         .multilineTextAlignment(.center)
                                         .padding(.top, 8)
                                     HStack(spacing: 16) {
-                                        Button(action: { /* Attach payment flow later */ }) {
+                                        Button(action: { showNuraProSheet = true }) {
                                             Text("Unlock Premium")
                                                 .font(.headline)
                                                 .foregroundColor(.white)
@@ -167,6 +168,9 @@ struct ChatView: View {
                     }
                     .edgesIgnoringSafeArea(.all)
                     .transition(.opacity)
+                    .sheet(isPresented: $showNuraProSheet) {
+                        NuraProView()
+                    }
                 }
                 // Floating premium toggle in the bottom right corner, always visible above the overlay
                 VStack {

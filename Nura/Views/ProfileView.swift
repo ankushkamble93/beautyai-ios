@@ -46,6 +46,11 @@ struct ProfileView: View {
                 }
                 .padding()
             }
+            .refreshable {
+                // Pull-to-refresh functionality
+                print("🔄 ProfileView: Pull-to-refresh triggered")
+                await authManager.forceRefreshUserProfile()
+            }
             .navigationBarTitleDisplayMode(.inline)
             .navigationTitle("")
             .sheet(isPresented: $showingSettings) {
@@ -67,62 +72,28 @@ struct ProfileHeaderView: View {
     @State private var showingImagePicker = false
     @State private var profileImage: Image? = nil
     @State private var inputImage: UIImage? = nil
+    @State private var showSaveConfirmation = false
+    
+    private var profileImageKey: String {
+        "profile_image_\(authManager.userProfile?.id.lowercased() ?? "unknown")"
+    }
     
     var body: some View {
-        VStack(spacing: 15) {
-            ZStack(alignment: .topTrailing) {
-                // Profile image
-                if let profileImage = profileImage {
-                    profileImage
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 100, height: 100)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
-                        .shadow(radius: 4)
-                } else {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                gradient: Gradient(colors: [Color.purple, Color.pink]),
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 100, height: 100)
-                        .overlay(
-                            Image(systemName: "person.fill")
-                                .font(.system(size: 40))
-                                .foregroundColor(.white)
-                        )
-                }
-                // Edit icon overlay
-                Button(action: { showingImagePicker = true }) {
-                    ZStack {
-                        Circle()
-                            .fill(Color.white)
-                            .frame(width: 28, height: 28)
-                            .shadow(radius: 2)
-                        Image(systemName: "pencil")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(Color.purple)
-                    }
-                }
-                .offset(x: 8, y: -8)
-            }
-            // User info
-            VStack(spacing: 5) {
-                Text(authManager.currentUser?.displayName ?? "User")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                Text(authManager.currentUser?.email ?? "")
-                    .font(.subheadline)
-                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : NuraColors.textSecondary)
-            }
-            // Member since
-            Text("Member since \(formatDate(Date()))")
-                .font(.caption)
-                .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
+        HStack(alignment: .top, spacing: 20) {
+            ProfileImageView(
+                profileImage: $profileImage,
+                showingImagePicker: $showingImagePicker,
+                inputImage: $inputImage,
+                showSaveConfirmation: $showSaveConfirmation,
+                profileImageKey: profileImageKey,
+                onLoadImage: loadImage,
+                onLoadSavedImage: loadSavedProfileImage
+            )
+            
+            ProfileInfoView(
+                isDark: isDark,
+                authManager: authManager
+            )
         }
         .padding()
         .frame(maxWidth: .infinity)
@@ -138,9 +109,6 @@ struct ProfileHeaderView: View {
         .cornerRadius(18)
         .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
         .padding(.horizontal, 8)
-        .sheet(isPresented: $showingImagePicker, onDismiss: loadImage) {
-            ImagePicker(image: $inputImage)
-        }
     }
     
     private func formatDate(_ date: Date) -> String {
@@ -150,8 +118,291 @@ struct ProfileHeaderView: View {
     }
     
     private func loadImage() {
-        guard let inputImage = inputImage else { return }
+        guard let inputImage = inputImage else { 
+            print("❌ No input image available")
+            return 
+        }
+        
+        guard let userProfile = authManager.userProfile else {
+            print("❌ No user profile available for saving image")
+            return
+        }
+        
+        // Set the profile image immediately for better UX
         profileImage = Image(uiImage: inputImage)
+        
+        // Save the profile image to UserDefaults with proper error handling
+        if let imageData = inputImage.jpegData(compressionQuality: 0.8) {
+            UserDefaults.standard.set(imageData, forKey: profileImageKey)
+            UserDefaults.standard.synchronize() // Force immediate save
+            
+            print("✅ Profile image saved for user: \(userProfile.id)")
+            print("✅ Profile image key: \(profileImageKey)")
+            print("✅ Image data size: \(imageData.count) bytes")
+            
+            // Verify the save was successful
+            if let savedData = UserDefaults.standard.data(forKey: profileImageKey) {
+                print("✅ Profile image save verified - data size: \(savedData.count) bytes")
+                
+                // Show save confirmation
+                showSaveConfirmation = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    showSaveConfirmation = false
+                }
+            } else {
+                print("❌ Profile image save verification failed")
+            }
+        } else {
+            print("❌ Failed to convert image to JPEG data")
+        }
+    }
+    
+    private func loadSavedProfileImage() {
+        guard let userProfile = authManager.userProfile else {
+            print("❌ No user profile available for loading image")
+            return
+        }
+        
+        print("🔄 Loading profile image for user: \(userProfile.id)")
+        print("🔄 Profile image key: \(profileImageKey)")
+        
+        // First try the standardized lowercase key
+        if let imageData = UserDefaults.standard.data(forKey: profileImageKey),
+           let uiImage = UIImage(data: imageData) {
+            profileImage = Image(uiImage: uiImage)
+            print("✅ Profile image loaded for user: \(userProfile.id)")
+        } else {
+            print("❌ No profile image found for key: \(profileImageKey)")
+            
+            // Try to find any saved profile image for this user with different case variations
+            let allKeys = UserDefaults.standard.dictionaryRepresentation().keys
+            let profileImageKeys = allKeys.filter { $0.hasPrefix("profile_image_") }
+            print("🔍 Available profile image keys: \(profileImageKeys)")
+            
+            // Look for existing image with different case variations
+            let userId = userProfile.id
+            let possibleKeys = [
+                "profile_image_\(userId)",
+                "profile_image_\(userId.uppercased())",
+                "profile_image_\(userId.lowercased())"
+            ]
+            
+            for key in possibleKeys {
+                if let imageData = UserDefaults.standard.data(forKey: key),
+                   let uiImage = UIImage(data: imageData) {
+                    // Found existing image, migrate it to standardized key
+                    UserDefaults.standard.set(imageData, forKey: profileImageKey)
+                    profileImage = Image(uiImage: uiImage)
+                    print("✅ Migrated profile image from key '\(key)' to '\(profileImageKey)'")
+                    print("✅ Profile image loaded for user: \(userProfile.id)")
+                    return
+                }
+            }
+            
+            // Clear any old profile image to ensure clean state
+            profileImage = nil
+            print("ℹ️ No profile image found for current user. Profile image cleared.")
+        }
+    }
+}
+
+// MARK: - Profile Image View Component
+struct ProfileImageView: View {
+    @Binding var profileImage: Image?
+    @Binding var showingImagePicker: Bool
+    @Binding var inputImage: UIImage?
+    @Binding var showSaveConfirmation: Bool
+    let profileImageKey: String
+    let onLoadImage: () -> Void
+    let onLoadSavedImage: () -> Void
+    @EnvironmentObject var authManager: AuthenticationManager
+    
+    var body: some View {
+        ZStack(alignment: .center) {
+            if let profileImage = profileImage {
+                profileImage
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 100, height: 100)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                    .shadow(radius: 4)
+            } else {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            gradient: Gradient(colors: [Color.purple, Color.pink]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 100, height: 100)
+                    .overlay(
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 40))
+                            .foregroundColor(.white)
+                    )
+            }
+            
+            // Edit button overlay
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    Button(action: { showingImagePicker = true }) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.white)
+                                .frame(width: 32, height: 32)
+                                .shadow(radius: 3)
+                            Image(systemName: "pencil.circle.fill")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundColor(Color.purple)
+                        }
+                    }
+                    .accessibilityLabel("Edit profile photo")
+                    .offset(x: 8, y: -8)
+                }
+            }
+        }
+        .frame(width: 110, height: 110)
+        .sheet(isPresented: $showingImagePicker, onDismiss: onLoadImage) {
+            ImagePicker(image: $inputImage)
+        }
+        .overlay(
+            SaveConfirmationOverlay(showSaveConfirmation: $showSaveConfirmation)
+        )
+        .onAppear {
+            onLoadSavedImage()
+        }
+        .onChange(of: authManager.userProfile?.id) { oldValue, newValue in
+            print("🔄 ProfileImageView: userProfile.id changed from \(oldValue ?? "nil") to \(newValue ?? "nil")")
+            if newValue != nil {
+                onLoadSavedImage()
+            }
+        }
+        .onChange(of: authManager.userProfile?.name) { oldValue, newValue in
+            print("🔄 ProfileImageView: userProfile.name changed from '\(oldValue ?? "nil")' to '\(newValue ?? "nil")'")
+        }
+    }
+}
+
+// MARK: - Save Confirmation Overlay Component
+struct SaveConfirmationOverlay: View {
+    @Binding var showSaveConfirmation: Bool
+    
+    var body: some View {
+        Group {
+            if showSaveConfirmation {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text("Profile photo saved!")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.green)
+                    }
+                    .padding(12)
+                    .background(Color.green.opacity(0.1))
+                    .cornerRadius(8)
+                    .shadow(radius: 4)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
+                .padding(.bottom, 20)
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: showSaveConfirmation)
+    }
+}
+
+// MARK: - Profile Info View Component
+struct ProfileInfoView: View {
+    let isDark: Bool
+    let authManager: AuthenticationManager
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Spacer()
+            
+            ProfileNameView(authManager: authManager)
+            
+            Text(authManager.userProfile?.email ?? "")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .truncationMode(.middle)
+                .frame(maxWidth: .infinity, alignment: .center)
+            
+            Text("Member since \(formatDate(Date()))")
+                .font(.caption)
+                .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
+            
+            if let profile = authManager.userProfile, profile.premium {
+                Text("Nura Pro Member")
+                    .font(.subheadline)
+                    .foregroundColor(.yellow)
+            }
+            
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.vertical, 12)
+    }
+    
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        return formatter.string(from: date)
+    }
+}
+
+// MARK: - Profile Name View Component
+struct ProfileNameView: View {
+    let authManager: AuthenticationManager
+    
+    var body: some View {
+        let displayName = authManager.getDisplayName()
+        
+        HStack {
+            Text(displayName)
+                .font(.title2)
+                .fontWeight(.bold)
+            
+            // Debug indicator for empty name (only show if both temp and profile names are empty)
+            if authManager.tempUserName?.isEmpty ?? true && (authManager.userProfile?.name.isEmpty ?? true) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.orange)
+                    .font(.caption)
+            }
+        }
+        .onAppear {
+            print("🔄 ProfileNameView displaying name: '\(displayName)'")
+            print("🔄 ProfileNameView tempUserName: '\(authManager.tempUserName ?? "nil")'")
+            print("🔄 ProfileNameView userProfile: \(authManager.userProfile?.id ?? "nil")")
+            print("🔄 ProfileNameView userProfile name: '\(authManager.userProfile?.name ?? "nil")'")
+            print("🔄 ProfileNameView userProfile exists: \(authManager.userProfile != nil)")
+            if let profile = authManager.userProfile {
+                print("🔄 ProfileNameView full profile: id=\(profile.id), email=\(profile.email), name='\(profile.name)'")
+                
+                // Debug: If name is empty, check what's actually in the database
+                if profile.name.isEmpty && (authManager.tempUserName?.isEmpty ?? true) {
+                    print("⚠️ DEBUG: Empty name detected, checking database content...")
+                    Task {
+                        await authManager.debugCheckDatabaseContent(userId: profile.id)
+                    }
+                }
+            }
+        }
+        .onTapGesture {
+            // Debug: Force refresh profile when name is tapped
+            print("🔄 ProfileNameView tapped - forcing refresh")
+            Task {
+                await authManager.forceRefreshUserProfile()
+            }
+        }
     }
 }
 
@@ -162,43 +413,94 @@ struct QuickActionsView: View {
     @State private var showRoutine = false
     @State private var showAppPreferences = false
     @State private var showSkinDiary = false
+    @State private var hasPremium = false // Toggle for testing
+    @State private var showNuraProSheet = false
+    @State private var animateUnlockButton = false
+    @State private var showViewProgress = false
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
-            Text("Quick Actions")
-                .font(.headline)
-                .fontWeight(.semibold)
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 12) {
-                QuickActionCard(
-                    title: "View Progress",
-                    subtitle: "Track results",
-                    icon: "chart.line.uptrend.xyaxis",
-                    color: NuraColors.success
-                ) {
-                    // Navigation for progress will be implemented later
+            HStack {
+                Text("Nura Pro Actions")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                Spacer()
+                Toggle(isOn: $hasPremium) {
+                    Text("")
                 }
-                QuickActionCard(
-                    title: "Routine",
-                    subtitle: "Daily steps",
-                    icon: "list.bullet",
-                    color: NuraColors.secondary
-                ) {
-                    showRoutine = true
+                .labelsHidden()
+                .toggleStyle(SwitchToggleStyle(tint: NuraColors.primary))
+            }
+            .padding(.bottom, 2)
+            ZStack {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 12) {
+                    QuickActionCard(
+                        title: "View Progress",
+                        subtitle: "Track results",
+                        icon: "chart.line.uptrend.xyaxis",
+                        color: NuraColors.success
+                    ) {
+                        showViewProgress = true
+                    }
+                    QuickActionCard(
+                        title: "Routine",
+                        subtitle: "Daily steps",
+                        icon: "list.bullet",
+                        color: NuraColors.secondary
+                    ) {
+                        showRoutine = true
+                    }
+                    QuickActionCard(
+                        title: "App Preferences",
+                        subtitle: "Theme & Mode",
+                        icon: "gearshape.fill",
+                        color: NuraColors.textSecondary
+                    ) {
+                        showAppPreferences = true
+                    }
+                    QuickActionCard(
+                        title: "Skin Diary",
+                        subtitle: "Log changes",
+                        icon: "book.closed.fill",
+                        color: NuraColors.secondary
+                    ) {
+                        showSkinDiary = true
+                    }
                 }
-                QuickActionCard(
-                    title: "App Preferences",
-                    subtitle: "Theme & Mode",
-                    icon: "gearshape.fill",
-                    color: NuraColors.textSecondary
-                ) {
-                    showAppPreferences = true
-                }
-                QuickActionCard(
-                    title: "Skin Diary",
-                    subtitle: "Log changes",
-                    icon: "book.closed.fill",
-                    color: NuraColors.secondary
-                ) {
-                    showSkinDiary = true
+                if !hasPremium {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(isDark ? Color(red: 0.13, green: 0.12, blue: 0.11, opacity: 0.38) : Color(red: 0.65, green: 0.60, blue: 0.55, opacity: 0.28))
+                        .overlay(
+                            VStack(spacing: 24) {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 32, weight: .bold))
+                                    .foregroundColor(isDark ? NuraColors.primary : NuraColors.primary)
+                                    .padding(.top, 8)
+                                Button(action: { showNuraProSheet = true }) {
+                                    Text("Unlock Premium")
+                                        .fontWeight(.semibold)
+                                        .padding(.vertical, 10)
+                                        .padding(.horizontal, 36)
+                                        .background(isDark ? NuraColors.primaryDark : NuraColors.primary)
+                                        .foregroundColor(.white)
+                                        .cornerRadius(22)
+                                        .shadow(color: (isDark ? NuraColors.primaryDark : NuraColors.primary).opacity(0.15), radius: 6, x: 0, y: 2)
+                                }
+                            }
+                            .padding(.vertical, 32)
+                            .frame(maxWidth: 320)
+                            .scaleEffect(animateUnlockButton ? 1.18 : 1.0, anchor: .center)
+                            .animation(.spring(response: 0.38, dampingFraction: 0.55), value: animateUnlockButton)
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            animateUnlockButton = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) {
+                                animateUnlockButton = false
+                            }
+                        }
+                        .sheet(isPresented: $showNuraProSheet) {
+                            NuraProView()
+                        }
                 }
             }
             // Add a smaller, soft, centered info pill below the grid
@@ -237,6 +539,9 @@ struct QuickActionsView: View {
         .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
         .sheet(isPresented: $showRoutine) {
             RoutineView()
+        }
+        .sheet(isPresented: $showViewProgress) {
+            ViewProgressView()
         }
     }
 }
@@ -574,7 +879,7 @@ struct SignOutButton: View {
     
     var body: some View {
         Button(action: {
-            authManager.signOut()
+            Task { await authManager.signOut() }
         }) {
             HStack {
                 Image(systemName: "rectangle.portrait.and.arrow.right")
@@ -882,30 +1187,65 @@ struct PersonalInformationView: View {
     }
 }
 
-// Add ImagePicker for profile photo selection
+// Enhanced ImagePicker for profile photo selection with save option
 struct ImagePicker: UIViewControllerRepresentable {
     @Binding var image: UIImage?
+    @Environment(\.dismiss) private var dismiss
+    
     func makeUIViewController(context: Context) -> PHPickerViewController {
         var config = PHPickerConfiguration()
         config.filter = .images
+        config.selectionLimit = 1
+        config.preferredAssetRepresentationMode = .current
         let picker = PHPickerViewController(configuration: config)
         picker.delegate = context.coordinator
         return picker
     }
+    
     func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+    
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
+    
     class Coordinator: NSObject, PHPickerViewControllerDelegate {
         let parent: ImagePicker
+        
         init(_ parent: ImagePicker) { self.parent = parent }
+        
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
             picker.dismiss(animated: true)
-            guard let provider = results.first?.itemProvider, provider.canLoadObject(ofClass: UIImage.self) else { return }
-            provider.loadObject(ofClass: UIImage.self) { image, _ in
+            
+            guard let provider = results.first?.itemProvider, provider.canLoadObject(ofClass: UIImage.self) else { 
+                return 
+            }
+            
+            provider.loadObject(ofClass: UIImage.self) { image, error in
                 DispatchQueue.main.async {
-                    self.parent.image = image as? UIImage
+                    if let error = error {
+                        print("❌ Error loading image: \(error)")
+                        return
+                    }
+                    
+                    if let selectedImage = image as? UIImage {
+                        // Optimize the image for profile photo
+                        let optimizedImage = self.optimizeImageForProfile(selectedImage)
+                        self.parent.image = optimizedImage
+                        
+                        // Don't automatically save to Photos app - let user choose if they want to keep it
+                        print("✅ Profile photo optimized and ready for use")
+                    }
                 }
+            }
+        }
+        
+        private func optimizeImageForProfile(_ image: UIImage) -> UIImage {
+            // Resize to reasonable profile photo size (200x200)
+            let targetSize = CGSize(width: 200, height: 200)
+            let renderer = UIGraphicsImageRenderer(size: targetSize)
+            
+            return renderer.image { context in
+                image.draw(in: CGRect(origin: .zero, size: targetSize))
             }
         }
     }
@@ -1206,12 +1546,15 @@ struct AppPreferencesPageView: View {
     @EnvironmentObject var appearanceManager: AppearanceManager
     @EnvironmentObject var authManager: AuthenticationManager
     @Binding var isPresented: Bool
-    @State private var tempColorSchemePreference: String = "system"
+    @State private var tempColorSchemePreference: String = "light"
     @State private var showSaved: Bool = false
     let colorOptions = ["light": "Light", "dark": "Dark", "system": "System Default"]
     init(isPresented: Binding<Bool>) {
         self._isPresented = isPresented
-        _tempColorSchemePreference = State(initialValue: UserDefaults.standard.string(forKey: "colorSchemePreference") ?? "system")
+        // Default to light mode for new users or users who had "system" set
+        let savedPreference = UserDefaults.standard.string(forKey: "colorSchemePreference")
+        let initialValue = (savedPreference == nil || savedPreference == "system") ? "light" : savedPreference!
+        _tempColorSchemePreference = State(initialValue: initialValue)
     }
     var body: some View {
         VStack(alignment: .center, spacing: 28) {
@@ -1285,7 +1628,7 @@ struct AppPreferencesPageView: View {
                         // Show 'Saved!' animation, then log out after a short delay
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                             showSaved = false
-                            authManager.signOut() // Log out the user after showing 'Saved!'
+                            Task { await authManager.signOut() } // Log out the user after showing 'Saved!'
                         }
                     }
                 }) {
@@ -1368,5 +1711,5 @@ struct AppearanceSwitchRow: View {
 #Preview {
     AppPreferencesPageView(isPresented: .constant(true))
         .environmentObject(AppearanceManager())
-        .environmentObject(AuthenticationManager())
+        .environmentObject(AuthenticationManager.shared)
 } 

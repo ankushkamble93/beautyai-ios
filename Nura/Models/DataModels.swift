@@ -27,7 +27,7 @@ struct UserContext: Codable {
 
 struct SkinAnalysisRequest: Codable {
     let imageURLs: [String]
-    let userProfile: UserProfile
+    let userProfile: LocalUserProfile
 }
 
 struct SkinAnalysisResult: Codable {
@@ -60,17 +60,6 @@ struct SkinCondition: Codable, Identifiable {
     }
 }
 
-struct UserProfile: Codable {
-    let age: Int
-    let gender: String
-    let skinType: String
-    let race: String
-    let location: String
-    let concerns: [String]
-    let allergies: [String]
-    let currentProducts: [String]
-}
-
 struct WeatherData: Codable {
     let temperature: Double
     let humidity: Double
@@ -80,7 +69,7 @@ struct WeatherData: Codable {
 
 struct RecommendationRequest: Codable {
     let skinConditions: [SkinCondition]
-    let userProfile: UserProfile
+    let userProfile: LocalUserProfile
     let weatherData: WeatherData?
 }
 

@@ -4,6 +4,7 @@ struct LoginView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @State private var showSignUp = false
     @State private var showForgotPassword = false
+    @State private var showEmailVerification = false
     @State private var email = ""
     @State private var password = ""
     @State private var showHeart = false
@@ -11,6 +12,7 @@ struct LoginView: View {
     @State private var arrowFill: CGFloat = 0.0
     // Add state to control one-time animation
     @State private var animateArrow = false
+    // Remove showOnboarding
     
     var canLogin: Bool { !email.isEmpty && !password.isEmpty }
     
@@ -35,12 +37,59 @@ struct LoginView: View {
                 animateArrow: $animateArrow,
                 showHeart: $showHeart
             )
+            if authManager.isLoading {
+                Color.black.opacity(0.18).ignoresSafeArea()
+                ProgressView("Signing in...")
+                    .progressViewStyle(CircularProgressViewStyle(tint: .mint))
+                    .padding()
+                    .background(RoundedRectangle(cornerRadius: 18).fill(Color.white))
+                    .shadow(radius: 8)
+            }
+            if let error = authManager.errorMessage {
+                VStack {
+                    Spacer()
+                    Text(error)
+                        .foregroundColor(.red)
+                        .padding()
+                        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white))
+                        .shadow(radius: 6)
+                        .padding(.bottom, 40)
+                }
+            }
+            
+            // True floating debug button - overlays everything
+            Button("Clear All Cache") {
+                Task {
+                    await authManager.clearAllCachedState()
+                }
+            }
+            .font(.caption)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color.orange.opacity(0.9))
+            .foregroundColor(.white)
+            .cornerRadius(8)
+            .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
+            .position(x: UIScreen.main.bounds.width - 80, y: 100)
+            .allowsHitTesting(true)
+            .zIndex(9999)
         }
         .sheet(isPresented: $showSignUp) {
-            Text("Sign up flow coming soon!")
+            SignUpView(isPresented: $showSignUp)
+                .environmentObject(authManager)
         }
         .sheet(isPresented: $showForgotPassword) {
-            Text("Forgot password flow coming soon!")
+            ForgotPasswordView(isPresented: $showForgotPassword)
+                .environmentObject(authManager)
+        }
+        .sheet(isPresented: $showEmailVerification) {
+            EmailVerificationView(
+                isPresented: $showEmailVerification,
+                email: email,
+                password: password,
+                name: ""
+            )
+            .environmentObject(authManager)
         }
     }
 }
@@ -75,7 +124,55 @@ private struct LoginCardView: View {
             Spacer(minLength: 12)
             // Login elements stacked above the icon/quote
             VStack(spacing: 18) {
-                SignInButtonsView(email: $email, password: $password)
+                // Social sign-in buttons
+                Button(action: { Task { await authManager.signInWithGoogle() } }) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "globe")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(.white)
+                        Text("Sign in with Google")
+                            .font(.system(size: 17, weight: .semibold, design: .rounded))
+                            .foregroundColor(.white)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .background(
+                    LinearGradient(gradient: Gradient(colors: [Color.black, Color(red: 0.13, green: 0.13, blue: 0.13)]), startPoint: .top, endPoint: .bottom)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22)
+                        .stroke(Color.white.opacity(0.85), lineWidth: 1.5)
+                )
+                .cornerRadius(22)
+                .shadow(color: Color.black.opacity(0.10), radius: 10, x: 0, y: 4)
+                .frame(maxWidth: 300)
+                .scaleEffect(1.0)
+                .contentShape(RoundedRectangle(cornerRadius: 22))
+                .padding(.horizontal, 0)
+                .animation(.easeInOut(duration: 0.15), value: false)
+                Button(action: { Task { await authManager.signInWithApple() } }) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "apple.logo")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(.black.opacity(0.85))
+                        Text("Sign in with Apple")
+                            .font(.system(size: 17, weight: .semibold, design: .rounded))
+                            .foregroundColor(.black.opacity(0.85))
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .background(
+                    LinearGradient(gradient: Gradient(colors: [Color(red: 0.99, green: 0.99, blue: 0.97), Color(red: 0.95, green: 0.95, blue: 0.93)]), startPoint: .top, endPoint: .bottom)
+                )
+                .cornerRadius(22)
+                .shadow(color: Color.black.opacity(0.07), radius: 10, x: 0, y: 4)
+                .frame(maxWidth: 300)
+                .scaleEffect(1.0)
+                .contentShape(RoundedRectangle(cornerRadius: 22))
+                .padding(.horizontal, 0)
+                .animation(.easeInOut(duration: 0.15), value: false)
                 LoginFieldsView(email: $email, password: $password)
                 // Sign up and Forgot password below fields, styled subtly
                 HStack(spacing: 16) {
@@ -91,7 +188,7 @@ private struct LoginCardView: View {
                 // Move arrow higher and a bit to the left, below forgot password row
                 HStack {
                     Spacer(minLength: 0)
-                    LoginArrowView(password: $password, arrowFill: $arrowFill, animateArrow: $animateArrow)
+                    LoginArrowView(email: $email, password: $password, arrowFill: $arrowFill, animateArrow: $animateArrow)
                         .padding(.leading, 32) // Move arrow a bit to the left
                     Spacer()
                 }
@@ -194,21 +291,23 @@ private struct LoginFieldsView: View {
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .fill(NuraColors.card.opacity(0.12)) // Lighten the bubble
                     .shadow(color: NuraColors.primary.opacity(0.06), radius: 10, x: 0, y: 4)
-                TextField("", text: $email)
-                    .frame(maxHeight: .infinity)
-                    .padding(.horizontal, 18)
-                    .foregroundColor(NuraColors.textPrimary)
-                    .font(.system(size: 16, weight: .regular, design: .rounded))
-                    .accentColor(NuraColors.primary)
-                    .autocapitalization(.none)
-                    .keyboardType(.emailAddress)
-                    .placeholder(when: email.isEmpty) {
+                ZStack(alignment: .leading) {
+                    if email.isEmpty {
                         Text("Email")
-                            .foregroundColor(Color.gray.opacity(0.55))
+                            .foregroundColor(Color(red: 0.8, green: 0.75, blue: 0.65)) // Light beige color
                             .italic()
                             .font(.system(size: 16, weight: .regular, design: .rounded))
                             .padding(.horizontal, 18)
                     }
+                    TextField("", text: $email)
+                        .frame(maxHeight: .infinity)
+                        .padding(.horizontal, 18)
+                        .foregroundColor(NuraColors.textPrimary)
+                        .font(.system(size: 16, weight: .regular, design: .rounded))
+                        .accentColor(NuraColors.primary)
+                        .autocapitalization(.none)
+                        .keyboardType(.emailAddress)
+                }
             }
             .frame(maxWidth: 300)
             .frame(height: 48)
@@ -217,19 +316,26 @@ private struct LoginFieldsView: View {
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .fill(NuraColors.card.opacity(0.12)) // Lighten the bubble
                     .shadow(color: NuraColors.primary.opacity(0.06), radius: 10, x: 0, y: 4)
-                SecureField("", text: $password)
-                    .frame(maxHeight: .infinity)
-                    .padding(.horizontal, 18)
-                    .foregroundColor(NuraColors.textPrimary)
-                    .font(.system(size: 16, weight: .regular, design: .rounded))
-                    .accentColor(NuraColors.primary)
-                    .placeholder(when: password.isEmpty) {
+                ZStack(alignment: .leading) {
+                    if password.isEmpty {
                         Text("Password")
-                            .foregroundColor(Color.gray.opacity(0.55))
+                            .foregroundColor(Color(red: 0.8, green: 0.75, blue: 0.65)) // Light beige color
                             .italic()
                             .font(.system(size: 16, weight: .regular, design: .rounded))
                             .padding(.horizontal, 18)
                     }
+                    SecureField("", text: $password)
+                        .frame(maxHeight: .infinity)
+                        .padding(.horizontal, 18)
+                        .foregroundColor(NuraColors.textPrimary)
+                        .font(.system(size: 16, weight: .regular, design: .rounded))
+                        .accentColor(NuraColors.primary)
+                        .textContentType(.username)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .disableAutocorrection(true)
+                        .autocapitalization(.none)
+                }
             }
             .frame(maxWidth: 300)
             .frame(height: 48)
@@ -239,27 +345,36 @@ private struct LoginFieldsView: View {
 }
 
 private struct LoginArrowView: View {
+    @Binding var email: String
     @Binding var password: String
     @Binding var arrowFill: CGFloat
     @Binding var animateArrow: Bool
     @EnvironmentObject var authManager: AuthenticationManager
+    
     var body: some View {
         Spacer().frame(height: 18)
         HStack {
             Spacer()
-            if !password.isEmpty || true { // keep always visible for testing
-                Button(action: { authManager.isAuthenticated = true }) {
+            if !password.isEmpty {
+                Button {
+                    Task {
+                        if !authManager.isLoading {
+                            if !email.isEmpty && !password.isEmpty {
+                                await authManager.signInWithEmail(email: email, password: password)
+                            }
+                        }
+                    }
+                } label: {
                     ZStack {
                         RoundedRectangle(cornerRadius: 12)
                             .fill(Color.clear)
                             .frame(width: 64, height: 64)
                             .shadow(color: NuraColors.primary.opacity(0.18), radius: 10, x: 0, y: 4)
-                        // Arrow with shine and pop
                         Image(systemName: "arrow.right")
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 44, height: 44)
-                            .foregroundColor(NuraColors.primary) // taupe arrow
+                            .foregroundColor(NuraColors.primary)
                             .modifier(ShineAndPopEffect(animate: animateArrow))
                     }
                 }
@@ -420,6 +535,8 @@ struct NuraGoogleButton: View {
     }
 }
 
+
+
 // MARK: - Preview
 #Preview {
     LoginView()
@@ -469,16 +586,6 @@ struct ShineAndPopEffect: ViewModifier {
     }
 } 
 
-// Custom placeholder modifier for styled placeholder text
-extension View {
-    func placeholder<Content: View>(
-        when shouldShow: Bool,
-        alignment: Alignment = .leading,
-        @ViewBuilder placeholder: () -> Content
-    ) -> some View {
-        ZStack(alignment: alignment) {
-            placeholder().opacity(shouldShow ? 1 : 0)
-            self
-        }
-    }
-} 
+
+
+

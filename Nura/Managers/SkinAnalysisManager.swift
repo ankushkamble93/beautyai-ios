@@ -2,6 +2,17 @@ import Foundation
 import UIKit
 // import FirebaseStorage // Temporarily disabled until Firebase is set up
 
+struct LocalUserProfile: Codable {
+    let age: Int
+    let gender: String
+    let skinType: String
+    let race: String
+    let location: String
+    let concerns: [String]
+    let allergies: [String]
+    let currentProducts: [String]
+}
+
 class SkinAnalysisManager: ObservableObject {
     @Published var isAnalyzing = false
     @Published var analysisResults: SkinAnalysisResult?
@@ -160,8 +171,8 @@ class SkinAnalysisManager: ObservableObject {
         }.resume()
     }
     
-    private func getUserProfile() -> UserProfile {
-        return UserProfile(
+    private func getUserProfile() -> LocalUserProfile {
+        return LocalUserProfile(
             age: 25,
             gender: "female",
             skinType: "combination",

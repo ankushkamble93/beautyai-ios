@@ -3,6 +3,7 @@ import Combine
 
 struct ContentView: View {
     @EnvironmentObject var authManager: AuthenticationManager
+    @EnvironmentObject var skinAnalysisManager: SkinAnalysisManager
     @EnvironmentObject var appearanceManager: AppearanceManager
     @State private var selectedTab = 0
     @State private var isTabBarVisible = true
@@ -12,32 +13,50 @@ struct ContentView: View {
         ZStack {
             Color(red: 31/255, green: 29/255, blue: 27/255).ignoresSafeArea()
             if authManager.isAuthenticated {
-                TabView(selection: $selectedTab) {
-                    DashboardView().tag(0)
-                    SkinAnalysisView().tag(1)
-                    ChatView().tag(2)
-                    ProfileView().tag(3)
-                }
-                .id(appearanceManager.colorSchemePreference) // <-- Add this line
-                .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .ignoresSafeArea(edges: [.top, .bottom])
-                .overlay(
-                    CustomTabBar(selectedTab: $selectedTab)
-                        .frame(maxWidth: .infinity)
-                        .padding(.bottom, 6)
-                        .opacity(isTabBarVisible ? 1 : 0)
-                        .animation(.easeInOut(duration: 0.5), value: isTabBarVisible)
-                        .ignoresSafeArea(edges: .bottom)
-                        .allowsHitTesting(isTabBarVisible)
-                        .zIndex(1)
-                        .onAppear {
-                            showTabBarWithFadeOut()
-                        },
-                    alignment: .bottom
-                )
-                .onChange(of: selectedTab) { _, _ in
-                    showTabBarWithFadeOut()
+                if let profile = authManager.userProfile, !profile.onboarding_complete {
+                    // Show onboarding questionnaire if not completed
+                    OnboardingQuestionnaireView()
+                        .environmentObject(authManager)
+                } else {
+                    // Show main app with tab bar if onboarding is complete
+                    TabView(selection: $selectedTab) {
+                        DashboardView()
+                            .environmentObject(authManager)
+                            .environmentObject(skinAnalysisManager)
+                            .environmentObject(appearanceManager)
+                            .tag(0)
+                        SkinAnalysisView()
+                            .environmentObject(authManager)
+                            .environmentObject(skinAnalysisManager)
+                            .tag(1)
+                        ChatView()
+                            .environmentObject(authManager)
+                            .tag(2)
+                        ProfileView()
+                            .environmentObject(authManager)
+                            .tag(3)
+                    }
+                    .id(appearanceManager.colorSchemePreference)
+                    .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .ignoresSafeArea(edges: [.top, .bottom])
+                    .overlay(
+                        CustomTabBar(selectedTab: $selectedTab)
+                            .frame(maxWidth: .infinity)
+                            .padding(.bottom, 6)
+                            .opacity(isTabBarVisible ? 1 : 0)
+                            .animation(.easeInOut(duration: 0.5), value: isTabBarVisible)
+                            .ignoresSafeArea(edges: .bottom)
+                            .allowsHitTesting(isTabBarVisible)
+                            .zIndex(1)
+                            .onAppear {
+                                showTabBarWithFadeOut()
+                            },
+                        alignment: .bottom
+                    )
+                    .onChange(of: selectedTab) { _, _ in
+                        showTabBarWithFadeOut()
+                    }
                 }
             } else {
                 LoginView()
@@ -75,6 +94,7 @@ struct TabBarIcon<Content: View>: View {
             }
     }
 }
+
 // Dashboard icon: minimal bar chart
 struct DashboardTabIcon: View {
     var isSelected: Bool
@@ -88,10 +108,11 @@ struct DashboardTabIcon: View {
             RoundedRectangle(cornerRadius: 2)
                 .frame(width: size * 0.18, height: size * 0.58)
         }
-        .foregroundColor(isSelected ? Color.softNavy : Color.slate)
+        .foregroundColor(isSelected ? NuraColors.primary : NuraColors.textSecondary)
         .frame(width: size, height: size)
     }
 }
+
 // Skin Analysis icon: stylized droplet with a face
 struct SkinAnalysisTabIcon: View {
     var isSelected: Bool
@@ -105,18 +126,26 @@ struct SkinAnalysisTabIcon: View {
                 path.addQuadCurve(to: CGPoint(x: size*0.17, y: size*0.5), control: CGPoint(x: size*0.17, y: size*0.92))
                 path.addQuadCurve(to: CGPoint(x: size/2, y: size*0.125), control: CGPoint(x: size*0.08, y: size*0.25))
             }
-            .stroke(isSelected ? Color.softNavy : Color.slate, lineWidth: 2.2)
+            .stroke(isSelected ? NuraColors.primary : NuraColors.textSecondary, lineWidth: 2.2)
             // Minimal face
-            Circle().frame(width: size*0.11, height: size*0.11).offset(x: -size*0.13, y: size*0.29).foregroundColor(isSelected ? Color.softNavy : Color.slate)
-            Circle().frame(width: size*0.11, height: size*0.11).offset(x: size*0.13, y: size*0.29).foregroundColor(isSelected ? Color.softNavy : Color.slate)
+            Circle()
+                .frame(width: size*0.11, height: size*0.11)
+                .offset(x: -size*0.13, y: size*0.29)
+                .foregroundColor(isSelected ? NuraColors.primary : NuraColors.textSecondary)
+            Circle()
+                .frame(width: size*0.11, height: size*0.11)
+                .offset(x: size*0.13, y: size*0.29)
+                .foregroundColor(isSelected ? NuraColors.primary : NuraColors.textSecondary)
             Path { path in
                 path.move(to: CGPoint(x: size*0.42, y: size*0.71))
                 path.addQuadCurve(to: CGPoint(x: size*0.58, y: size*0.71), control: CGPoint(x: size/2, y: size*0.79))
-            }.stroke(isSelected ? Color.softNavy : Color.slate, lineWidth: 1.2)
+            }
+            .stroke(isSelected ? NuraColors.primary : NuraColors.textSecondary, lineWidth: 1.2)
         }
         .frame(width: size, height: size)
     }
 }
+
 // AI Chat icon: speech bubble with sparkle
 struct AIChatTabIcon: View {
     var isSelected: Bool
@@ -124,14 +153,15 @@ struct AIChatTabIcon: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: size*0.33)
-                .stroke(isSelected ? Color.softNavy : Color.slate, lineWidth: 2.2)
+                .stroke(isSelected ? NuraColors.primary : NuraColors.textSecondary, lineWidth: 2.2)
                 .frame(width: size*0.83, height: size*0.67)
             Path { path in
                 path.move(to: CGPoint(x: size/2, y: size*0.83))
                 path.addLine(to: CGPoint(x: size*0.58, y: size*0.67))
                 path.addLine(to: CGPoint(x: size*0.42, y: size*0.67))
                 path.closeSubpath()
-            }.fill(isSelected ? Color.softNavy : Color.slate)
+            }
+            .fill(isSelected ? NuraColors.primary : NuraColors.textSecondary)
             // Sparkle
             if isSelected {
                 Path { path in
@@ -139,12 +169,14 @@ struct AIChatTabIcon: View {
                     path.addLine(to: CGPoint(x: size*0.75, y: size*0.46))
                     path.move(to: CGPoint(x: size*0.69, y: size*0.39))
                     path.addLine(to: CGPoint(x: size*0.81, y: size*0.39))
-                }.stroke(Color.sand, lineWidth: 1.2)
+                }
+                .stroke(NuraColors.sand, lineWidth: 1.2)
             }
         }
         .frame(width: size, height: size)
     }
 }
+
 // Profile icon: abstract, non-gendered human silhouette
 struct ProfileTabIcon: View {
     var isSelected: Bool
@@ -152,21 +184,16 @@ struct ProfileTabIcon: View {
     var body: some View {
         ZStack {
             Ellipse()
-                .stroke(isSelected ? Color.softNavy : Color.slate, lineWidth: 2.2)
-                .frame(width: size*0.67, height: size*0.42).offset(y: size*0.25)
+                .stroke(isSelected ? NuraColors.primary : NuraColors.textSecondary, lineWidth: 2.2)
+                .frame(width: size*0.67, height: size*0.42)
+                .offset(y: size*0.25)
             Circle()
-                .stroke(isSelected ? Color.softNavy : Color.slate, lineWidth: 2.2)
-                .frame(width: size*0.33, height: size*0.33).offset(y: -size*0.08)
+                .stroke(isSelected ? NuraColors.primary : NuraColors.textSecondary, lineWidth: 2.2)
+                .frame(width: size*0.33, height: size*0.33)
+                .offset(y: -size*0.08)
         }
         .frame(width: size, height: size)
     }
-}
-// Custom colors
-extension Color {
-    static let stone = Color(red: 0.66, green: 0.66, blue: 0.66)
-    static let slate = Color(red: 0.43, green: 0.46, blue: 0.51)
-    static let sand = Color(red: 0.90, green: 0.85, blue: 0.77)
-    static let softNavy = Color(red: 0.23, green: 0.26, blue: 0.34)
 }
 
 // CustomTabBar implementation
