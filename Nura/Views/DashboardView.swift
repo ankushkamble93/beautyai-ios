@@ -6,6 +6,8 @@ struct DashboardView: View {
     @EnvironmentObject var skinAnalysisManager: SkinAnalysisManager
     @EnvironmentObject var appearanceManager: AppearanceManager
     @EnvironmentObject var authManager: AuthenticationManager
+    @EnvironmentObject var shareManager: ShareManager
+    @EnvironmentObject var userTierManager: UserTierManager
     
     init() {
         print("🔍 DashboardView: Initialized")
@@ -85,23 +87,33 @@ struct DashboardView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
-                    // Custom large, centered title
-                    HStack {
+                    // Custom large, centered title with PRO badge for premium users
+                    HStack(alignment: .top, spacing: 8) {
                         Spacer()
-                        Text("Dashboard")
-                            .font(.largeTitle).fontWeight(.bold)
-                            .padding(.top, 8)
-                            .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                        HStack(alignment: .top, spacing: 6) {
+                            Text("Dashboard")
+                                .font(.largeTitle).fontWeight(.bold)
+                                .padding(.top, 8)
+                                .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                            
+                            // Pro badge positioned right after title
+                            if userTierManager.isPremium {
+                                WaxStampBadge()
+                                    .rotationEffect(.degrees(15)) // Slight exponential growth angle
+                                    .offset(x: 4, y: 2)
+                            }
+                        }
                         Spacer()
                     }
-                    // Welcome section
-                    WelcomeSection(isDark: isDark)
+                    // Welcome section with premium styling for pro users
+                    WelcomeSection(isDark: isDark, isPremium: userTierManager.isPremium)
                     
-                    // Progress overview
+                    // Progress overview with premium styling for pro users
                     ProgressOverviewCard(
                         progress: dashboardData.progress,
                         confettiCounter: $confettiCounter,
-                        isDark: isDark
+                        isDark: isDark,
+                        isPremium: userTierManager.isPremium
                     )
                     
                     // Current routine
@@ -122,8 +134,8 @@ struct DashboardView: View {
                         isDark: isDark
                     )
                     
-                    // Insights
-                    InsightsCard(insights: dashboardData.insights, isDark: isDark)
+                    // Insights with premium styling for pro users
+                    InsightsCard(insights: dashboardData.insights, isDark: isDark, isPremium: userTierManager.isPremium)
                     
                     Spacer()
                 }
@@ -160,6 +172,7 @@ struct DashboardView: View {
 struct WelcomeSection: View {
     @EnvironmentObject var authManager: AuthenticationManager
     var isDark: Bool
+    var isPremium: Bool = false
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Welcome back! ✨")
@@ -175,6 +188,7 @@ struct WelcomeSection: View {
         .background(
             ZStack {
                 if isDark {
+                    // Unify dark-mode card color with Today's Tasks card
                     NuraColors.cardDark
                 } else {
                     LinearGradient(
@@ -182,10 +196,26 @@ struct WelcomeSection: View {
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
+                    
+                    // Premium light mode styling
+                    if isPremium {
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                Color.purple.opacity(0.12),
+                                Color.yellow.opacity(0.08),
+                                Color.purple.opacity(0.05)
+                            ]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                        .animation(.easeInOut(duration: 4).repeatForever(autoreverses: true), value: isPremium)
+                    }
                 }
             }
         )
         .cornerRadius(12)
+        .scaleEffect(isPremium ? 1.01 : 1.0)
+        .animation(.easeInOut(duration: 0.3), value: isPremium)
     }
 }
 
@@ -193,6 +223,7 @@ struct ProgressOverviewCard: View {
     let progress: ProgressMetrics
     @Binding var confettiCounter: Int
     var isDark: Bool
+    var isPremium: Bool = false
 
     private func ringColor(for score: Double) -> Color {
         let percent = score * 100
@@ -211,49 +242,87 @@ struct ProgressOverviewCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 15) {
-            HStack(alignment: .center) {
-                // Left half: Title and Improving Areas
-                VStack(alignment: .leading, spacing: 8) {
+        ZStack {
+            VStack(alignment: .leading, spacing: 15) {
+                // Header with title and subtitle with balanced spacing
+                HStack(alignment: .lastTextBaseline) {
                     Text("Skin Health Score")
                         .font(.headline)
                         .fontWeight(.semibold)
                         .underline()
                         .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
-                    if !progress.improvementAreas.isEmpty {
-                        Text("Improving Areas:")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
-                        ForEach(progress.improvementAreas, id: \.self) { area in
+                    
+                    Spacer().frame(minWidth: 12, maxWidth: 20)
+                    
+                    Text("Your journey to healthier skin")
+                        .font(.caption2)
+                        .italic()
+                        .foregroundColor(.gray.opacity(0.7))
+                        .multilineTextAlignment(.center)
+                    
+                    Spacer().frame(minWidth: 12, maxWidth: 20)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                
+                HStack(alignment: .center, spacing: 20) {
+                    // Left half: Centered AnimatedRingView
+                    VStack {
+                        Spacer()
+                        ZStack {
+                            // Subtle background circle for prominence
+                            Circle()
+                                .fill(Color.white.opacity(isDark ? 0.05 : 0.3))
+                                .frame(width: 110, height: 110)
+                            
+                            AnimatedRingView(
+                                progress: Double(progress.skinHealthScore),
+                                ringColor: isDark ? NuraColors.successDark : ringColor(for: progress.skinHealthScore),
+                                ringWidth: isPremium ? 18 : 16,
+                                label: "\(Int(progress.skinHealthScore * 100))%"
+                            )
+                            .frame(width: isPremium ? 100 : 95, height: isPremium ? 100 : 95)
+                            .scaleEffect(isPremium ? 1.05 : 1.0)
+                            .animation(.easeInOut(duration: 0.5), value: isPremium)
+                        }
+                        .confettiCannon(trigger: $confettiCounter, num: 40, colors: [.green, .blue, .purple])
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    
+                    // Right half: Improving Areas
+                    VStack(alignment: .leading, spacing: 8) {
+                        if !progress.improvementAreas.isEmpty {
+                            Text("Improving Areas:")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                            ForEach(Array(progress.improvementAreas.enumerated()), id: \.offset) { index, area in
+                                HStack {
+                                    Image(systemName: index == 0 ? "star.circle.fill" : "arrow.up.circle.fill")
+                                        .foregroundColor(index == 0 ? 
+                                            (isDark ? Color.yellow.opacity(0.8) : Color.orange) : 
+                                            (isDark ? NuraColors.successDark : Color(red: 0.11, green: 0.60, blue: 0.36)))
+                                        .font(.caption)
+                                    Text(area)
+                                        .font(.caption)
+                                        .fontWeight(index == 0 ? .semibold : .regular)
+                                        .foregroundColor(isDark ? NuraColors.textSecondaryDark : .primary)
+                                }
+                            }
+                            // Additional improving area with secondary priority
                             HStack {
-                                Image(systemName: "arrow.up.circle.fill")
-                                    .foregroundColor(isDark ? NuraColors.successDark : Color(red: 0.11, green: 0.60, blue: 0.36))
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(isDark ? Color.blue.opacity(0.7) : Color.blue)
                                     .font(.caption)
-                                Text(area)
+                                Text("Skin texture")
                                     .font(.caption)
                                     .foregroundColor(isDark ? NuraColors.textSecondaryDark : .primary)
                             }
                         }
+                        Spacer(minLength: 0)
                     }
-                    Spacer(minLength: 0)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                // Right half: Centered AnimatedRingView
-                VStack {
-                    Spacer()
-                    AnimatedRingView(
-                        progress: Double(progress.skinHealthScore),
-                        ringColor: isDark ? NuraColors.successDark : ringColor(for: progress.skinHealthScore),
-                        ringWidth: 16,
-                        label: "\(Int(progress.skinHealthScore * 100))%"
-                    )
-                    .frame(width: 100, height: 100)
-                    .confettiCannon(trigger: $confettiCounter, num: 40, colors: [.green, .blue, .purple])
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity, alignment: .center)
-            }
         }
         .padding()
         .background(
@@ -261,19 +330,72 @@ struct ProgressOverviewCard: View {
                 if isDark {
                     NuraColors.cardDark
                 } else {
+                    // Regular light mode background
                     Color(red: 1.0, green: 0.913, blue: 0.839) // #FFE9D6
                     LinearGradient(
                         gradient: Gradient(colors: [Color.white.opacity(0.08), Color.clear]),
                         startPoint: .top,
                         endPoint: .bottom
                     )
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color(red: 0.98, green: 0.839, blue: 0.706).opacity(0.2), lineWidth: 1.2) // #FAD6B4 20%
+                    
+                    // Premium light mode styling
+                    if isPremium {
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                Color.purple.opacity(0.08),
+                                Color.yellow.opacity(0.05),
+                                Color.purple.opacity(0.03)
+                            ]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                        .animation(.easeInOut(duration: 3).repeatForever(autoreverses: true), value: isPremium)
+                    }
+                    
+                    // Premium border
+                    if isPremium {
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(
+                                LinearGradient(
+                                    gradient: Gradient(colors: [Color.purple.opacity(0.4), Color.yellow.opacity(0.3)]),
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 2.0
+                            )
+                    } else {
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color(red: 0.98, green: 0.839, blue: 0.706).opacity(0.2), lineWidth: 1.2)
+                    }
                 }
             }
         )
         .cornerRadius(12)
-        .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
+        .shadow(
+            color: isPremium ? Color.purple.opacity(0.2) : .black.opacity(0.1),
+            radius: isPremium ? 8 : 5,
+            x: 0,
+            y: isPremium ? 3 : 2
+        )
+        .scaleEffect(isPremium ? 1.02 : 1.0)
+        .animation(.easeInOut(duration: 0.3), value: isPremium)
+        
+        // Floating share button overlay - bottom right
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                VStack(spacing: 2) {
+                    SkinScoreShareButton(skinScore: progress.skinHealthScore, isDark: isDark)
+                    Text("Share")
+                        .font(.caption2)
+                        .foregroundColor(.gray.opacity(0.6))
+                }
+            }
+        }
+        .padding(.bottom, 8)
+        .padding(.trailing, 8)
+    }
     }
 }
 
@@ -397,9 +519,16 @@ struct RecentAnalysisCard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
-            Text("Recent Analysis")
-                .font(.headline)
-                .fontWeight(.semibold)
+            HStack {
+                Text("Recent Analysis")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                
+                Spacer()
+                
+                // Share button in top right
+                ShareButton(analysis: analysis, skinScore: 8.7) // Using a sample skin score
+            }
             
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
@@ -759,6 +888,7 @@ struct UpcomingTasksCard: View {
 struct InsightsCard: View {
     let insights: [Insight]
     var isDark: Bool
+    var isPremium: Bool = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
@@ -799,13 +929,48 @@ struct InsightsCard: View {
                         startPoint: .top,
                         endPoint: .bottom
                     )
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color(red: 0.98, green: 0.78, blue: 0.60).opacity(0.2), lineWidth: 1.2) // #F9C89B 20%
+                    
+                    // Premium light mode styling
+                    if isPremium {
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                Color.purple.opacity(0.06),
+                                Color.yellow.opacity(0.04),
+                                Color.purple.opacity(0.02)
+                            ]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                        .animation(.easeInOut(duration: 5).repeatForever(autoreverses: true), value: isPremium)
+                    }
+                    
+                    // Premium border
+                    if isPremium {
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(
+                                LinearGradient(
+                                    gradient: Gradient(colors: [Color.purple.opacity(0.3), Color.yellow.opacity(0.2)]),
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1.8
+                            )
+                    } else {
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color(red: 0.98, green: 0.78, blue: 0.60).opacity(0.2), lineWidth: 1.2)
+                    }
                 }
             }
         )
         .cornerRadius(12)
-        .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
+        .shadow(
+            color: isPremium ? Color.purple.opacity(0.15) : .black.opacity(0.1),
+            radius: isPremium ? 6 : 5,
+            x: 0,
+            y: isPremium ? 2.5 : 2
+        )
+        .scaleEffect(isPremium ? 1.01 : 1.0)
+        .animation(.easeInOut(duration: 0.3), value: isPremium)
     }
     
     private func insightIcon(for type: Insight.InsightType) -> String {
@@ -827,7 +992,160 @@ struct InsightsCard: View {
     }
 }
 
+// MARK: - Skin Score Share Button
+
+struct SkinScoreShareButton: View {
+    let skinScore: Double
+    let isDark: Bool
+    @StateObject private var shareManager = ShareManager()
+    @State private var showShareOptions = false
+    
+    var body: some View {
+        Button(action: {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                showShareOptions = true
+            }
+        }) {
+            Image(systemName: "arrowshape.turn.up.right")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(Color.gray.opacity(0.7))
+                .frame(width: 38, height: 38)
+                .background(
+                    Circle()
+                        .fill(isDark ? NuraColors.cardDark : Color(red: 1.0, green: 0.913, blue: 0.839))
+                        .overlay(
+                            Circle()
+                                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                        )
+                )
+        }
+        .shadow(color: .black.opacity(0.15), radius: 2, x: 0, y: 1)
+        .sheet(isPresented: $showShareOptions) {
+            ShareOptionsView(
+                analysis: createMockAnalysis(),
+                skinScore: skinScore * 10, // Convert to 0-10 scale
+                shareManager: shareManager,
+                isPresented: $showShareOptions
+            )
+        }
+    }
+    
+    private func createMockAnalysis() -> SkinAnalysisResult {
+        // Create a mock analysis for sharing purposes
+        let mockConditions = [
+            SkinCondition(
+                id: UUID(),
+                name: "healthy skin",
+                severity: .mild,
+                confidence: 0.95,
+                description: "Your skin looks great!",
+                affectedAreas: ["face"]
+            )
+        ]
+        
+        return SkinAnalysisResult(
+            conditions: mockConditions,
+            confidence: 0.95,
+            analysisDate: Date(),
+            recommendations: ["Maintain your current skincare routine"]
+        )
+    }
+}
+
+// MARK: - Wax Stamp Badge (Reusable Component)
+
+struct WaxStampBadge: View {
+    var text: String = "PRO"
+    var size: CGFloat = 38
+    var shouldAnimate: Bool = true
+    
+    @State private var isAnimating = false
+    
+    var body: some View {
+        ZStack {
+            // Wax stamp base with realistic red wax appearance
+            Circle()
+                .fill(
+                    RadialGradient(
+                        gradient: Gradient(colors: [
+                            Color(red: 0.8, green: 0.2, blue: 0.2), // Bright red center
+                            Color(red: 0.6, green: 0.1, blue: 0.1), // Darker red middle
+                            Color(red: 0.4, green: 0.05, blue: 0.05) // Deep red edge
+                        ]),
+                        center: .topLeading,
+                        startRadius: 5,
+                        endRadius: size * 0.7
+                    )
+                )
+                .frame(width: size, height: size)
+                .overlay(
+                    // Wax texture highlight
+                    Circle()
+                        .stroke(
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    Color.white.opacity(0.4),
+                                    Color.clear,
+                                    Color.black.opacity(0.3)
+                                ]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1.5
+                        )
+                        .padding(2)
+                )
+                .overlay(
+                    // Irregular wax edge effect
+                    Circle()
+                        .stroke(
+                            Color(red: 0.3, green: 0.05, blue: 0.05).opacity(0.8),
+                            lineWidth: 1.2
+                        )
+                )
+                // Wax stamp shadows for authentic depth
+                .shadow(color: Color.black.opacity(0.5), radius: 8, x: 3, y: 5)
+                .shadow(color: Color.red.opacity(0.3), radius: 4, x: 1, y: 2)
+                .shadow(color: Color.black.opacity(0.2), radius: 15, x: 5, y: 10)
+                .scaleEffect(shouldAnimate && isAnimating ? 1.03 : 1.0)
+                .animation(
+                    shouldAnimate ? .easeInOut(duration: 3).repeatForever(autoreverses: true) : .linear(duration: 0),
+                    value: isAnimating
+                )
+            
+            // Embossed text effect like pressed wax
+            Text(text)
+                .font(.system(size: size * 0.28, weight: .black, design: .rounded))
+                .foregroundColor(.white)
+                .shadow(color: .black.opacity(0.8), radius: 1, x: 0, y: 1)
+                .shadow(color: .red.opacity(0.5), radius: 2, x: 1, y: 1)
+                .overlay(
+                    // Embossed highlight
+                    Text(text)
+                        .font(.system(size: size * 0.28, weight: .black, design: .rounded))
+                        .foregroundColor(.white.opacity(0.2))
+                        .offset(x: -0.5, y: -0.5)
+                )
+        }
+        .onAppear {
+            if shouldAnimate {
+                isAnimating = true
+            }
+        }
+    }
+}
+
+// MARK: - Legacy Pro Badge View (Deprecated - Use WaxStampBadge instead)
+
+struct ProBadgeView: View {
+    var body: some View {
+        WaxStampBadge()
+    }
+}
+
 #Preview {
     DashboardView()
         .environmentObject(SkinAnalysisManager())
+        .environmentObject(ShareManager())
+        .environmentObject(UserTierManager(authManager: AuthenticationManager.shared))
 } 

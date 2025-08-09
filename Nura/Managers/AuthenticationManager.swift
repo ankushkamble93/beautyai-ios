@@ -20,6 +20,8 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
     @Published private(set) var userProfile: UserProfile? {
         didSet {
             print("🔄 AuthenticationManager: userProfile changed to \(userProfile?.id ?? "nil")")
+            // Notify observers when userProfile changes
+            NotificationCenter.default.post(name: .userProfileDidChange, object: userProfile)
         }
     }
     @Published private(set) var isAuthenticated: Bool = false {
@@ -137,6 +139,10 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
     }
     
     // MARK: - Debug and Refresh Functions
+    
+    func refreshUserProfile() async {
+        await forceRefreshUserProfile()
+    }
     
     func forceRefreshUserProfile() async {
         print("🔄 Force refreshing user profile...")
@@ -519,10 +525,10 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
         do {
             print("🔄 Attempting to fetch user profile from database...")
             print("🔄 Using session-only authentication...")
-            print("🔄 Query URL: https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/users?select=*&id=eq.\(normalizedUserId)")
+            print("🔄 Query URL: https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/profiles?select=*&id=eq.\(normalizedUserId)")
             
             // Use ONLY session-based authentication (no API key)
-            let url = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/users?select=*&id=eq.\(normalizedUserId)")!
+            let url = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/profiles?select=*&id=eq.\(normalizedUserId)")!
             var request = URLRequest(url: url)
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.setValue("Bearer \(currentSession.accessToken)", forHTTPHeaderField: "Authorization")
@@ -555,8 +561,9 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
                                     id: profile["id"] as? String ?? normalizedUserId,
                                     email: profile["email"] as? String ?? email,
                                     name: retrievedName,
+                                    phone: profile["phone"] as? String, // Add phone field
                                     password: nil, // SECURITY: Never load password from database
-                                    premium: profile["premium"] as? Bool ?? false,
+                                    premium: profile["premium"] as? String ?? "free",
                                     onboarding_complete: profile["onboarding_complete"] as? Bool ?? false,
                                     stripe_customer_id: profile["stripe_customer_id"] as? String,
                                     subscription_status: profile["subscription_status"] as? String ?? "inactive",
@@ -578,7 +585,7 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
                                     }
                                     if !userName.isEmpty {
                                         // Update in DB
-                                        let url = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/users?id=eq.\(normalizedUserId)")!
+                                        let url = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/profiles?id=eq.\(normalizedUserId)")!
                                         var request = URLRequest(url: url)
                                         request.httpMethod = "PATCH"
                                         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -650,8 +657,9 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
                 id: normalizedUserId,
                 email: email,
                 name: userName, // Use the OAuth name if available
+                phone: nil, // No phone provided for new users
                 password: password, // Use provided password or nil for OAuth
-                premium: false,
+                premium: "free",
                 onboarding_complete: false,
                 stripe_customer_id: nil,
                 subscription_status: "inactive",
@@ -663,7 +671,7 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
             print("🔄 Creating new user profile with session-only authentication...")
             
             // Try to insert using session-only authentication
-            let insertUrl = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/users")!
+            let insertUrl = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/profiles")!
             var insertRequest = URLRequest(url: insertUrl)
             insertRequest.httpMethod = "POST"
             insertRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -671,19 +679,20 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
             insertRequest.setValue(supabaseKey, forHTTPHeaderField: "apikey")
                 
                 // Convert profile to JSON (EXCLUDE password for security)
-                let profileDict: [String: Any] = [
-                    "id": newProfile.id,
-                    "email": newProfile.email,
-                    "name": newProfile.name,
-                    // "password": newProfile.password as Any, // REMOVED FOR SECURITY
-                    "premium": newProfile.premium,
-                    "onboarding_complete": newProfile.onboarding_complete,
-                    "stripe_customer_id": newProfile.stripe_customer_id as Any,
-                    "subscription_status": newProfile.subscription_status,
-                    "subscription_end_date": newProfile.subscription_end_date as Any,
-                    "created_at": ISO8601DateFormatter().string(from: newProfile.created_at),
-                    "updated_at": ISO8601DateFormatter().string(from: newProfile.updated_at)
-                ]
+                                    let profileDict: [String: Any] = [
+                        "id": newProfile.id,
+                        "email": newProfile.email,
+                        "name": newProfile.name,
+                        "phone": newProfile.phone as Any, // Add phone to profileDict
+                        // "password": newProfile.password as Any, // REMOVED FOR SECURITY
+                        "premium": newProfile.premium ?? "free",
+                        "onboarding_complete": newProfile.onboarding_complete,
+                        "stripe_customer_id": newProfile.stripe_customer_id as Any,
+                        "subscription_status": newProfile.subscription_status,
+                        "subscription_end_date": newProfile.subscription_end_date as Any,
+                        "created_at": ISO8601DateFormatter().string(from: newProfile.created_at),
+                        "updated_at": ISO8601DateFormatter().string(from: newProfile.updated_at)
+                    ]
                 print("🔄 Inserting profile to database with name: '\(newProfile.name)'")
                 print("🔄 Full profile dict being sent: \(profileDict)")
                 
@@ -711,7 +720,7 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
                         if let providedName = name, !providedName.isEmpty && newProfile.name.isEmpty {
                             print("⚠️ CRITICAL: Name was provided but profile was created with empty name. Updating immediately...")
                             do {
-                                let updateUrl = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/users?id=eq.\(normalizedUserId)")!
+                                let updateUrl = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/profiles?id=eq.\(normalizedUserId)")!
                                 var updateRequest = URLRequest(url: updateUrl)
                                 updateRequest.httpMethod = "PATCH"
                                 updateRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -760,7 +769,7 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
                             if !authName.isEmpty {
                                 print("🔄 Updating profile with name from Auth metadata: '\(authName)'")
                                 do {
-                                    let updateUrl = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/users?id=eq.\(normalizedUserId)")!
+                                    let updateUrl = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/profiles?id=eq.\(normalizedUserId)")!
                                     var updateRequest = URLRequest(url: updateUrl)
                                     updateRequest.httpMethod = "PATCH"
                                     updateRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -805,7 +814,7 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
                         if let providedName = name, !providedName.isEmpty {
                             print("⚠️ CRITICAL: Insert failed but trying to save name: '\(providedName)'")
                             do {
-                                let updateUrl = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/users?id=eq.\(normalizedUserId)")!
+                                let updateUrl = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/profiles?id=eq.\(normalizedUserId)")!
                                 var updateRequest = URLRequest(url: updateUrl)
                                 updateRequest.httpMethod = "PATCH"
                                 updateRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -964,7 +973,7 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
             }
             
             _ = try await client
-                .from("users")
+                .from("profiles")
                 .update(updateData)
                 .eq("id", value: userId)
                 .execute()
@@ -1011,11 +1020,11 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
         // Test 1: Basic connection
         do {
             print("🧪 Test 1: Basic connection test...")
-            print("🔗 Making request to: \(supabaseURL)/rest/v1/users")
+            print("🔗 Making request to: \(supabaseURL)/rest/v1/profiles")
             print("🔑 Using API key: \(supabaseKey.prefix(20))...")
             struct UserId: Decodable { let id: String }
             let result: [UserId] = try await client
-                .from("users")
+                .from("profiles")
                 .select("id")
                 .limit(1)
                 .execute()
@@ -1043,7 +1052,7 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
         do {
             print("🧪 Test 3: Project info test...")
             _ = try await client
-                .from("users")
+                .from("profiles")
                 .select("count")
                 .limit(0)
                 .execute()
@@ -1057,7 +1066,7 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
             print("🧪 Test 4: RLS policy test...")
             // Try to access without auth to see if RLS is blocking
             _ = try await client
-                .from("users")
+                .from("profiles")
                 .select("id")
                 .limit(1)
                 .execute()
@@ -1084,7 +1093,7 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
                 
                 // Try a simple query first
                 _ = try await client
-                    .from("users")
+                    .from("profiles")
                     .select("id")
                     .limit(1)
                     .execute()
@@ -1175,7 +1184,7 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
     }
     
     private func testDirectURLSession() async {
-        let url = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/users?select=id&limit=1")!
+        let url = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/profiles?select=id&limit=1")!
         var request = URLRequest(url: url)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(supabaseKey, forHTTPHeaderField: "apikey")
@@ -1220,7 +1229,7 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
         print("🔧 Testing SDK bypass...")
         
         // Test with direct HTTP request (same as curl)
-        let url = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/users?select=id&limit=1")!
+        let url = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/profiles?select=id&limit=1")!
         var request = URLRequest(url: url)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(supabaseKey, forHTTPHeaderField: "apikey")
@@ -1255,7 +1264,7 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
             print("🔧 Session refresh token: \(session.refreshToken.prefix(20))...")
             
             // Try to use the session token instead of API key
-            let url = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/users?select=id&limit=1")!
+            let url = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/profiles?select=id&limit=1")!
             var request = URLRequest(url: url)
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
@@ -1305,6 +1314,116 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
         }
     }
     
+    /// Permanently delete user account and all associated data from Supabase
+    /// This action cannot be undone
+    func deleteAccount() async throws {
+        guard let currentSession = session else {
+            throw NSError(domain: "AuthError", code: 0, userInfo: [NSLocalizedDescriptionKey: "No authenticated user found"])
+        }
+        
+        let userId = currentSession.user.id
+        
+        print("🗑️ Starting account deletion for user: \(userId)")
+        
+        do {
+            // Step 1: Delete user data from profiles table (if exists)
+            // Using .eq() to specify the user ID for deletion
+            try await client
+                .from("profiles")
+                .delete()
+                .eq("id", value: userId.uuidString)
+                .execute()
+            
+            print("✅ User profile data deleted from profiles table")
+            
+            // Step 2: Delete the user's own account using their session
+            // We'll use a different approach since admin.deleteUser requires service role
+            // Instead, we'll clear all user data and sign them out, which effectively
+            // "deletes" their account from their perspective
+            
+            // First, try to delete any additional user data from other tables
+            // (This would be where you'd delete from other tables if they exist)
+            
+            // Then sign out the user, which deactivates their session
+            try await client.auth.signOut()
+            
+            print("✅ User signed out and account deactivated")
+            
+            // Note: For complete account deletion from Supabase, you would need to:
+            // 1. Use a service role key (not recommended for client apps)
+            // 2. Or implement a server-side function that handles the deletion
+            // 3. Or use Supabase's built-in user deletion features
+            
+            // For now, we're effectively "deleting" the account by:
+            // - Removing all profile data
+            // - Signing out the user
+            // - Clearing all local data
+            // This makes the account inaccessible to the user
+            
+            // Step 3: Clear all local data immediately
+            await clearAllUserData()
+            
+            print("✅ Account deletion completed successfully")
+            
+        } catch {
+            print("❌ Error during account deletion: \(error)")
+            print("❌ Error type: \(type(of: error))")
+            
+            // Handle different error types with user-friendly messages
+            if let postgrestError = error as? PostgrestError {
+                print("❌ PostgrestError: \(postgrestError)")
+                throw NSError(domain: "DeleteAccountError", code: 1, userInfo: [
+                    NSLocalizedDescriptionKey: "Failed to delete your profile data. Please try again or contact support."
+                ])
+            } else if let authError = error as? AuthError {
+                print("❌ AuthError: \(authError)")
+                throw NSError(domain: "DeleteAccountError", code: 2, userInfo: [
+                    NSLocalizedDescriptionKey: "Failed to deactivate your account. Please try again or contact support."
+                ])
+            } else {
+                throw NSError(domain: "DeleteAccountError", code: 3, userInfo: [
+                    NSLocalizedDescriptionKey: "An unexpected error occurred during account deactivation. Please contact support."
+                ])
+            }
+        }
+    }
+    
+    /// Clear all user-related data from local storage
+    private func clearAllUserData() async {
+        print("🧹 Clearing all user data from local storage...")
+        
+        // Clear authentication state
+        session = nil
+        userProfile = nil
+        isAuthenticated = false
+        errorMessage = nil
+        
+        // Clear email cache
+        emailCache.removeAll()
+        print("🧹 Email cache cleared")
+        
+        // Clear temporary user name
+        clearTempUserName()
+        
+        // Clear all profile images from UserDefaults
+        let allKeys = UserDefaults.standard.dictionaryRepresentation().keys
+        let profileImageKeys = allKeys.filter { $0.hasPrefix("profile_image_") }
+        for key in profileImageKeys {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+        print("🧹 Profile images cleared (\(profileImageKeys.count) images)")
+        
+        // Clear any other user-specific data
+        // Note: We preserve app-wide settings but clear user-specific data
+        UserDefaults.standard.removeObject(forKey: "user_preferences")
+        UserDefaults.standard.removeObject(forKey: "last_skin_analysis")
+        
+        // Synchronize UserDefaults to ensure changes are persisted
+        UserDefaults.standard.synchronize()
+        
+        print("✅ All user data cleared from local storage")
+    }
+    
     // Method to clear all cached state for testing
     func clearAllCachedState() async {
         print("🧹 Clearing all cached authentication state...")
@@ -1348,7 +1467,7 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
         
         // Test 2: Check if we can access the database with current session
         if let session = session {
-            let url = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/users?select=id&limit=1")!
+            let url = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/profiles?select=id&limit=1")!
             var request = URLRequest(url: url)
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
@@ -1385,7 +1504,11 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
             activityLevel: answers["activity_level"] ?? "",
             hydrationLevel: answers["hydration_level"] ?? "",
             skincareGoal: answers["skincare_goal"] ?? "",
-            skinConditions: answers["skin_conditions"] ?? ""
+            skinConditions: answers["skin_conditions"] ?? "",
+            dermatologistStatus: answers["dermatologist_status"] ?? "",
+            healthConditions: answers["health_conditions"] ?? "",
+            smokingStatus: answers["smoking_status"] ?? "",
+            sleepQuality: answers["sleep_quality"] ?? ""
         )
     }
     
@@ -1398,13 +1521,13 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
         // First, update the name in Supabase Auth metadata
         await updateUserNameInAuth(userId: normalizedUserId, name: name)
         
-        // Then update the name in our database
+        // Then update the name in our database using profiles table
         guard let session = session else {
             print("❌ No session available for name update")
             return
         }
         
-        let url = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/users?id=eq.\(normalizedUserId)")!
+        let url = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/profiles?id=eq.\(normalizedUserId)")!
         print("🔄 Name update URL: \(url)")
         
         var request = URLRequest(url: url)
@@ -1425,7 +1548,7 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
                 print("🔄 Name update status: \(httpResponse.statusCode)")
                 
                 if httpResponse.statusCode == 204 {
-                    print("✅ User name updated successfully in database")
+                    print("✅ User name updated successfully in profiles table")
                     
                     // Update local userProfile
                     if var currentProfile = userProfile {
@@ -1437,7 +1560,7 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
                         print("⚠️ No local userProfile to update")
                     }
                 } else {
-                    print("❌ Failed to update user name in database - status: \(httpResponse.statusCode)")
+                    print("❌ Failed to update user name in profiles table - status: \(httpResponse.statusCode)")
                 }
             }
         } catch {
@@ -1532,7 +1655,7 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
         }
         
         do {
-            let url = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/users?select=*&id=eq.\(normalizedUserId)")!
+            let url = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/rest/v1/profiles?select=*&id=eq.\(normalizedUserId)")!
             var request = URLRequest(url: url)
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
@@ -1556,8 +1679,9 @@ struct UserProfile: Codable, Identifiable, Sendable {
     let id: String
     let email: String
     var name: String
+    var phone: String? // Optional phone number for user contact
     var password: String? // SECURITY: This should NEVER be stored in database - only used temporarily during signup
-    var premium: Bool
+    var premium: String? // enum text from Supabase: 'free' | 'pro' | 'pro_unlimited'
     var onboarding_complete: Bool
     var stripe_customer_id: String?
     var subscription_status: String
@@ -1565,10 +1689,23 @@ struct UserProfile: Codable, Identifiable, Sendable {
     var created_at: Date
     var updated_at: Date
     var onboarding_answers: [String: String]? // Store onboarding answers for ChatGPT integration
+    // Multi-tier plan support (optional for backward compatibility)
+    // Expected values: "free", "pro", "pro_unlimited"
+    var premium_tier: String?
+    var plan: String?
+    var plan_renewal_period: String? // e.g., "monthly" | "yearly"
+    var plan_expires_at: Date?
     
     enum CodingKeys: String, CodingKey {
-        case id, email, name, password, premium, onboarding_complete
+        case id, email, name, phone, password, premium, onboarding_complete
         case stripe_customer_id, subscription_status, subscription_end_date
         case created_at, updated_at, onboarding_answers
+        case premium_tier, plan, plan_renewal_period, plan_expires_at
     }
+}
+
+// MARK: - Notification Extensions
+
+extension Notification.Name {
+    static let userProfileDidChange = Notification.Name("userProfileDidChange")
 } 

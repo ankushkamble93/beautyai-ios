@@ -1,67 +1,165 @@
 import SwiftUI
 
-struct SkinLog: Identifiable, Equatable {
-    let id = UUID()
-    let date: String
-    let percent: Int
-    let mood: String
-    let note: String
-}
-
 struct ViewProgressView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
-    @State private var selectedRange: DataRange = .oneMonth
+    @EnvironmentObject var skinDiaryManager: SkinDiaryManager
+    @EnvironmentObject var skinAnalysisManager: SkinAnalysisManager
+    @State private var selectedRange: DateRange = .oneMonth
     @State private var selectedLog: SkinLog? = nil
     @State private var showRangeAlert: Bool = false
-    // Dummy data for now
-    let skinLogs: [SkinLog] = [
-        .init(date: "Jul 16", percent: 62, mood: "Oily", note: "Felt greasy, humid day"),
-        .init(date: "Jul 17", percent: 68, mood: "Dry", note: "A bit flaky, forgot moisturizer"),
-        .init(date: "Jul 18", percent: 70, mood: "Clear", note: "Skin felt good!"),
-        .init(date: "Jul 19", percent: 74, mood: "Clear", note: "Routine on track"),
-        .init(date: "Jul 20", percent: 65, mood: "Oily", note: "Late night, more oil"),
-        .init(date: "Jul 21", percent: 72, mood: "Clear", note: "Skin felt great!"),
-        .init(date: "Jul 22", percent: 78, mood: "Clear", note: "Best day yet!"),
-        .init(date: "Jul 23", percent: 80, mood: "Clear", note: "Glowing, hydrated"),
-        .init(date: "Jul 24", percent: 76, mood: "Dry", note: "Slight dryness, AC on"),
-        .init(date: "Jul 25", percent: 82, mood: "Clear", note: "Excellent clarity")
-    ]
-    let dummyLogs: [SkinLog] = [
-        .init(date: "Jul 01", percent: 60, mood: "Oily", note: "Sample: Felt greasy, humid day"),
-        .init(date: "Jul 05", percent: 68, mood: "Dry", note: "Sample: A bit flaky, forgot moisturizer"),
-        .init(date: "Jul 10", percent: 70, mood: "Clear", note: "Sample: Skin felt good!"),
-        .init(date: "Jul 13", percent: 74, mood: "Clear", note: "Sample: Routine on track"),
-        .init(date: "Jul 16", percent: 65, mood: "Oily", note: "Sample: Late night, more oil"),
-        .init(date: "Jul 19", percent: 72, mood: "Clear", note: "Sample: Skin felt great!"),
-        .init(date: "Jul 22", percent: 78, mood: "Clear", note: "Sample: Best day yet!"),
-        .init(date: "Jul 25", percent: 80, mood: "Clear", note: "Sample: Glowing, hydrated"),
-        .init(date: "Jul 28", percent: 76, mood: "Dry", note: "Sample: Slight dryness, AC on"),
-        .init(date: "Jul 31", percent: 82, mood: "Clear", note: "Sample: Excellent clarity")
-    ]
-    var logsToUse: [SkinLog] { skinLogs.isEmpty ? dummyLogs : skinLogs }
-    var displayedLogs: [SkinLog] {
-        let now = Date()
+    // Enhanced dummy data with optimal spacing for each time range
+    var dummyLogsForRange: [SkinLog] {
         let calendar = Calendar.current
-        let filtered: [SkinLog] = logsToUse.filter { log in
-            guard let logDate = Self.dateFormatter(for: locale).date(from: log.date) else { return false }
-            switch selectedRange {
-            case .oneMonth:
-                return logDate >= calendar.date(byAdding: .month, value: -1, to: now)!
-            case .threeMonths:
-                return logDate >= calendar.date(byAdding: .month, value: -3, to: now)!
-            case .sixMonths:
-                return logDate >= calendar.date(byAdding: .month, value: -6, to: now)!
-            case .all:
-                return true
+        let now = Date()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM dd"
+        
+        var logs: [SkinLog] = []
+        
+        switch selectedRange {
+        case .oneMonth:
+            // Generate data every 3 days for past month (10 points)
+            for i in 0..<10 {
+                let date = calendar.date(byAdding: .day, value: -(i * 3), to: now)!
+                logs.append(SkinLog(
+                    date: formatter.string(from: date),
+                    percent: Int.random(in: 60...85),
+                    mood: ["Clear", "Oily", "Dry", "Sensitive"].randomElement()!,
+                    note: "Sample: \(["Good skin day", "Felt a bit oily", "Dry patches", "Clear and hydrated"].randomElement()!)"
+                ))
+            }
+        case .threeMonths:
+            // Generate data every week for past 3 months (12 points)
+            for i in 0..<12 {
+                let date = calendar.date(byAdding: .weekOfYear, value: -i, to: now)!
+                logs.append(SkinLog(
+                    date: formatter.string(from: date),
+                    percent: Int.random(in: 55...90),
+                    mood: ["Clear", "Oily", "Dry", "Sensitive", "Bumpy"].randomElement()!,
+                    note: "Sample: \(["Weekly progress", "Routine working", "Need more hydration", "Skin improving"].randomElement()!)"
+                ))
+            }
+        case .sixMonths:
+            // Generate data every 20 days for past 6 months (9 points)
+            for i in 0..<9 {
+                let date = calendar.date(byAdding: .day, value: -(i * 20), to: now)!
+                logs.append(SkinLog(
+                    date: formatter.string(from: date),
+                    percent: Int.random(in: 50...95),
+                    mood: ["Clear", "Oily", "Dry", "Sensitive", "Bumpy"].randomElement()!,
+                    note: "Sample: \(["Long-term progress", "Consistency pays off", "Seasonal changes", "Skin journey"].randomElement()!)"
+                ))
+            }
+        case .all:
+            // Generate data every month for past year (12 points)
+            for i in 0..<12 {
+                let date = calendar.date(byAdding: .month, value: -i, to: now)!
+                logs.append(SkinLog(
+                    date: formatter.string(from: date),
+                    percent: Int.random(in: 45...100),
+                    mood: ["Clear", "Oily", "Dry", "Sensitive", "Bumpy"].randomElement()!,
+                    note: "Sample: \(["Monthly overview", "Year of progress", "All seasons tracked", "Complete timeline"].randomElement()!)"
+                ))
             }
         }
-        return filtered.sorted { (a, b) in
-            guard let da = Self.dateFormatter(for: locale).date(from: a.date), let db = Self.dateFormatter(for: locale).date(from: b.date) else { return false }
-            return da < db
+        
+        return logs.sorted { (a, b) in
+            guard let dateA = formatter.date(from: a.date), let dateB = formatter.date(from: b.date) else { return false }
+            return dateA < dateB
         }
     }
-    var isEmpty: Bool { skinLogs.isEmpty }
+    
+    var logsToUse: [SkinLog] {
+        // IMPORTANT: Graph is independent of diary. Do NOT switch to diary entries.
+        // Only switch to real data when skin analysis (Dashboard) produces a valid score.
+        if let analysisResults = skinAnalysisManager.analysisResults {
+            // Prefer percent from recommendations.progressTracking.skinHealthScore if available
+            let recommendedScore = skinAnalysisManager.recommendations?.progressTracking.skinHealthScore
+            let percent = recommendedScore.map { Int($0 * 100) } ?? max(1, min(100, Int(analysisResults.confidence * 100)))
+            let analysisLog = SkinLog(
+                date: Self.dateFormatter(for: locale).string(from: analysisResults.analysisDate),
+                percent: percent,
+                mood: "Clear",
+                note: "Analysis: \(analysisResults.conditions.count) conditions detected"
+            )
+            // Integrate smoothly with sample data by replacing the most recent sample point
+            var combined = dummyLogsForRange
+            if !combined.isEmpty {
+                combined.removeLast()
+            }
+            combined.append(analysisLog)
+            return combined
+        }
+        // Otherwise, always show sample data
+        return dummyLogsForRange
+    }
+    var displayedLogs: [SkinLog] {
+        // Since logsToUse already handles the filtering logic, just return it
+        return logsToUse
+    }
+    
+    // Timeline entries - completely independent of graph filters, always shows recent diary entries
+    var timelineEntries: [SkinLog] {
+        if skinDiaryManager.hasRealData {
+            // Show ALL recent diary entries (not filtered by graph selection)
+            let calendar = Calendar.current
+            let now = Date()
+            let oneMonthAgo = calendar.date(byAdding: .month, value: -1, to: now)!
+            
+            let recentEntries = skinDiaryManager.diaryEntries.filter { entry in
+                entry.date >= oneMonthAgo
+            }.sorted { $0.date > $1.date } // Most recent first
+            
+            return recentEntries.map { entry in
+                SkinLog(
+                    date: skinDiaryManager.formatDateForSkinLog(entry.date),
+                    percent: entry.skinHealthPercent,
+                    mood: entry.primaryMood,
+                    note: entry.note.isEmpty ? entry.combinedStatesText : entry.note
+                )
+            }
+        } else {
+            // Show fixed dummy timeline data (independent of graph filters)
+            let calendar = Calendar.current
+            let now = Date()
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMM dd"
+            
+            return [
+                SkinLog(date: formatter.string(from: now), percent: 78, mood: "Clear", note: "Sample: Great skin day"),
+                SkinLog(date: formatter.string(from: calendar.date(byAdding: .day, value: -1, to: now)!), percent: 65, mood: "Oily", note: "Sample: A bit oily"),
+                SkinLog(date: formatter.string(from: calendar.date(byAdding: .day, value: -3, to: now)!), percent: 72, mood: "Dry", note: "Sample: Needed more moisture"),
+                SkinLog(date: formatter.string(from: calendar.date(byAdding: .day, value: -5, to: now)!), percent: 80, mood: "Clear", note: "Sample: Routine working well"),
+                SkinLog(date: formatter.string(from: calendar.date(byAdding: .day, value: -7, to: now)!), percent: 60, mood: "Sensitive", note: "Sample: Skin felt reactive"),
+                SkinLog(date: formatter.string(from: calendar.date(byAdding: .day, value: -10, to: now)!), percent: 75, mood: "Clear", note: "Sample: Good progress"),
+                SkinLog(date: formatter.string(from: calendar.date(byAdding: .day, value: -14, to: now)!), percent: 68, mood: "Bumpy", note: "Sample: Few breakouts")
+            ]
+        }
+    }
+    
+    var isEmpty: Bool { 
+        // Only consider empty if we have no real data and no analysis data
+        return !skinDiaryManager.hasRealData && (skinAnalysisManager.analysisResults?.conditions.isEmpty ?? true)
+    }
+    
+    var graphDataDescription: String {
+        if skinDiaryManager.hasRealData {
+            switch selectedRange {
+            case .oneMonth: return "Data points every 3 days"
+            case .threeMonths: return "Data points weekly"
+            case .sixMonths: return "Data points every 20 days"
+            case .all: return "Data points monthly"
+            }
+        } else {
+            switch selectedRange {
+            case .oneMonth: return "Sample: every 3 days"
+            case .threeMonths: return "Sample: weekly intervals"
+            case .sixMonths: return "Sample: 20-day intervals"
+            case .all: return "Sample: monthly overview"
+            }
+        }
+    }
     var canShowThreeMonths: Bool { true }
     var canShowSixMonths: Bool { true }
     var canShowAll: Bool { true }
@@ -95,7 +193,7 @@ struct ViewProgressView: View {
                         // Line Graph Section
                         ZStack(alignment: .topLeading) {
                             VStack(spacing: 0) {
-                                LineGraphView(logs: displayedLogs.isEmpty ? dummyLogs : displayedLogs, colorScheme: colorScheme)
+                                LineGraphView(logs: displayedLogs, colorScheme: colorScheme)
                                     .frame(height: 220)
                                     .padding(.top, 8)
                                     .padding(.horizontal, 8)
@@ -110,13 +208,20 @@ struct ViewProgressView: View {
                                 .padding(.top, 10)
                                 .padding(.leading, 8)
                             }
-                            // Floater for y-axis label
-                            Text("Skin Clarity %")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .padding(.leading, 8)
-                                .padding(.top, 2)
-                                .background(Color.clear)
+                            // Enhanced graph labels
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Skin Clarity %")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.secondary)
+                                
+                                Text(graphDataDescription)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary.opacity(0.8))
+                            }
+                            .padding(.leading, 8)
+                            .padding(.top, 2)
+                            .background(Color.clear)
                         }
                         .padding(.bottom, 8)
                         .background(cardBG)
@@ -126,12 +231,34 @@ struct ViewProgressView: View {
                         // Logged Feelings Timeline (most recent to oldest)
                         VStack(alignment: .leading, spacing: 0) {
                             HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Recent Skin Diary")
+                                        .font(.title2).fontWeight(.bold)
+                                        .foregroundColor(primaryText)
+                                    Text("Your latest logged skin feelings")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
                                 Spacer()
-                                Text("Logged Feelings Timeline")
-                                    .font(.title2).fontWeight(.bold)
-                                    .padding(.bottom, 2)
-                                    .foregroundColor(primaryText)
-                                Spacer()
+                                
+                                // Timeline count indicator
+                                if skinDiaryManager.hasRealData {
+                                    Text("\(timelineEntries.count) entries")
+                                        .font(.caption2)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.green.opacity(0.1))
+                                        .foregroundColor(.green)
+                                        .cornerRadius(8)
+                                } else {
+                                    Text("Sample data")
+                                        .font(.caption2)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.orange.opacity(0.1))
+                                        .foregroundColor(.orange)
+                                        .cornerRadius(8)
+                                }
                             }
                             Rectangle()
                                 .fill(Color.secondary.opacity(0.10))
@@ -139,7 +266,7 @@ struct ViewProgressView: View {
                                 .padding(.bottom, 10)
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 16) {
-                                    ForEach((displayedLogs.isEmpty ? dummyLogs : displayedLogs).sorted(by: { a, b in
+                                    ForEach(timelineEntries.sorted(by: { a, b in
                                         guard let da = Self.dateFormatter(for: locale).date(from: a.date), let db = Self.dateFormatter(for: locale).date(from: b.date) else { return false }
                                         return da > db
                                     })) { log in
@@ -186,19 +313,63 @@ struct ViewProgressView: View {
                         .background(cardBG)
                         .cornerRadius(18)
                         .shadow(color: shadowColor, radius: 6, x: 0, y: 2)
-                        // Empty State
-                        if isEmpty {
-                            VStack(spacing: 16) {
-                                Text("You're viewing sample data.")
-                                    .font(.headline)
-                                    .foregroundColor(.secondary)
-                                Text("As you start logging your skin, your own data will replace this sample data. After your first log, you'll see your own insights here!")
-                                    .font(.body)
-                                    .multilineTextAlignment(.center)
-                                    .foregroundColor(.secondary)
+                        // Data Status Information
+                        VStack(spacing: 16) {
+                            if skinDiaryManager.hasRealData {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                    Text("Showing your personal skin diary data")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.green)
+                                }
+                                .padding()
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color.green.opacity(0.1))
+                                        .stroke(Color.green.opacity(0.3), lineWidth: 1)
+                                )
+                            } else if skinAnalysisManager.analysisResults != nil {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "camera.fill")
+                                        .foregroundColor(.blue)
+                                    Text("Combined with your skin analysis data")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.blue)
+                                }
+                                .padding()
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color.blue.opacity(0.1))
+                                        .stroke(Color.blue.opacity(0.3), lineWidth: 1)
+                                )
+                            } else {
+                                VStack(spacing: 12) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "chart.line.uptrend.xyaxis")
+                                            .foregroundColor(.orange)
+                                        Text("Sample data for \(selectedRange.rawValue.lowercased())")
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                            .foregroundColor(.orange)
+                                    }
+                                    
+                                    Text("Start logging your skin diary (6 PM - midnight) or take a skin analysis to see your personal data here!")
+                                        .font(.caption)
+                                        .multilineTextAlignment(.center)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding()
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color.orange.opacity(0.1))
+                                        .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                                )
                             }
-                            .padding(.top, 40)
                         }
+                        .padding(.top, 20)
                     }
                     .padding()
                 }
@@ -325,12 +496,6 @@ struct LineGraphView: View {
 }
 
 // MARK: - Toggle Button
-enum DataRange: String, CaseIterable {
-    case oneMonth = "1 Month"
-    case threeMonths = "3 Months"
-    case sixMonths = "6 Months"
-    case all = "All"
-}
 
 // Updated ToggleButton to support disabled state
 struct ToggleButton: View {

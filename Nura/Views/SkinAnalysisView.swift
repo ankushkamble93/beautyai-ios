@@ -1,13 +1,15 @@
 import SwiftUI
 import PhotosUI
-import Combine
 
 struct SkinAnalysisView: View {
     @EnvironmentObject var skinAnalysisManager: SkinAnalysisManager
     @EnvironmentObject var appearanceManager: AppearanceManager
+    @EnvironmentObject var userTierManager: UserTierManager
     @State private var selectedImages: [PhotosPickerItem] = []
     @State private var showingImagePicker = false
     @State private var showingResults = false
+    @State private var showPremiumBanner = false
+    @State private var showLimitReachedBanner = false
     
     var body: some View {
         NavigationView {
@@ -84,32 +86,42 @@ struct SkinAnalysisView: View {
                             }
                         }
                         
-                        // Add a helpful timer above the 'Select Photos' button if images are uploaded
-                        let now = Date()
-                        let calendar = Calendar.current
-                        let nextDay = calendar.nextDate(after: now, matching: DateComponents(hour: 0, minute: 0, second: 0), matchingPolicy: .nextTime) ?? now
-                        let formatter: DateFormatter = {
-                            let f = DateFormatter()
-                            f.timeStyle = .short
-                            f.dateStyle = .medium
-                            return f
-                        }()
-                        if !skinAnalysisManager.uploadedImages.isEmpty {
-                            VStack(spacing: 4) {
-                                Text("You can upload new photos again tomorrow.")
+                                            // Add daily limit information (hidden for Pro Unlimited)
+                    if !skinAnalysisManager.uploadedImages.isEmpty && !userTierManager.hasUnlimitedAnalysisAccess() {
+                        VStack(spacing: 8) {
+                            HStack {
+                                Image(systemName: "clock.fill")
+                                    .foregroundColor(.orange)
                                     .font(.caption)
-                                    .foregroundColor(.gray)
-                                    .multilineTextAlignment(.center)
-                                Text("Next upload available: \(formatter.string(from: nextDay))")
-                                    .font(.caption2)
-                                    .foregroundColor(.gray)
+                                Text("Daily Analysis Limit")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.orange)
+                                Spacer()
+                                Text("\(userTierManager.getCurrentDailyAnalysisCount())/\(userTierManager.getDailyAnalysisLimit())")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.orange)
                             }
-                            .padding(.bottom, 8)
+                            if !userTierManager.canPerformAnalysis() {
+                                let formatter: DateFormatter = {
+                                    let f = DateFormatter()
+                                    f.timeStyle = .short
+                                    f.dateStyle = .medium
+                                    return f
+                                }()
+                                Text("Next analysis available: \(formatter.string(from: userTierManager.getNextAnalysisTime()))")
+                                    .font(.caption2)
+                                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : NuraColors.textSecondary)
+                            }
                         }
+                        .padding(.horizontal)
+                    }
                         
                         // Compute if the select photos button should be disabled (uploaded and before nextDay)
                         let isUploadLocked: Bool = {
                             if skinAnalysisManager.uploadedImages.isEmpty { return false }
+                            if userTierManager.hasUnlimitedAnalysisAccess() { return false }
                             let now = Date()
                             let calendar = Calendar.current
                             let nextDay = calendar.nextDate(after: now, matching: DateComponents(hour: 0, minute: 0, second: 0), matchingPolicy: .nextTime) ?? now
@@ -140,7 +152,18 @@ struct SkinAnalysisView: View {
                     // Analysis button
                     if !skinAnalysisManager.uploadedImages.isEmpty {
                         Button(action: {
-                            skinAnalysisManager.uploadImages(skinAnalysisManager.uploadedImages)
+                            if userTierManager.canPerformAnalysis() {
+                                // Perform analysis (no count increment for Pro Unlimited)
+                                if !userTierManager.hasUnlimitedAnalysisAccess() {
+                                    userTierManager.incrementAnalysisCount()
+                                }
+                                skinAnalysisManager.uploadImages(skinAnalysisManager.uploadedImages)
+                            } else {
+                                // Show limit reached banner (hidden for Pro Unlimited)
+                                if !userTierManager.hasUnlimitedAnalysisAccess() {
+                                    showLimitReachedBanner = true
+                                }
+                            }
                         }) {
                             HStack {
                                 if skinAnalysisManager.isAnalyzing {
@@ -156,11 +179,11 @@ struct SkinAnalysisView: View {
                             }
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color(red: 0.45, green: 0.32, blue: 0.60)) // Slightly darker purple
+                            .background(userTierManager.canPerformAnalysis() ? Color(red: 0.45, green: 0.32, blue: 0.60) : Color.gray)
                             .foregroundColor(.white)
                             .cornerRadius(12)
                         }
-                        .disabled(skinAnalysisManager.isAnalyzing)
+                        .disabled(skinAnalysisManager.isAnalyzing || !userTierManager.canPerformAnalysis())
                         .padding(.horizontal)
                     }
                     
@@ -190,6 +213,35 @@ struct SkinAnalysisView: View {
             .navigationTitle("")
         }
         .id(appearanceManager.colorSchemePreference)
+        .overlay(
+            Group {
+                if showPremiumBanner {
+                    ComicBookPremiumBanner(
+                        feature: .advancedSkinAnalysis,
+                        userTierManager: userTierManager,
+                        onUpgrade: {
+                            print("Navigate to premium upgrade")
+                        },
+                        onDismiss: {
+                            showPremiumBanner = false
+                        }
+                    )
+                }
+                
+                if showLimitReachedBanner {
+                    ComicBookPremiumBanner(
+                        feature: .unlimitedAnalysis,
+                        userTierManager: userTierManager,
+                        onUpgrade: {
+                            print("Navigate to premium upgrade")
+                        },
+                        onDismiss: {
+                            showLimitReachedBanner = false
+                        }
+                    )
+                }
+            }
+        )
     }
     
     private func loadImages(from items: [PhotosPickerItem]) async {
@@ -207,7 +259,10 @@ struct SkinAnalysisView: View {
         }
     }
     
-    private var isDark: Bool { appearanceManager.colorSchemePreference == "dark" || (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark) }
+    private var isDark: Bool { 
+        appearanceManager.colorSchemePreference == "dark" || 
+        (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark) 
+    }
 }
 
 struct AnalysisResultsView: View {

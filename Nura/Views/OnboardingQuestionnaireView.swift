@@ -5,14 +5,19 @@ struct OnboardingQuestionnaireView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var authManager: AuthenticationManager
     @State private var step: Int = 0
-    @State private var answers: [String] = Array(repeating: "", count: 6)
+    @State private var answers: [String] = Array(repeating: "", count: 10)
     @State private var showToast: Bool = false
     @State private var otherCondition: String = ""
     @State private var isSaving: Bool = false
     @State private var errorMessage: String? = nil
-    let totalSteps = 6
+    let totalSteps = 9
+    @State private var dermatologistSelection: String = ""
+    @State private var medicationSelection: String = ""
+    @State private var healthSelection: String = ""
+    @State private var smokingSelection: String = ""
+    @State private var sleepSelection: String = ""
     
-
+    
     
     init() {
         print("🔍 OnboardingQuestionnaireView: Initialized")
@@ -27,7 +32,7 @@ struct OnboardingQuestionnaireView: View {
             )
             .ignoresSafeArea()
             
-
+            
             
             VStack(spacing: 0) {
                 // Progress bar
@@ -41,11 +46,17 @@ struct OnboardingQuestionnaireView: View {
                     Text("Let’s personalize your skincare")
                         .font(.title).fontWeight(.bold)
                         .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.85)
+                        .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 8)
                     Text("Answer a few quick questions to help us understand your body, habits, and goals.")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.9)
+                        .fixedSize(horizontal: false, vertical: true)
                         .padding(.bottom, 8)
                     
                     // Back button (except on first step)
@@ -71,7 +82,7 @@ struct OnboardingQuestionnaireView: View {
                     
                     // Question Card
                     ZStack {
-                        ForEach(0..<totalSteps, id: \ .self) { idx in
+                        ForEach(0..<totalSteps, id: \.self) { idx in
                             if step == idx {
                                 questionCard(for: idx)
                                     .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity), removal: .move(edge: .leading).combined(with: .opacity)))
@@ -184,7 +195,7 @@ struct OnboardingQuestionnaireView: View {
                     .lineLimit(nil)
                     .fixedSize(horizontal: false, vertical: true)
                 VStack(spacing: 12) {
-                    ForEach(["Female", "Male", "Non-binary", "Prefer not to say"], id: \ .self) { option in
+                    ForEach(["Female", "Male", "Non-binary", "Prefer not to say"], id: \.self) { option in
                         answerButton(option: option, idx: idx)
                     }
                 }
@@ -197,7 +208,7 @@ struct OnboardingQuestionnaireView: View {
                     .lineLimit(nil)
                     .fixedSize(horizontal: false, vertical: true)
                 VStack(spacing: 12) {
-                    ForEach(["Sedentary (rarely work out)", "Light activity (1–2x/week)", "Moderate (3–4x/week)", "Intense (5+ workouts/week)"], id: \ .self) { option in
+                    ForEach(["Sedentary (rarely work out)", "Light activity (1–2x/week)", "Moderate (3–4x/week)", "Intense (5+ workouts/week)"], id: \.self) { option in
                         answerButton(option: option, idx: idx)
                     }
                 }
@@ -211,11 +222,11 @@ struct OnboardingQuestionnaireView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 VStack(spacing: 12) {
                     ForEach([
-                        "Less than 1L ( < 0.26 gal )",
-                        "1–2L (0.26–0.53 gal)",
-                        "2–3L (0.53–0.79 gal)",
-                        "3L+ (0.79+ gal)"
-                    ], id: \ .self) { option in
+                        "<0.5 gal ( <2 L )",
+                        "0.5–1 gal (2–4 L)",
+                        "1–1.5 gal (4–6 L)",
+                        ">1.5 gal ( >6 L )"
+                    ], id: \.self) { option in
                         answerButton(option: option, idx: idx)
                     }
                 }
@@ -228,7 +239,7 @@ struct OnboardingQuestionnaireView: View {
                     .lineLimit(nil)
                     .fixedSize(horizontal: false, vertical: true)
                 VStack(spacing: 12) {
-                    ForEach(["Clear up acne", "Reduce dryness", "Improve glow", "Slow aging", "Just exploring"], id: \ .self) { option in
+                    ForEach(["Clear up acne", "Reduce dryness", "Improve glow", "Slow aging", "Just exploring"], id: \.self) { option in
                         answerButton(option: option, idx: idx)
                     }
                 }
@@ -241,7 +252,7 @@ struct OnboardingQuestionnaireView: View {
                     .lineLimit(nil)
                     .fixedSize(horizontal: false, vertical: true)
                 VStack(spacing: 12) {
-                    ForEach(["None", "Acne", "Eczema", "Rosacea"], id: \ .self) { option in
+                    ForEach(["None", "Acne", "Eczema", "Rosacea"], id: \.self) { option in
                         answerButton(option: option, idx: idx)
                     }
                     HStack {
@@ -265,6 +276,163 @@ struct OnboardingQuestionnaireView: View {
                     }
                     .disabled(otherCondition.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
+            }
+        case 6:
+            VStack(spacing: 18) {
+                Text("Do you see a dermatologist?")
+                    .font(.title2).fontWeight(.semibold)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                VStack(spacing: 10) {
+                    ForEach(["No", "Yes – checkups only", "Yes – currently under treatment"], id: \.self) { option in
+                        Button(action: { 
+                            dermatologistSelection = option
+                            if !dermatologistSelection.isEmpty && !medicationSelection.isEmpty {
+                                answers[6] = "Dermatologist: \(dermatologistSelection) | Medications: \(medicationSelection)"
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { nextStep() }
+                            }
+                        }) {
+                            Text(option)
+                                .fontWeight(.medium)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(dermatologistSelection == option ? Color.mint.opacity(0.22) : Color.mint.opacity(0.13))
+                                .foregroundColor(.primary)
+                                .cornerRadius(12)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+                Text("Are you on any skin medications?")
+                    .font(.title3).fontWeight(.semibold)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .foregroundColor(.primary)
+                VStack(spacing: 10) {
+                    ForEach(["None", "Topicals (e.g., retinoids)", "Orals (e.g., antibiotics)", "Both"], id: \.self) { sub in
+                        Button(action: { 
+                            medicationSelection = sub 
+                            if !dermatologistSelection.isEmpty && !medicationSelection.isEmpty {
+                                answers[6] = "Dermatologist: \(dermatologistSelection) | Medications: \(medicationSelection)"
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { nextStep() }
+                            }
+                        }) {
+                            Text(sub)
+                                .fontWeight(.medium)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(medicationSelection == sub ? Color.mint.opacity(0.22) : Color.mint.opacity(0.13))
+                                .foregroundColor(.primary)
+                                .cornerRadius(12)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+                .padding(.top, 4)
+            }
+        case 7:
+            VStack(spacing: 18) {
+                Text("Any health conditions that affect skin?")
+                    .font(.title2).fontWeight(.semibold)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                VStack(spacing: 12) {
+                    ForEach(["None", "PCOS", "Thyroid", "Autoimmune", "Family history (acne/eczema/rosacea)", "Other"], id: \.self) { option in
+                        Button(action: { 
+                            healthSelection = option 
+                            if option != "Other" {
+                                answers[7] = "Health: \(option)"
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { nextStep() }
+                            }
+                        }) {
+                            Text(option)
+                                .fontWeight(.medium)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(healthSelection == option ? Color.mint.opacity(0.22) : Color.mint.opacity(0.13))
+                                .foregroundColor(.primary)
+                                .cornerRadius(12)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+                if healthSelection == "Other" {
+                    HStack {
+                        Text("Other:")
+                        TextField("Type here", text: $otherCondition)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .frame(maxWidth: 180)
+                    }
+                    .padding(.top, 4)
+                    Button(action: {
+                        answers[7] = "Health: \(otherCondition.trimmingCharacters(in: .whitespaces).isEmpty ? "Other" : otherCondition)"
+                        nextStep()
+                    }) {
+                        Text("Continue")
+                            .fontWeight(.semibold)
+                            .padding(.vertical, 10)
+                            .padding(.horizontal, 32)
+                            .background(Color.mint.opacity(0.18))
+                            .foregroundColor(.primary)
+                            .cornerRadius(12)
+                    }
+                    .disabled(otherCondition.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        case 8:
+            VStack(spacing: 18) {
+                // Remove the large combined header; use two clear questions instead
+                Text("Do you smoke?")
+                    .font(.title3).fontWeight(.semibold)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                                    HStack(spacing: 10) {
+                        ForEach(["No", "Occasionally", "Daily"], id: \.self) { choice in
+                            Button(action: { 
+                                smokingSelection = choice 
+                                if !sleepSelection.isEmpty { 
+                                    answers[8] = "Smoking: \(smokingSelection)" 
+                                    answers[9] = "Sleep: \(sleepSelection)"
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { nextStep() }
+                                }
+                            }) {
+                                Text(choice)
+                                    .padding(.vertical, 10)
+                                    .frame(maxWidth: .infinity)
+                                    .background((smokingSelection == choice) ? Color.mint.opacity(0.22) : Color.mint.opacity(0.13))
+                                    .foregroundColor(.primary)
+                                    .cornerRadius(10)
+                            }
+                        }
+                    }
+                Text("How's your sleep?")
+                    .font(.title3).fontWeight(.semibold)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                                    HStack(spacing: 10) {
+                        ForEach(["<6 hrs", "6–7 hrs", "7–8 hrs", ">8 hrs"], id: \.self) { s in
+                            Button(action: { 
+                                sleepSelection = s 
+                                if !smokingSelection.isEmpty { 
+                                    answers[8] = "Smoking: \(smokingSelection)" 
+                                    answers[9] = "Sleep: \(sleepSelection)"
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { nextStep() }
+                                }
+                            }) {
+                                Text(s)
+                                    .padding(.vertical, 10)
+                                    .frame(maxWidth: .infinity)
+                                    .background((sleepSelection == s) ? Color.mint.opacity(0.22) : Color.mint.opacity(0.13))
+                                    .foregroundColor(.primary)
+                                    .cornerRadius(10)
+                            }
+                        }
+                    }
             }
         default:
             EmptyView()

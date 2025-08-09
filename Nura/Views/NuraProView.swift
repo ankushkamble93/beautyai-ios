@@ -3,98 +3,115 @@ import SwiftUI
 struct NuraProView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var expandedPro: Bool = true
+    @State private var expandedProUnlimited: Bool = false
     @State private var expandedFree: Bool = false
     @State private var billingCycle: BillingCycle = .monthly
     @State private var showAllPro: Bool = false
     @Namespace private var toggleNS
     @State private var yearlyPulse: Bool = false
+    @State private var selectedPlan: ComparePlan = .proUnlimited
+    @State private var currentIndex: Int = 0
+
+    
     private var secondaryTextColor: Color {
         colorScheme == .dark ? NuraColors.textSecondaryDark : .secondary
     }
+    
+    // Dropdown label for the currently selected plan
+    private var selectedPlanLabel: Text {
+        switch selectedPlan {
+        case .proUnlimited:
+            return Text("Nura Pro ") + Text("Unlimited").italic()
+        case .pro:
+            return Text("Nura Pro")
+        case .free:
+            return Text("Free")
+        }
+    }
+    
+    // Features to show for the selected plan
+    private var featuresForSelectedPlan: [CompareFeature] {
+        switch selectedPlan {
+        case .proUnlimited:
+            // Pro Unlimited = Pro features + Unlimited Scans
+            return [CompareFeature.unlimitedScansOnlyFeature] + CompareFeature.proFeatures
+        case .pro:
+            return CompareFeature.proFeatures
+        case .free:
+            return CompareFeature.freeFeatures
+        }
+    }
+    
     var body: some View {
         ZStack {
-            LinearGradient(gradient: Gradient(colors: [Color.purple.opacity(0.10), Color.white]), startPoint: .topLeading, endPoint: .bottomTrailing)
-                .ignoresSafeArea()
+            ZStack {
+                // Animated radial vignette behind the header
+                RadialGradient(gradient: Gradient(colors: [Color.purple.opacity(0.22), Color.clear]), center: .top, startRadius: 60, endRadius: 420)
+                    .opacity(0.85)
+                    .scaleEffect(1.02)
+                    .animation(.easeInOut(duration: 3.0).repeatForever(autoreverses: true), value: yearlyPulse)
+                LinearGradient(gradient: Gradient(colors: [Color.purple.opacity(0.10), Color.white]), startPoint: .topLeading, endPoint: .bottomTrailing)
+            }
+            .ignoresSafeArea()
             VStack(spacing: 0) {
+                // Ensure header sits above content
+                Color.clear.frame(height: 0).zIndex(30)
                 // Floating Title/Header (no background)
-                VStack(spacing: 4) {
+                VStack(spacing: 8) {
                     Text("Compare Plans")
                         .font(.largeTitle).fontWeight(.bold)
                         .padding(.top, 24)
                     Text("Choose the best Nura experience for you")
                         .font(.subheadline)
                         .foregroundColor(secondaryTextColor)
-                        .padding(.bottom, 18)
-                }
-                // Both cards always visible, with partial expansion
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 24) {
-                        CompareContactCard(
-                            plan: .pro,
-                            expanded: expandedPro,
-                            onTap: { withAnimation(.spring()) {
-                                expandedPro = !expandedPro
-                                if expandedPro { expandedFree = false }
-                            } },
-                            billingCycle: $billingCycle,
-                            highlight: true,
-                            comparison: true,
-                            otherExpanded: expandedFree,
-                            features: CompareFeature.proFeatures,
-                            showAll: $showAllPro,
-                            showMoreLimit: 4,
-                            commentFont: .footnote,
-                            commentLineLimit: 2,
-                            tight: true,
-                            showMoreEnabled: true
-                        )
-                        .padding(.horizontal, 16)
-                        .zIndex(expandedPro ? 2 : 1)
-                        CompareContactCard(
-                            plan: .free,
-                            expanded: expandedFree,
-                            onTap: { withAnimation(.spring()) {
-                                expandedFree = !expandedFree
-                                if expandedFree { expandedPro = false }
-                            } },
-                            billingCycle: .constant(.monthly),
-                            highlight: false,
-                            comparison: true,
-                            otherExpanded: expandedPro,
-                            features: CompareFeature.freeFeatures,
-                            showAll: .constant(true),
-                            showMoreLimit: CompareFeature.freeFeatures.count,
-                            commentFont: .footnote,
-                            commentLineLimit: 2,
-                            tight: true,
-                            showMoreEnabled: false
-                        )
-                        .padding(.horizontal, 16)
-                        .zIndex(expandedFree ? 2 : 1)
-                        // Only one background icon/text, centered between cards and pricing
-                        if !expandedPro && !expandedFree {
-                            VStack(spacing: 12) {
-                                ZStack {
-                                    Circle()
-                                        .fill(Color.purple.opacity(0.10))
-                                        .frame(width: 120, height: 120)
-                                        .blur(radius: 0.5)
-                                    Image(systemName: "rectangle.3.offgrid.bubble.left")
-                                        .resizable()
-                                        .scaledToFit()
-                                        .frame(width: 60, height: 60)
-                                        .foregroundColor(Color.purple.opacity(0.25))
-                                }
-                                Text("Compare plans and unlock your best skin")
-                                    .font(.subheadline)
-                                    .foregroundColor(secondaryTextColor)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .offset(y: 40) // Move the SF Symbol chunk lower
+                        .padding(.bottom, 16)
+                    // Card-based tier selector with swipe
+                    TierCardCarousel(selectedPlan: $selectedPlan, currentIndex: $currentIndex)
+                        .frame(height: 120)
+                        .padding(.bottom, 8)
+                    
+                    // Catalog page indicators - positioned between tier carousel and description
+                    HStack(spacing: 8) {
+                        ForEach(0..<3, id: \.self) { index in
+                            Circle()
+                                .fill(index == currentIndex ? Color.accentColor : Color.gray.opacity(0.3))
+                                .frame(width: 8, height: 8)
+                                .scaleEffect(index == currentIndex ? 1.2 : 1.0)
+                                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentIndex)
                         }
-                        Spacer(minLength: 120) // More space for floater
                     }
-                    .padding(.bottom, 8)
+                    .padding(.bottom, 16)
+                }
+                // Interactive bullet point list for selected plan
+                GeometryReader { geometry in
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 0) {
+                            InteractivePlanCard(selectedPlan: selectedPlan)
+                                .padding(.horizontal, 16)
+                        }
+                        .padding(.bottom, 8)
+                    }
+                    .frame(maxHeight: geometry.size.height > 200 ? geometry.size.height - 200 : geometry.size.height) // Virtual boundary - 200pt from bottom (brought down)
+                    .clipped()
+                    .gesture(
+                        DragGesture()
+                            .onEnded { value in
+                                let threshold: CGFloat = 50
+                                let velocity = value.predictedEndTranslation.width - value.translation.width
+                                
+                                if abs(value.translation.width) > threshold || abs(velocity) > 100 {
+                                    let direction = value.translation.width > 0 ? -1 : 1
+                                    let newIndex = max(0, min(2, currentIndex + direction))
+                                    let plans: [ComparePlan] = [.proUnlimited, .pro, .free]
+                                    let newPlan = plans[newIndex]
+                                    
+                                    withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                                        selectedPlan = newPlan
+                                        currentIndex = newIndex
+                                    }
+                                }
+                            }
+                    )
                 }
                 // Remove the pricing row from here
             }
@@ -148,30 +165,57 @@ struct NuraProView: View {
                 .frame(height: 32)
                 .padding(.horizontal, 24)
                 .padding(.top, 2)
+                // Dynamic price based on active plan
+                let activePlan: ComparePlan = selectedPlan
                 ZStack {
                     if billingCycle == .monthly {
-                        Text("$7.99/mo")
+                        Text(activePlan == .free ? "Free" : (activePlan == .proUnlimited ? "$9.99/mo" : "$7.99/mo"))
                             .font(.system(size: 28, weight: .bold, design: .rounded))
                             .foregroundColor(.accentColor)
                             .id("monthly")
                             .transition(.opacity.combined(with: .scale))
                     } else {
-                        HStack(spacing: 8) {
-                            Text("$59.99/year")
+                        if activePlan == .free {
+                            Text("Free")
                                 .font(.system(size: 28, weight: .bold, design: .rounded))
                                 .foregroundColor(.accentColor)
-                            Text("Save 35%")
-                                .font(.caption2)
-                                .fontWeight(.bold)
-                                .foregroundColor(.white)
-                                .padding(.vertical, 2)
-                                .padding(.horizontal, 8)
-                                .background(Color.green)
-                                .cornerRadius(8)
-                                .shadow(color: Color.green.opacity(0.18), radius: 3, x: 0, y: 1)
+                                .id("yearly-free")
+                                .transition(.opacity.combined(with: .scale))
+                        } else if activePlan == .proUnlimited {
+                            HStack(spacing: 8) {
+                                Text("$79.99/year")
+                                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                                    .foregroundColor(.accentColor)
+                                Text("Save 33%")
+                                    .font(.caption2)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.white)
+                                    .padding(.vertical, 2)
+                                    .padding(.horizontal, 8)
+                                    .background(Color.green)
+                                    .cornerRadius(8)
+                                    .shadow(color: Color.green.opacity(0.18), radius: 3, x: 0, y: 1)
+                            }
+                            .id("yearly-plus")
+                            .transition(.opacity.combined(with: .scale))
+                        } else {
+                            HStack(spacing: 8) {
+                                Text("$59.99/year")
+                                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                                    .foregroundColor(.accentColor)
+                                Text("Save 35%")
+                                    .font(.caption2)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.white)
+                                    .padding(.vertical, 2)
+                                    .padding(.horizontal, 8)
+                                    .background(Color.green)
+                                    .cornerRadius(8)
+                                    .shadow(color: Color.green.opacity(0.18), radius: 3, x: 0, y: 1)
+                            }
+                            .id("yearly")
+                            .transition(.opacity.combined(with: .scale))
                         }
-                        .id("yearly")
-                        .transition(.opacity.combined(with: .scale))
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -187,7 +231,7 @@ struct NuraProView: View {
                 }) {
                     HStack {
                         Spacer()
-                        Text("Go Pro")
+                        Text(selectedPlan == .free ? "Start Free" : (selectedPlan == .proUnlimited ? "Go Pro Unlimited" : "Go Pro"))
                             .fontWeight(.bold)
                             .font(.title3)
                             .padding(.vertical, 10)
@@ -202,6 +246,7 @@ struct NuraProView: View {
                 }
                 .padding(.horizontal, 4)
                 .padding(.bottom, 2)
+                
                 // Add the two Text views here, below the button
                 Text("7-day free trial. Cancel anytime.")
                     .font(.footnote)
@@ -220,11 +265,12 @@ struct NuraProView: View {
             .onAppear {
                 yearlyPulse = true
             }
+
         }
     }
 }
 
-enum ComparePlan { case free, pro }
+enum ComparePlan { case free, pro, proUnlimited }
 
 struct CompareContactCard: View {
     let plan: ComparePlan
@@ -258,11 +304,19 @@ struct CompareContactCard: View {
         VStack(spacing: 0) {
             Button(action: onTap) {
                 HStack(spacing: 10) {
-                    Image(systemName: plan == .pro ? "star.fill" : "person.crop.circle")
+                    Image(systemName: plan == .free ? "person.crop.circle" : "star.fill")
                         .font(.title)
-                        .foregroundColor(plan == .pro ? .yellow : .gray)
-                        .shadow(color: plan == .pro ? .yellow.opacity(0.3) : .clear, radius: 6, x: 0, y: 0)
-                    Text(plan == .pro ? "Nura Pro" : "Free")
+                        .foregroundColor(plan == .free ? .gray : .yellow)
+                        .shadow(color: plan == .free ? .clear : .yellow.opacity(0.3), radius: 6, x: 0, y: 0)
+                    // Title with italics for "Unlimited"
+                    let titleText: Text = {
+                        switch plan {
+                        case .pro: return Text("Nura Pro")
+                        case .proUnlimited: return Text("Nura Pro ") + Text("Unlimited").italic()
+                        case .free: return Text("Free")
+                        }
+                    }()
+                    titleText
                         .font(.title2).fontWeight(.bold)
                         .foregroundColor(titleTextColor)
                     Spacer()
@@ -281,7 +335,7 @@ struct CompareContactCard: View {
             if expanded {
                 VStack(spacing: tight ? 0 : 4) {
                     let displayFeatures = showAll ? features : Array(features.prefix(showMoreLimit))
-                    ForEach(displayFeatures, id: \ .title) { feature in
+                    ForEach(displayFeatures, id: \.title) { feature in
                         HStack(alignment: .center, spacing: 0) {
                             feature.icon(for: plan)
                                 .frame(width: 38, alignment: .center)
@@ -340,8 +394,8 @@ struct CompareFeature {
     let title: String // for ForEach id only
     static let proFeatures: [CompareFeature] = [
         .init(
-            proTitle: "Unlimited face scans",
-            proDescription: "Scan as often as you want, every day.",
+            proTitle: "3 face scans per day",
+            proDescription: "Scan up to three times daily.",
             proIcon: "face.smiling", proIconColor: .blue,
             freeTitle: "", freeDescription: "", freeIcon: "", freeIconColor: .clear,
             title: "Face Scans"
@@ -385,8 +439,8 @@ struct CompareFeature {
     static let freeFeatures: [CompareFeature] = [
         .init(
             proTitle: "", proDescription: "", proIcon: "", proIconColor: .clear,
-            freeTitle: "3 scans per day",
-            freeDescription: "Track your skin with up to 3 scans daily.",
+            freeTitle: "1 scan per day",
+            freeDescription: "Track your skin with one scan daily.",
             freeIcon: "face.smiling", freeIconColor: .gray,
             title: "Face Scans"
         ),
@@ -398,15 +452,61 @@ struct CompareFeature {
             title: "Dashboard"
         )
     ]
+    static let proUnlimitedFeatures: [CompareFeature] = [
+        .init(
+            proTitle: "Unlimited face scans",
+            proDescription: "Scan as often as you want, every day.",
+            proIcon: "infinity.circle.fill", proIconColor: .pink,
+            freeTitle: "", freeDescription: "", freeIcon: "", freeIconColor: .clear,
+            title: "Unlimited Scans"
+        ),
+        .init(
+            proTitle: "Unlimited skin analysis",
+            proDescription: "Get full analysis on every scan, anytime.",
+            proIcon: "waveform.path.ecg.rectangle", proIconColor: .purple,
+            freeTitle: "", freeDescription: "", freeIcon: "", freeIconColor: .clear,
+            title: "Unlimited Analysis"
+        ),
+        .init(
+            proTitle: "AI chat support",
+            proDescription: "Instant answers from Nura's AI skin expert.",
+            proIcon: "bubble.left.and.bubble.right.fill", proIconColor: .purple,
+            freeTitle: "", freeDescription: "", freeIcon: "", freeIconColor: .clear,
+            title: "AI Chat"
+        ),
+        .init(
+            proTitle: "Dark mode",
+            proDescription: "Beautiful, eye-friendly dark theme.",
+            proIcon: "moon.fill", proIconColor: .indigo,
+            freeTitle: "", freeDescription: "", freeIcon: "", freeIconColor: .clear,
+            title: "Dark Mode"
+        ),
+        .init(
+            proTitle: "Daily routine (Apple Health)",
+            proDescription: "Personalized routines with Apple Health sync.",
+            proIcon: "heart.text.square.fill", proIconColor: .red,
+            freeTitle: "", freeDescription: "", freeIcon: "", freeIconColor: .clear,
+            title: "Routine"
+        )
+    ]
+    // Single feature for Unlimited Scans to compose Pro Unlimited = Pro + this
+    static let unlimitedScansOnlyFeature: CompareFeature = .init(
+        proTitle: "Unlimited face scans",
+        proDescription: "Scan as often as you want, every day.",
+        proIcon: "infinity.circle.fill", proIconColor: .pink,
+        freeTitle: "", freeDescription: "", freeIcon: "", freeIconColor: .clear,
+        title: "Unlimited Scans"
+    )
     func title(for plan: ComparePlan) -> String {
-        plan == .pro ? proTitle : freeTitle
+        (plan == .pro || plan == .proUnlimited) ? proTitle : freeTitle
     }
     func description(for plan: ComparePlan) -> String {
-        plan == .pro ? proDescription : freeDescription
+        (plan == .pro || plan == .proUnlimited) ? proDescription : freeDescription
     }
     func icon(for plan: ComparePlan) -> some View {
-        let name = plan == .pro ? proIcon : freeIcon
-        let color = plan == .pro ? proIconColor : freeIconColor
+        let proLike = (plan == .pro || plan == .proUnlimited)
+        let name = proLike ? proIcon : freeIcon
+        let color = proLike ? proIconColor : freeIconColor
         if name.isEmpty { return AnyView(EmptyView()) }
         return AnyView(
             Image(systemName: name)
@@ -432,9 +532,11 @@ extension View {
     }
 }
 
+
+
 #Preview {
     NuraProView()
-} 
+}
 
 // MARK: - BlurView for background blur effect
 import UIKit
@@ -444,4 +546,317 @@ struct BlurView: UIViewRepresentable {
         return UIVisualEffectView(effect: UIBlurEffect(style: style))
     }
     func updateUIView(_ uiView: UIVisualEffectView, context: Context) {}
-} 
+}
+
+// MARK: - Card-Based Tier Carousel
+struct TierCardCarousel: View {
+    @Binding var selectedPlan: ComparePlan
+    @Binding var currentIndex: Int
+    @Environment(\.colorScheme) private var colorScheme
+    
+    private let plans: [ComparePlan] = [.proUnlimited, .pro, .free]
+    
+    var body: some View {
+        GeometryReader { geometry in
+            TabView(selection: $selectedPlan) {
+                ForEach(plans, id: \.self) { plan in
+                    TierCard(
+                        plan: plan,
+                        isSelected: plan == selectedPlan,
+                        width: geometry.size.width * 0.85
+                    )
+                    .tag(plan)
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                            selectedPlan = plan
+                            if let index = plans.firstIndex(of: plan) {
+                                currentIndex = index
+                            }
+                        }
+                    }
+                }
+            }
+            .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
+            .frame(height: 120)
+            .onChange(of: selectedPlan) { oldValue, newValue in
+                if let index = plans.firstIndex(of: newValue) {
+                    currentIndex = index
+                }
+            }
+        }
+        .onAppear {
+            currentIndex = plans.firstIndex(of: selectedPlan) ?? 0
+        }
+    }
+}
+
+// MARK: - Individual Tier Card
+struct TierCard: View {
+    let plan: ComparePlan
+    let isSelected: Bool
+    let width: CGFloat
+    @Environment(\.colorScheme) private var colorScheme
+    
+    private var cardColor: Color {
+        switch plan {
+        case .proUnlimited:
+            return colorScheme == .dark ? Color(red: 0.12, green: 0.08, blue: 0.15) : Color(red: 0.98, green: 0.96, blue: 1.0)
+        case .pro:
+            return colorScheme == .dark ? Color(red: 0.15, green: 0.12, blue: 0.18) : Color(red: 0.96, green: 0.94, blue: 0.98)
+        case .free:
+            return colorScheme == .dark ? Color(red: 0.18, green: 0.16, blue: 0.20) : Color(red: 0.94, green: 0.92, blue: 0.96)
+        }
+    }
+    
+    private var accentColor: Color {
+        switch plan {
+        case .proUnlimited: return .purple
+        case .pro: return .blue
+        case .free: return .gray
+        }
+    }
+    
+    private var tierIcon: String {
+        switch plan {
+        case .proUnlimited: return "crown.fill"
+        case .pro: return "star.fill"
+        case .free: return "person.crop.circle"
+        }
+    }
+    
+    private var tierTitle: Text {
+        switch plan {
+        case .proUnlimited: 
+            return Text("NURA PRO ") + Text("UNLIMITED").italic()
+        case .pro: 
+            return Text("NURA PRO")
+        case .free: 
+            return Text("FREE")
+        }
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header with icon and title
+            VStack(spacing: 12) {
+                Image(systemName: tierIcon)
+                    .font(.system(size: 32, weight: .medium))
+                    .foregroundColor(accentColor)
+                    .scaleEffect(isSelected ? 1.1 : 1.0)
+                    .animation(.spring(response: 0.4, dampingFraction: 0.7), value: isSelected)
+                
+                tierTitle
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundColor(colorScheme == .dark ? .white : .black)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+            }
+            .padding(.top, 24)
+            .padding(.horizontal, 16)
+            
+            Spacer()
+        }
+        .frame(width: width, height: 120)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(cardColor)
+                .shadow(
+                    color: Color.black.opacity(isSelected ? 0.15 : 0.08),
+                    radius: isSelected ? 12 : 6,
+                    x: 0,
+                    y: isSelected ? 8 : 4
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(
+                    isSelected ? accentColor.opacity(0.3) : Color.gray.opacity(0.1),
+                    lineWidth: isSelected ? 2 : 0.5
+                )
+        )
+        .scaleEffect(isSelected ? 1.05 : 1.0)
+        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: isSelected)
+    }
+}
+
+// MARK: - Interactive Plan Card
+struct InteractivePlanCard: View {
+    let selectedPlan: ComparePlan
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var animatedFeatures: Set<String> = []
+    
+    private var features: [(title: String, description: String, icon: String, color: Color)] {
+        switch selectedPlan {
+        case .free:
+            return [
+                ("1 scan per day", "Track your skin with one daily scan", "face.smiling", .blue),
+                ("Dashboard access", "View your skin history and trends", "chart.bar.xaxis", .purple)
+            ]
+        case .pro:
+            return [
+                ("3 face scans per day", "Scan up to three times daily", "face.smiling", .blue),
+                ("AI chat support", "Instant answers from Nura's AI skin expert", "bubble.left.and.bubble.right.fill", .purple),
+                ("Dark mode", "Beautiful, eye-friendly dark theme", "moon.fill", .indigo),
+                ("Daily routine (Apple Health)", "Personalized routines with Apple Health sync", "heart.text.square.fill", .red),
+                ("Product matchmaking URLs", "Direct links to best-matched products", "link.circle.fill", .green),
+                ("Premium chat support", "Priority help from our team", "message.fill", .orange)
+            ]
+        case .proUnlimited:
+            return [
+                ("Unlimited face scans", "Scan as often as you want, every day", "infinity.circle.fill", .pink),
+                ("Everything Pro has", "All Pro features included", "checkmark.circle.fill", .green)
+            ]
+        }
+    }
+    
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 20)
+            .fill(colorScheme == .dark ? Color.black.opacity(0.2) : Color.white.opacity(0.95))
+            .background(BlurView(style: .systemThinMaterial))
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(colorScheme == .dark ? Color.white.opacity(0.1) : Color.gray.opacity(0.15), lineWidth: 0.5)
+            )
+            .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 6)
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Interactive features list only (no header)
+            featuresList
+        }
+        .background(cardBackground)
+        .onAppear {
+            startStaggeredAnimations()
+        }
+        .onChange(of: selectedPlan) { oldValue, newValue in
+            resetAndRestartAnimations()
+        }
+    }
+    
+    private var planIcon: some View {
+                               Image(systemName: selectedPlan == .free ? "person.crop.circle" : "star.fill")
+                           .font(.title)
+                           .foregroundColor(selectedPlan == .free ? .gray : .black)
+                           .shadow(color: selectedPlan == .free ? .clear : .black.opacity(0.2), radius: 6, x: 0, y: 0)
+    }
+    
+    private var planTitle: some View {
+        Group {
+            switch selectedPlan {
+            case .pro:
+                Text("Nura Pro")
+            case .proUnlimited:
+                Text("Nura Pro ") + Text("Unlimited").italic()
+            case .free:
+                Text("Free")
+            }
+        }
+        .font(.title2).fontWeight(.bold)
+        .foregroundColor(colorScheme == .dark ? NuraColors.textPrimaryDark : .primary)
+    }
+            
+    private var featuresList: some View {
+        VStack(spacing: 8) {
+            ForEach(Array(features.enumerated()), id: \.offset) { index, feature in
+                featureRow(feature, index: index)
+            }
+        }
+        .padding(.top, 16)
+        .padding(.bottom, 16)
+    }
+    
+    private func featureRow(_ feature: (title: String, description: String, icon: String, color: Color), index: Int) -> some View {
+        let isAnimated = animatedFeatures.contains(feature.title)
+        
+        return VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                featureIcon(feature, isAnimated: isAnimated)
+                featureText(feature)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(featureBackground(feature, isAnimated: isAnimated))
+            .contentShape(Rectangle())
+            .onTapGesture {
+                handleFeatureTap(feature)
+            }
+            
+            if index < features.count - 1 {
+                Divider()
+                    .padding(.horizontal, 16)
+            }
+        }
+    }
+    
+    private func featureIcon(_ feature: (title: String, description: String, icon: String, color: Color), isAnimated: Bool) -> some View {
+        Image(systemName: feature.icon)
+            .font(.title3)
+            .foregroundColor(feature.color)
+            .frame(width: 32)
+            .scaleEffect(isAnimated ? 1.1 : 1.0)
+            .animation(.spring(response: 0.4, dampingFraction: 0.7), value: isAnimated)
+    }
+    
+    private func featureText(_ feature: (title: String, description: String, icon: String, color: Color)) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(feature.title)
+                .font(.headline)
+                .foregroundColor(colorScheme == .dark ? NuraColors.textPrimaryDark : .primary)
+            Text(feature.description)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+        }
+    }
+    
+    private func featureBackground(_ feature: (title: String, description: String, icon: String, color: Color), isAnimated: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 12)
+            .fill(isAnimated ? feature.color.opacity(0.08) : Color.clear)
+            .animation(.easeInOut(duration: 0.3), value: isAnimated)
+    }
+    
+    private func handleFeatureTap(_ feature: (title: String, description: String, icon: String, color: Color)) {
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        
+        if animatedFeatures.contains(feature.title) {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                _ = animatedFeatures.remove(feature.title)
+            }
+        } else {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                _ = animatedFeatures.insert(feature.title)
+            }
+        }
+        
+        // Auto-dismiss after 2 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            withAnimation(.easeOut(duration: 0.5)) {
+                _ = animatedFeatures.remove(feature.title)
+            }
+        }
+    }
+    
+    private func startStaggeredAnimations() {
+        for (index, feature) in features.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.1) {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                    _ = animatedFeatures.insert(feature.title)
+                }
+            }
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.1 + 1.5) {
+                withAnimation(.easeOut(duration: 0.5)) {
+                    _ = animatedFeatures.remove(feature.title)
+                }
+            }
+        }
+    }
+    
+    private func resetAndRestartAnimations() {
+        animatedFeatures.removeAll()
+        startStaggeredAnimations()
+    }
+}

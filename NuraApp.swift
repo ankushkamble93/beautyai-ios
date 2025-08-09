@@ -30,6 +30,7 @@ struct RootFlowView: View {
     @ObservedObject var authManager: AuthenticationManager
     @ObservedObject var skinAnalysisManager: SkinAnalysisManager
     @ObservedObject var appearanceManager: AppearanceManager
+    @StateObject private var shareManager = ShareManager()
     @State private var refreshTrigger = 0
     
     init(authManager: AuthenticationManager, skinAnalysisManager: SkinAnalysisManager, appearanceManager: AppearanceManager) {
@@ -75,6 +76,7 @@ struct RootFlowView: View {
                         DashboardView()
                             .environmentObject(skinAnalysisManager)
                             .environmentObject(appearanceManager)
+                            .environmentObject(shareManager)
                             .onAppear {
                                 print("🔍 DashboardView: Actually appeared!")
                             }
