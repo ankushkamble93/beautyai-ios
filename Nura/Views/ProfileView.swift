@@ -1,9 +1,390 @@
 import SwiftUI
 import PhotosUI
+import Supabase
+import Foundation
+
+// MARK: - Country Code Data
+struct CountryCode: Identifiable, Hashable {
+    let id = UUID()
+    let name: String
+    let code: String
+    let flag: String
+    let dialCode: String
+    
+    static let allCountries: [CountryCode] = [
+        CountryCode(name: "United States", code: "US", flag: "🇺🇸", dialCode: "+1"),
+        CountryCode(name: "Canada", code: "CA", flag: "🇨🇦", dialCode: "+1"),
+        CountryCode(name: "United Kingdom", code: "GB", flag: "🇬🇧", dialCode: "+44"),
+        CountryCode(name: "India", code: "IN", flag: "🇮🇳", dialCode: "+91"),
+        CountryCode(name: "Australia", code: "AU", flag: "🇦🇺", dialCode: "+61"),
+        CountryCode(name: "Germany", code: "DE", flag: "🇩🇪", dialCode: "+49"),
+        CountryCode(name: "France", code: "FR", flag: "🇫🇷", dialCode: "+33"),
+        CountryCode(name: "Japan", code: "JP", flag: "🇯🇵", dialCode: "+81"),
+        CountryCode(name: "South Korea", code: "KR", flag: "🇰🇷", dialCode: "+82"),
+        CountryCode(name: "Brazil", code: "BR", flag: "🇧🇷", dialCode: "+55"),
+        CountryCode(name: "Mexico", code: "MX", flag: "🇲🇽", dialCode: "+52"),
+        CountryCode(name: "Spain", code: "ES", flag: "🇪🇸", dialCode: "+34"),
+        CountryCode(name: "Italy", code: "IT", flag: "🇮🇹", dialCode: "+39"),
+        CountryCode(name: "Netherlands", code: "NL", flag: "🇳🇱", dialCode: "+31"),
+        CountryCode(name: "Sweden", code: "SE", flag: "🇸🇪", dialCode: "+46"),
+        CountryCode(name: "Norway", code: "NO", flag: "🇳🇴", dialCode: "+47"),
+        CountryCode(name: "Denmark", code: "DK", flag: "🇩🇰", dialCode: "+45"),
+        CountryCode(name: "Finland", code: "FI", flag: "🇫🇮", dialCode: "+358"),
+        CountryCode(name: "Switzerland", code: "CH", flag: "🇨🇭", dialCode: "+41"),
+        CountryCode(name: "Austria", code: "AT", flag: "🇦🇹", dialCode: "+43"),
+        CountryCode(name: "Belgium", code: "BE", flag: "🇧🇪", dialCode: "+32"),
+        CountryCode(name: "Ireland", code: "IE", flag: "🇮🇪", dialCode: "+353"),
+        CountryCode(name: "New Zealand", code: "NZ", flag: "🇳🇿", dialCode: "+64"),
+        CountryCode(name: "Singapore", code: "SG", flag: "🇸🇬", dialCode: "+65"),
+        CountryCode(name: "Hong Kong", code: "HK", flag: "🇭🇰", dialCode: "+852"),
+        CountryCode(name: "Taiwan", code: "TW", flag: "🇹🇼", dialCode: "+886"),
+        CountryCode(name: "Thailand", code: "TH", flag: "🇹🇭", dialCode: "+66"),
+        CountryCode(name: "Malaysia", code: "MY", flag: "🇲🇾", dialCode: "+60"),
+        CountryCode(name: "Philippines", code: "PH", flag: "🇵🇭", dialCode: "+63"),
+        CountryCode(name: "Indonesia", code: "ID", flag: "🇮🇩", dialCode: "+62"),
+        CountryCode(name: "Vietnam", code: "VN", flag: "🇻🇳", dialCode: "+84"),
+        CountryCode(name: "China", code: "CN", flag: "🇨🇳", dialCode: "+86"),
+        CountryCode(name: "Russia", code: "RU", flag: "🇷🇺", dialCode: "+7"),
+        CountryCode(name: "Turkey", code: "TR", flag: "🇹🇷", dialCode: "+90"),
+        CountryCode(name: "Poland", code: "PL", flag: "🇵🇱", dialCode: "+48"),
+        CountryCode(name: "Czech Republic", code: "CZ", flag: "🇨🇿", dialCode: "+420"),
+        CountryCode(name: "Hungary", code: "HU", flag: "🇭🇺", dialCode: "+36"),
+        CountryCode(name: "Romania", code: "RO", flag: "🇷🇴", dialCode: "+40"),
+        CountryCode(name: "Bulgaria", code: "BG", flag: "🇧🇬", dialCode: "+359"),
+        CountryCode(name: "Croatia", code: "HR", flag: "🇭🇷", dialCode: "+385"),
+        CountryCode(name: "Slovenia", code: "SI", flag: "🇸🇮", dialCode: "+386"),
+        CountryCode(name: "Slovakia", code: "SK", flag: "🇸🇰", dialCode: "+421"),
+        CountryCode(name: "Estonia", code: "EE", flag: "🇪🇪", dialCode: "+372"),
+        CountryCode(name: "Latvia", code: "LV", flag: "🇱🇻", dialCode: "+371"),
+        CountryCode(name: "Lithuania", code: "LT", flag: "🇱🇹", dialCode: "+370"),
+        CountryCode(name: "Luxembourg", code: "LU", flag: "🇱🇺", dialCode: "+352"),
+        CountryCode(name: "Iceland", code: "IS", flag: "🇮🇸", dialCode: "+354"),
+        CountryCode(name: "Malta", code: "MT", flag: "🇲🇹", dialCode: "+356"),
+        CountryCode(name: "Cyprus", code: "CY", flag: "🇨🇾", dialCode: "+357"),
+        CountryCode(name: "Greece", code: "GR", flag: "🇬🇷", dialCode: "+30"),
+        CountryCode(name: "Portugal", code: "PT", flag: "🇵🇹", dialCode: "+351"),
+        CountryCode(name: "Israel", code: "IL", flag: "🇮🇱", dialCode: "+972"),
+        CountryCode(name: "UAE", code: "AE", flag: "🇦🇪", dialCode: "+971"),
+        CountryCode(name: "Saudi Arabia", code: "SA", flag: "🇸🇦", dialCode: "+966"),
+        CountryCode(name: "Qatar", code: "QA", flag: "🇶🇦", dialCode: "+974"),
+        CountryCode(name: "Kuwait", code: "KW", flag: "🇰🇼", dialCode: "+965"),
+        CountryCode(name: "Bahrain", code: "BH", flag: "🇧🇭", dialCode: "+973"),
+        CountryCode(name: "Oman", code: "OM", flag: "🇴🇲", dialCode: "+968"),
+        CountryCode(name: "Jordan", code: "JO", flag: "🇯🇴", dialCode: "+962"),
+        CountryCode(name: "Lebanon", code: "LB", flag: "🇱🇧", dialCode: "+961"),
+        CountryCode(name: "Egypt", code: "EG", flag: "🇪🇬", dialCode: "+20"),
+        CountryCode(name: "South Africa", code: "ZA", flag: "🇿🇦", dialCode: "+27"),
+        CountryCode(name: "Nigeria", code: "NG", flag: "🇳🇬", dialCode: "+234"),
+        CountryCode(name: "Kenya", code: "KE", flag: "🇰🇪", dialCode: "+254"),
+        CountryCode(name: "Ghana", code: "GH", flag: "🇬🇭", dialCode: "+233"),
+        CountryCode(name: "Uganda", code: "UG", flag: "🇺🇬", dialCode: "+256"),
+        CountryCode(name: "Tanzania", code: "TZ", flag: "🇹🇿", dialCode: "+255"),
+        CountryCode(name: "Ethiopia", code: "ET", flag: "🇪🇹", dialCode: "+251"),
+        CountryCode(name: "Morocco", code: "MA", flag: "🇲🇦", dialCode: "+212"),
+        CountryCode(name: "Algeria", code: "DZ", flag: "🇩🇿", dialCode: "+213"),
+        CountryCode(name: "Tunisia", code: "TN", flag: "🇹🇳", dialCode: "+216"),
+        CountryCode(name: "Libya", code: "LY", flag: "🇱🇾", dialCode: "+218"),
+        CountryCode(name: "Sudan", code: "SD", flag: "🇸🇩", dialCode: "+249"),
+        CountryCode(name: "Chad", code: "TD", flag: "🇹🇩", dialCode: "+235"),
+        CountryCode(name: "Niger", code: "NE", flag: "🇳🇪", dialCode: "+227"),
+        CountryCode(name: "Mali", code: "ML", flag: "🇲🇱", dialCode: "+223"),
+        CountryCode(name: "Burkina Faso", code: "BF", flag: "🇧🇫", dialCode: "+226"),
+        CountryCode(name: "Senegal", code: "SN", flag: "🇸🇳", dialCode: "+221"),
+        CountryCode(name: "Guinea", code: "GN", flag: "🇬🇳", dialCode: "+224"),
+        CountryCode(name: "Sierra Leone", code: "SL", flag: "🇸🇱", dialCode: "+232"),
+        CountryCode(name: "Liberia", code: "LR", flag: "🇱🇷", dialCode: "+231"),
+        CountryCode(name: "Ivory Coast", code: "CI", flag: "🇨🇮", dialCode: "+225"),
+        CountryCode(name: "Togo", code: "TG", flag: "🇹🇬", dialCode: "+228"),
+        CountryCode(name: "Benin", code: "BJ", flag: "🇧🇯", dialCode: "+229"),
+        CountryCode(name: "Cameroon", code: "CM", flag: "🇨🇲", dialCode: "+237"),
+        CountryCode(name: "Central African Republic", code: "CF", flag: "🇨🇫", dialCode: "+236"),
+        CountryCode(name: "Gabon", code: "GA", flag: "🇬🇦", dialCode: "+241"),
+        CountryCode(name: "Congo", code: "CG", flag: "🇨🇬", dialCode: "+242"),
+        CountryCode(name: "DR Congo", code: "CD", flag: "🇨🇩", dialCode: "+243"),
+        CountryCode(name: "Angola", code: "AO", flag: "🇦🇴", dialCode: "+244"),
+        CountryCode(name: "Zambia", code: "ZM", flag: "🇿🇲", dialCode: "+260"),
+        CountryCode(name: "Zimbabwe", code: "ZW", flag: "🇿🇼", dialCode: "+263"),
+        CountryCode(name: "Botswana", code: "BW", flag: "🇧🇼", dialCode: "+267"),
+        CountryCode(name: "Namibia", code: "NA", flag: "🇳🇦", dialCode: "+264"),
+        CountryCode(name: "Mozambique", code: "MZ", flag: "🇲🇿", dialCode: "+258"),
+        CountryCode(name: "Madagascar", code: "MG", flag: "🇲🇬", dialCode: "+261"),
+        CountryCode(name: "Mauritius", code: "MU", flag: "🇲🇺", dialCode: "+230"),
+        CountryCode(name: "Seychelles", code: "SC", flag: "🇸🇨", dialCode: "+248"),
+        CountryCode(name: "Comoros", code: "KM", flag: "🇰🇲", dialCode: "+269"),
+        CountryCode(name: "Djibouti", code: "DJ", flag: "🇩🇯", dialCode: "+253"),
+        CountryCode(name: "Somalia", code: "SO", flag: "🇸🇴", dialCode: "+252"),
+        CountryCode(name: "Eritrea", code: "ER", flag: "🇪🇷", dialCode: "+291"),
+        CountryCode(name: "Yemen", code: "YE", flag: "🇾🇪", dialCode: "+967"),
+        CountryCode(name: "Syria", code: "SY", flag: "🇸🇾", dialCode: "+963"),
+        CountryCode(name: "Iraq", code: "IQ", flag: "🇮🇶", dialCode: "+964"),
+        CountryCode(name: "Iran", code: "IR", flag: "🇮🇷", dialCode: "+98"),
+        CountryCode(name: "Afghanistan", code: "AF", flag: "🇦🇫", dialCode: "+93"),
+        CountryCode(name: "Pakistan", code: "PK", flag: "🇵🇰", dialCode: "+92"),
+        CountryCode(name: "Bangladesh", code: "BD", flag: "🇧🇩", dialCode: "+880"),
+        CountryCode(name: "Sri Lanka", code: "LK", flag: "🇱🇰", dialCode: "+94"),
+        CountryCode(name: "Nepal", code: "NP", flag: "🇳🇵", dialCode: "+977"),
+        CountryCode(name: "Bhutan", code: "BT", flag: "🇧🇹", dialCode: "+975"),
+        CountryCode(name: "Myanmar", code: "MM", flag: "🇲🇲", dialCode: "+95"),
+        CountryCode(name: "Laos", code: "LA", flag: "🇱🇦", dialCode: "+856"),
+        CountryCode(name: "Cambodia", code: "KH", flag: "🇰🇭", dialCode: "+855"),
+        CountryCode(name: "Brunei", code: "BN", flag: "🇧🇳", dialCode: "+673"),
+        CountryCode(name: "East Timor", code: "TL", flag: "🇹🇱", dialCode: "+670"),
+        CountryCode(name: "Papua New Guinea", code: "PG", flag: "🇵🇬", dialCode: "+675"),
+        CountryCode(name: "Fiji", code: "FJ", flag: "🇫🇯", dialCode: "+679"),
+        CountryCode(name: "Vanuatu", code: "VU", flag: "🇻🇺", dialCode: "+678"),
+        CountryCode(name: "New Caledonia", code: "NC", flag: "🇳🇨", dialCode: "+687"),
+        CountryCode(name: "Solomon Islands", code: "SB", flag: "🇸🇧", dialCode: "+677"),
+        CountryCode(name: "Samoa", code: "WS", flag: "🇼🇸", dialCode: "+685"),
+        CountryCode(name: "Tonga", code: "TO", flag: "🇹🇴", dialCode: "+676"),
+        CountryCode(name: "Kiribati", code: "KI", flag: "🇰🇮", dialCode: "+686"),
+        CountryCode(name: "Tuvalu", code: "TV", flag: "🇹🇻", dialCode: "+688"),
+        CountryCode(name: "Nauru", code: "NR", flag: "🇳🇷", dialCode: "+674"),
+        CountryCode(name: "Palau", code: "PW", flag: "🇵🇼", dialCode: "+680"),
+        CountryCode(name: "Marshall Islands", code: "MH", flag: "🇲🇭", dialCode: "+692"),
+        CountryCode(name: "Micronesia", code: "FM", flag: "🇫🇲", dialCode: "+691"),
+        CountryCode(name: "Guam", code: "GU", flag: "🇬🇺", dialCode: "+1"),
+        CountryCode(name: "Northern Mariana Islands", code: "MP", flag: "🇲🇵", dialCode: "+1"),
+        CountryCode(name: "American Samoa", code: "AS", flag: "🇦🇸", dialCode: "+1"),
+        CountryCode(name: "Puerto Rico", code: "PR", flag: "🇵🇷", dialCode: "+1"),
+        CountryCode(name: "U.S. Virgin Islands", code: "VI", flag: "🇻🇮", dialCode: "+1"),
+        CountryCode(name: "Greenland", code: "GL", flag: "🇬🇱", dialCode: "+299"),
+        CountryCode(name: "Faroe Islands", code: "FO", flag: "🇫🇴", dialCode: "+298"),
+        CountryCode(name: "Åland Islands", code: "AX", flag: "🇦🇽", dialCode: "+358"),
+        CountryCode(name: "Isle of Man", code: "IM", flag: "🇮🇲", dialCode: "+44"),
+        CountryCode(name: "Jersey", code: "JE", flag: "🇯🇪", dialCode: "+44"),
+        CountryCode(name: "Guernsey", code: "GG", flag: "🇬🇬", dialCode: "+44"),
+        CountryCode(name: "Gibraltar", code: "GI", flag: "🇬🇮", dialCode: "+350"),
+        CountryCode(name: "Monaco", code: "MC", flag: "🇲🇨", dialCode: "+377"),
+        CountryCode(name: "Liechtenstein", code: "LI", flag: "🇱🇮", dialCode: "+423"),
+        CountryCode(name: "San Marino", code: "SM", flag: "🇸🇲", dialCode: "+378"),
+        CountryCode(name: "Vatican City", code: "VA", flag: "🇻🇦", dialCode: "+379"),
+        CountryCode(name: "Andorra", code: "AD", flag: "🇦🇩", dialCode: "+376"),
+        CountryCode(name: "Luxembourg", code: "LU", flag: "🇱🇺", dialCode: "+352"),
+        CountryCode(name: "Moldova", code: "MD", flag: "🇲🇩", dialCode: "+373"),
+        CountryCode(name: "Belarus", code: "BY", flag: "🇧🇾", dialCode: "+375"),
+        CountryCode(name: "Ukraine", code: "UA", flag: "🇺🇦", dialCode: "+380"),
+        CountryCode(name: "Georgia", code: "GE", flag: "🇬🇪", dialCode: "+995"),
+        CountryCode(name: "Armenia", code: "AM", flag: "🇦🇲", dialCode: "+374"),
+        CountryCode(name: "Azerbaijan", code: "AZ", flag: "🇦🇿", dialCode: "+994"),
+        CountryCode(name: "Kazakhstan", code: "KZ", flag: "🇰🇿", dialCode: "+7"),
+        CountryCode(name: "Uzbekistan", code: "UZ", flag: "🇺🇿", dialCode: "+998"),
+        CountryCode(name: "Turkmenistan", code: "TM", flag: "🇹🇲", dialCode: "+993"),
+        CountryCode(name: "Tajikistan", code: "TJ", flag: "🇹🇯", dialCode: "+992"),
+        CountryCode(name: "Kyrgyzstan", code: "KG", flag: "🇰🇬", dialCode: "+996"),
+        CountryCode(name: "Mongolia", code: "MN", flag: "🇲🇳", dialCode: "+976"),
+        CountryCode(name: "North Korea", code: "KP", flag: "🇰🇵", dialCode: "+850"),
+        CountryCode(name: "Maldives", code: "MV", flag: "🇲🇻", dialCode: "+960"),
+        CountryCode(name: "Kyrgyzstan", code: "KG", flag: "🇰🇬", dialCode: "+996"),
+        CountryCode(name: "Tajikistan", code: "TJ", flag: "🇹🇯", dialCode: "+992"),
+        CountryCode(name: "Turkmenistan", code: "TM", flag: "🇹🇲", dialCode: "+993"),
+        CountryCode(name: "Uzbekistan", code: "UZ", flag: "🇺🇿", dialCode: "+998"),
+        CountryCode(name: "Kazakhstan", code: "KZ", flag: "🇰🇿", dialCode: "+7"),
+        CountryCode(name: "Azerbaijan", code: "AZ", flag: "🇦🇿", dialCode: "+994"),
+        CountryCode(name: "Armenia", code: "AM", flag: "🇦🇲", dialCode: "+374"),
+        CountryCode(name: "Georgia", code: "GE", flag: "🇬🇪", dialCode: "+995"),
+        CountryCode(name: "Ukraine", code: "UA", flag: "🇺🇦", dialCode: "+380"),
+        CountryCode(name: "Belarus", code: "BY", flag: "🇧🇾", dialCode: "+375"),
+        CountryCode(name: "Moldova", code: "MD", flag: "🇲🇩", dialCode: "+373"),
+        CountryCode(name: "Luxembourg", code: "LU", flag: "🇱🇺", dialCode: "+352"),
+        CountryCode(name: "Andorra", code: "AD", flag: "🇦🇩", dialCode: "+376"),
+        CountryCode(name: "Vatican City", code: "VA", flag: "🇻🇦", dialCode: "+379"),
+        CountryCode(name: "San Marino", code: "SM", flag: "🇸🇲", dialCode: "+378"),
+        CountryCode(name: "Liechtenstein", code: "LI", flag: "🇱🇮", dialCode: "+423"),
+        CountryCode(name: "Monaco", code: "MC", flag: "🇲🇨", dialCode: "+377"),
+        CountryCode(name: "Gibraltar", code: "GI", flag: "🇬🇮", dialCode: "+350"),
+        CountryCode(name: "Guernsey", code: "GG", flag: "🇬🇬", dialCode: "+44"),
+        CountryCode(name: "Jersey", code: "JE", flag: "🇯🇪", dialCode: "+44"),
+        CountryCode(name: "Isle of Man", code: "IM", flag: "🇮🇲", dialCode: "+44"),
+        CountryCode(name: "Åland Islands", code: "AX", flag: "🇦🇽", dialCode: "+358"),
+        CountryCode(name: "Faroe Islands", code: "FO", flag: "🇫🇴", dialCode: "+298"),
+        CountryCode(name: "Greenland", code: "GL", flag: "🇬🇱", dialCode: "+299"),
+        CountryCode(name: "U.S. Virgin Islands", code: "VI", flag: "🇻🇮", dialCode: "+1"),
+        CountryCode(name: "Puerto Rico", code: "PR", flag: "🇵🇷", dialCode: "+1"),
+        CountryCode(name: "American Samoa", code: "AS", flag: "🇦🇸", dialCode: "+1"),
+        CountryCode(name: "Northern Mariana Islands", code: "MP", flag: "🇲🇵", dialCode: "+1"),
+        CountryCode(name: "Guam", code: "GU", flag: "🇬🇺", dialCode: "+1"),
+        CountryCode(name: "Micronesia", code: "FM", flag: "🇫🇲", dialCode: "+691"),
+        CountryCode(name: "Marshall Islands", code: "MH", flag: "🇲🇭", dialCode: "+692"),
+        CountryCode(name: "Palau", code: "PW", flag: "🇵🇼", dialCode: "+680"),
+        CountryCode(name: "Nauru", code: "NR", flag: "🇳🇷", dialCode: "+674"),
+        CountryCode(name: "Tuvalu", code: "TV", flag: "🇹🇻", dialCode: "+688"),
+        CountryCode(name: "Kiribati", code: "KI", flag: "🇰🇮", dialCode: "+686"),
+        CountryCode(name: "Tonga", code: "TO", flag: "🇹🇴", dialCode: "+676"),
+        CountryCode(name: "Samoa", code: "WS", flag: "🇼🇸", dialCode: "+685"),
+        CountryCode(name: "Solomon Islands", code: "SB", flag: "🇸🇧", dialCode: "+677"),
+        CountryCode(name: "New Caledonia", code: "NC", flag: "🇳🇨", dialCode: "+687"),
+        CountryCode(name: "Vanuatu", code: "VU", flag: "🇻🇺", dialCode: "+678"),
+        CountryCode(name: "Fiji", code: "FJ", flag: "🇫🇯", dialCode: "+679"),
+        CountryCode(name: "Papua New Guinea", code: "PG", flag: "🇵🇬", dialCode: "+675"),
+        CountryCode(name: "East Timor", code: "TL", flag: "🇹🇱", dialCode: "+670"),
+        CountryCode(name: "Brunei", code: "BN", flag: "🇧🇳", dialCode: "+673"),
+        CountryCode(name: "Cambodia", code: "KH", flag: "🇰🇭", dialCode: "+855"),
+        CountryCode(name: "Laos", code: "LA", flag: "🇱🇦", dialCode: "+856"),
+        CountryCode(name: "Myanmar", code: "MM", flag: "🇲🇲", dialCode: "+95"),
+        CountryCode(name: "Bhutan", code: "BT", flag: "🇧🇹", dialCode: "+975"),
+        CountryCode(name: "Nepal", code: "NP", flag: "🇳🇵", dialCode: "+977"),
+        CountryCode(name: "Sri Lanka", code: "LK", flag: "🇱🇰", dialCode: "+94"),
+        CountryCode(name: "Bangladesh", code: "BD", flag: "🇧🇩", dialCode: "+880"),
+        CountryCode(name: "Pakistan", code: "PK", flag: "🇵🇰", dialCode: "+92"),
+        CountryCode(name: "Afghanistan", code: "AF", flag: "🇦🇫", dialCode: "+93"),
+        CountryCode(name: "Iran", code: "IR", flag: "🇮🇷", dialCode: "+98"),
+        CountryCode(name: "Iraq", code: "IQ", flag: "🇮🇶", dialCode: "+964"),
+        CountryCode(name: "Syria", code: "SY", flag: "🇸🇾", dialCode: "+963"),
+        CountryCode(name: "Yemen", code: "YE", flag: "🇾🇪", dialCode: "+967"),
+        CountryCode(name: "Eritrea", code: "ER", flag: "🇪🇷", dialCode: "+291"),
+        CountryCode(name: "Somalia", code: "SO", flag: "🇸🇴", dialCode: "+252"),
+        CountryCode(name: "Djibouti", code: "DJ", flag: "🇩🇯", dialCode: "+253"),
+        CountryCode(name: "Comoros", code: "KM", flag: "🇰🇲", dialCode: "+269"),
+        CountryCode(name: "Seychelles", code: "SC", flag: "🇸🇨", dialCode: "+248"),
+        CountryCode(name: "Mauritius", code: "MU", flag: "🇲🇺", dialCode: "+230"),
+        CountryCode(name: "Madagascar", code: "MG", flag: "🇲🇬", dialCode: "+261"),
+        CountryCode(name: "Mozambique", code: "MZ", flag: "🇲🇿", dialCode: "+258"),
+        CountryCode(name: "Namibia", code: "NA", flag: "🇳🇦", dialCode: "+264"),
+        CountryCode(name: "Botswana", code: "BW", flag: "🇧🇼", dialCode: "+267"),
+        CountryCode(name: "Zimbabwe", code: "ZW", flag: "🇿🇼", dialCode: "+263"),
+        CountryCode(name: "Zambia", code: "ZM", flag: "🇿🇲", dialCode: "+260"),
+        CountryCode(name: "Angola", code: "AO", flag: "🇦🇴", dialCode: "+244"),
+        CountryCode(name: "DR Congo", code: "CD", flag: "🇨🇩", dialCode: "+243"),
+        CountryCode(name: "Congo", code: "CG", flag: "🇨🇬", dialCode: "+242"),
+        CountryCode(name: "Gabon", code: "GA", flag: "🇬🇦", dialCode: "+241"),
+        CountryCode(name: "Central African Republic", code: "CF", flag: "🇨🇫", dialCode: "+236"),
+        CountryCode(name: "Cameroon", code: "CM", flag: "🇨🇲", dialCode: "+237"),
+        CountryCode(name: "Benin", code: "BJ", flag: "🇧🇯", dialCode: "+229"),
+        CountryCode(name: "Togo", code: "TG", flag: "🇹🇬", dialCode: "+228"),
+        CountryCode(name: "Ivory Coast", code: "CI", flag: "🇨🇮", dialCode: "+225"),
+        CountryCode(name: "Liberia", code: "LR", flag: "🇱🇷", dialCode: "+231"),
+        CountryCode(name: "Sierra Leone", code: "SL", flag: "🇸🇱", dialCode: "+232"),
+        CountryCode(name: "Guinea", code: "GN", flag: "🇬🇳", dialCode: "+224"),
+        CountryCode(name: "Senegal", code: "SN", flag: "🇸🇳", dialCode: "+221"),
+        CountryCode(name: "Burkina Faso", code: "BF", flag: "🇧🇫", dialCode: "+226"),
+        CountryCode(name: "Mali", code: "ML", flag: "🇲🇱", dialCode: "+223"),
+        CountryCode(name: "Niger", code: "NE", flag: "🇳🇪", dialCode: "+227"),
+        CountryCode(name: "Chad", code: "TD", flag: "🇹🇩", dialCode: "+235"),
+        CountryCode(name: "Sudan", code: "SD", flag: "🇸🇩", dialCode: "+249"),
+        CountryCode(name: "Libya", code: "LY", flag: "🇱🇾", dialCode: "+218"),
+        CountryCode(name: "Tunisia", code: "TN", flag: "🇹🇳", dialCode: "+216"),
+        CountryCode(name: "Algeria", code: "DZ", flag: "🇩🇿", dialCode: "+213"),
+        CountryCode(name: "Morocco", code: "MA", flag: "🇲🇦", dialCode: "+212"),
+        CountryCode(name: "Ethiopia", code: "ET", flag: "🇪🇹", dialCode: "+251"),
+        CountryCode(name: "Tanzania", code: "TZ", flag: "🇹🇿", dialCode: "+255"),
+        CountryCode(name: "Uganda", code: "UG", flag: "🇺🇬", dialCode: "+256"),
+        CountryCode(name: "Ghana", code: "GH", flag: "🇬🇭", dialCode: "+233"),
+        CountryCode(name: "Kenya", code: "KE", flag: "🇰🇪", dialCode: "+254"),
+        CountryCode(name: "Nigeria", code: "NG", flag: "🇳🇬", dialCode: "+234"),
+        CountryCode(name: "South Africa", code: "ZA", flag: "🇿🇦", dialCode: "+27"),
+        CountryCode(name: "Egypt", code: "EG", flag: "🇪🇬", dialCode: "+20"),
+        CountryCode(name: "Lebanon", code: "LB", flag: "🇱🇧", dialCode: "+961"),
+        CountryCode(name: "Jordan", code: "JO", flag: "🇯🇴", dialCode: "+962"),
+        CountryCode(name: "Oman", code: "OM", flag: "🇴🇲", dialCode: "+968"),
+        CountryCode(name: "Bahrain", code: "BH", flag: "🇧🇭", dialCode: "+973"),
+        CountryCode(name: "Kuwait", code: "KW", flag: "🇰🇼", dialCode: "+965"),
+        CountryCode(name: "Qatar", code: "QA", flag: "🇶🇦", dialCode: "+974"),
+        CountryCode(name: "Saudi Arabia", code: "SA", flag: "🇸🇦", dialCode: "+966"),
+        CountryCode(name: "UAE", code: "AE", flag: "🇦🇪", dialCode: "+971"),
+        CountryCode(name: "Israel", code: "IL", flag: "🇮🇱", dialCode: "+972"),
+        CountryCode(name: "Portugal", code: "PT", flag: "🇵🇹", dialCode: "+351"),
+        CountryCode(name: "Greece", code: "GR", flag: "🇬🇷", dialCode: "+30"),
+        CountryCode(name: "Cyprus", code: "CY", flag: "🇨🇾", dialCode: "+357"),
+        CountryCode(name: "Malta", code: "MT", flag: "🇲🇹", dialCode: "+356"),
+        CountryCode(name: "Iceland", code: "IS", flag: "🇮🇸", dialCode: "+354"),
+        CountryCode(name: "Luxembourg", code: "LU", flag: "🇱🇺", dialCode: "+352"),
+        CountryCode(name: "Lithuania", code: "LT", flag: "🇱🇹", dialCode: "+370"),
+        CountryCode(name: "Latvia", code: "LV", flag: "🇱🇻", dialCode: "+371"),
+        CountryCode(name: "Estonia", code: "EE", flag: "🇪🇪", dialCode: "+372"),
+        CountryCode(name: "Slovakia", code: "SK", flag: "🇸🇰", dialCode: "+421"),
+        CountryCode(name: "Slovenia", code: "SI", flag: "🇸🇮", dialCode: "+386"),
+        CountryCode(name: "Croatia", code: "HR", flag: "🇭🇷", dialCode: "+385"),
+        CountryCode(name: "Bulgaria", code: "BG", flag: "🇧🇬", dialCode: "+359"),
+        CountryCode(name: "Romania", code: "RO", flag: "🇷🇴", dialCode: "+40"),
+        CountryCode(name: "Hungary", code: "HU", flag: "🇭🇺", dialCode: "+36"),
+        CountryCode(name: "Czech Republic", code: "CZ", flag: "🇨🇿", dialCode: "+420"),
+        CountryCode(name: "Poland", code: "PL", flag: "🇵🇱", dialCode: "+48"),
+        CountryCode(name: "Turkey", code: "TR", flag: "🇹🇷", dialCode: "+90"),
+        CountryCode(name: "Russia", code: "RU", flag: "🇷🇺", dialCode: "+7"),
+        CountryCode(name: "China", code: "CN", flag: "🇨🇳", dialCode: "+86"),
+        CountryCode(name: "Vietnam", code: "VN", flag: "🇻🇳", dialCode: "+84"),
+        CountryCode(name: "Indonesia", code: "ID", flag: "🇮🇩", dialCode: "+62"),
+        CountryCode(name: "Philippines", code: "PH", flag: "🇵🇭", dialCode: "+63"),
+        CountryCode(name: "Malaysia", code: "MY", flag: "🇲🇾", dialCode: "+60"),
+        CountryCode(name: "Thailand", code: "TH", flag: "🇹🇭", dialCode: "+66"),
+        CountryCode(name: "Taiwan", code: "TW", flag: "🇹🇼", dialCode: "+886"),
+        CountryCode(name: "Hong Kong", code: "HK", flag: "🇭🇰", dialCode: "+852"),
+        CountryCode(name: "Singapore", code: "SG", flag: "🇸🇬", dialCode: "+65"),
+        CountryCode(name: "New Zealand", code: "NZ", flag: "🇳🇿", dialCode: "+64"),
+        CountryCode(name: "Ireland", code: "IE", flag: "🇮🇪", dialCode: "+353"),
+        CountryCode(name: "Belgium", code: "BE", flag: "🇧🇪", dialCode: "+32"),
+        CountryCode(name: "Austria", code: "AT", flag: "🇦🇹", dialCode: "+43"),
+        CountryCode(name: "Switzerland", code: "CH", flag: "🇨🇭", dialCode: "+41"),
+        CountryCode(name: "Finland", code: "FI", flag: "🇫🇮", dialCode: "+358"),
+        CountryCode(name: "Denmark", code: "DK", flag: "🇩🇰", dialCode: "+45"),
+        CountryCode(name: "Norway", code: "NO", flag: "🇳🇴", dialCode: "+47"),
+        CountryCode(name: "Sweden", code: "SE", flag: "🇸🇪", dialCode: "+46"),
+        CountryCode(name: "Netherlands", code: "NL", flag: "🇳🇱", dialCode: "+31"),
+        CountryCode(name: "Italy", code: "IT", flag: "🇮🇹", dialCode: "+39"),
+        CountryCode(name: "Spain", code: "ES", flag: "🇪🇸", dialCode: "+34"),
+        CountryCode(name: "Mexico", code: "MX", flag: "🇲🇽", dialCode: "+52"),
+        CountryCode(name: "Brazil", code: "BR", flag: "🇧🇷", dialCode: "+55"),
+        CountryCode(name: "South Korea", code: "KR", flag: "🇰🇷", dialCode: "+82"),
+        CountryCode(name: "Japan", code: "JP", flag: "🇯🇵", dialCode: "+81"),
+        CountryCode(name: "France", code: "FR", flag: "🇫🇷", dialCode: "+33"),
+        CountryCode(name: "Germany", code: "DE", flag: "🇩🇪", dialCode: "+49"),
+        CountryCode(name: "Australia", code: "AU", flag: "🇦🇺", dialCode: "+61"),
+        CountryCode(name: "India", code: "IN", flag: "🇮🇳", dialCode: "+91"),
+        CountryCode(name: "United Kingdom", code: "GB", flag: "🇬🇧", dialCode: "+44"),
+        CountryCode(name: "Canada", code: "CA", flag: "🇨🇦", dialCode: "+1"),
+        CountryCode(name: "United States", code: "US", flag: "🇺🇸", dialCode: "+1")
+    ]
+    
+    static func findCountryCode(for dialCode: String) -> CountryCode? {
+        return allCountries.first { $0.dialCode == dialCode }
+    }
+}
+
+// MARK: - Phone Validation Functions
+func isValidPhoneNumber(_ phone: String) -> Bool {
+    // Remove all non-digit characters for validation
+    let digitsOnly = phone.filter { $0.isNumber }
+    
+    // Basic validation: 7-15 digits
+    guard digitsOnly.count >= 7 && digitsOnly.count <= 15 else { return false }
+    
+    // Check for common patterns
+    let patterns = [
+        "^\\+?[1-9]\\d{1,14}$", // International format
+        "^[1-9]\\d{6,14}$", // National format
+        "^\\+?1\\d{10}$", // US/Canada format
+        "^\\+?44\\d{10}$", // UK format
+        "^\\+?91\\d{10}$", // India format
+        "^\\+?61\\d{9}$", // Australia format
+        "^\\+?49\\d{10,11}$", // Germany format
+        "^\\+?33\\d{9}$", // France format
+        "^\\+?81\\d{9,10}$", // Japan format
+        "^\\+?82\\d{9,10}$" // South Korea format
+    ]
+    
+    return patterns.contains { pattern in
+        let regex = try? NSRegularExpression(pattern: pattern)
+        let range = NSRange(location: 0, length: phone.count)
+        return regex?.firstMatch(in: phone, range: range) != nil
+    }
+}
+
+func formatPhoneNumber(_ phone: String, countryCode: CountryCode) -> String {
+    let digitsOnly = phone.filter { $0.isNumber }
+    
+    // If it already starts with the country code, return as is
+    if phone.hasPrefix(countryCode.dialCode) {
+        return phone
+    }
+    
+    // Add country code if not present
+    return countryCode.dialCode + digitsOnly
+}
 
 struct ProfileView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @EnvironmentObject var appearanceManager: AppearanceManager
+    @EnvironmentObject var userTierManager: UserTierManager
     @State private var showingSettings = false
     @State private var showingHelp = false
     
@@ -69,6 +450,7 @@ struct ProfileView: View {
 struct ProfileHeaderView: View {
     var isDark: Bool
     @EnvironmentObject var authManager: AuthenticationManager
+    @EnvironmentObject var userTierManager: UserTierManager
     @State private var showingImagePicker = false
     @State private var profileImage: Image? = nil
     @State private var inputImage: UIImage? = nil
@@ -79,7 +461,7 @@ struct ProfileHeaderView: View {
     }
     
     var body: some View {
-        HStack(alignment: .top, spacing: 20) {
+        HStack(alignment: .center, spacing: 20) {
             ProfileImageView(
                 profileImage: $profileImage,
                 showingImagePicker: $showingImagePicker,
@@ -94,6 +476,7 @@ struct ProfileHeaderView: View {
                 isDark: isDark,
                 authManager: authManager
             )
+            .environmentObject(userTierManager)
         }
         .padding()
         .frame(maxWidth: .infinity)
@@ -118,43 +501,8 @@ struct ProfileHeaderView: View {
     }
     
     private func loadImage() {
-        guard let inputImage = inputImage else { 
-            print("❌ No input image available")
-            return 
-        }
-        
-        guard let userProfile = authManager.userProfile else {
-            print("❌ No user profile available for saving image")
-            return
-        }
-        
-        // Set the profile image immediately for better UX
+        guard let inputImage = inputImage else { return }
         profileImage = Image(uiImage: inputImage)
-        
-        // Save the profile image to UserDefaults with proper error handling
-        if let imageData = inputImage.jpegData(compressionQuality: 0.8) {
-            UserDefaults.standard.set(imageData, forKey: profileImageKey)
-            UserDefaults.standard.synchronize() // Force immediate save
-            
-            print("✅ Profile image saved for user: \(userProfile.id)")
-            print("✅ Profile image key: \(profileImageKey)")
-            print("✅ Image data size: \(imageData.count) bytes")
-            
-            // Verify the save was successful
-            if let savedData = UserDefaults.standard.data(forKey: profileImageKey) {
-                print("✅ Profile image save verified - data size: \(savedData.count) bytes")
-                
-                // Show save confirmation
-                showSaveConfirmation = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                    showSaveConfirmation = false
-                }
-            } else {
-                print("❌ Profile image save verification failed")
-            }
-        } else {
-            print("❌ Failed to convert image to JPEG data")
-        }
     }
     
     private func loadSavedProfileImage() {
@@ -243,35 +591,8 @@ struct ProfileImageView: View {
                             .foregroundColor(.white)
                     )
             }
-            
-            // Edit button overlay
-            VStack {
-                Spacer()
-                HStack {
-                    Spacer()
-                    Button(action: { showingImagePicker = true }) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.white)
-                                .frame(width: 32, height: 32)
-                                .shadow(radius: 3)
-                            Image(systemName: "pencil.circle.fill")
-                                .font(.system(size: 18, weight: .bold))
-                                .foregroundColor(Color.purple)
-                        }
-                    }
-                    .accessibilityLabel("Edit profile photo")
-                    .offset(x: 8, y: -8)
-                }
-            }
         }
-        .frame(width: 110, height: 110)
-        .sheet(isPresented: $showingImagePicker, onDismiss: onLoadImage) {
-            ImagePicker(image: $inputImage)
-        }
-        .overlay(
-            SaveConfirmationOverlay(showSaveConfirmation: $showSaveConfirmation)
-        )
+        .frame(width: 100, height: 100)
         .onAppear {
             onLoadSavedImage()
         }
@@ -321,6 +642,7 @@ struct SaveConfirmationOverlay: View {
 struct ProfileInfoView: View {
     let isDark: Bool
     let authManager: AuthenticationManager
+    @EnvironmentObject var userTierManager: UserTierManager
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -340,10 +662,15 @@ struct ProfileInfoView: View {
                 .font(.caption)
                 .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
             
-            if let profile = authManager.userProfile, profile.premium {
+            if userTierManager.tier == .pro {
                 Text("Nura Pro Member")
                     .font(.subheadline)
                     .foregroundColor(.yellow)
+            } else if userTierManager.tier == .proUnlimited {
+                Text("Nura Pro Unlimited")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(Color(red: 0.9, green: 0.3, blue: 0.1)) // Red-orange for special feeling
             }
             
             Spacer()
@@ -410,10 +737,10 @@ struct QuickActionsView: View {
     var isDark: Bool
     @EnvironmentObject var appearanceManager: AppearanceManager
     @EnvironmentObject var authManager: AuthenticationManager
+    @EnvironmentObject var userTierManager: UserTierManager
     @State private var showRoutine = false
     @State private var showAppPreferences = false
     @State private var showSkinDiary = false
-    @State private var hasPremium = false // Toggle for testing
     @State private var showNuraProSheet = false
     @State private var animateUnlockButton = false
     @State private var showViewProgress = false
@@ -424,11 +751,6 @@ struct QuickActionsView: View {
                     .font(.headline)
                     .fontWeight(.semibold)
                 Spacer()
-                Toggle(isOn: $hasPremium) {
-                    Text("")
-                }
-                .labelsHidden()
-                .toggleStyle(SwitchToggleStyle(tint: NuraColors.primary))
             }
             .padding(.bottom, 2)
             ZStack {
@@ -466,7 +788,7 @@ struct QuickActionsView: View {
                         showSkinDiary = true
                     }
                 }
-                if !hasPremium {
+                if !userTierManager.isPremium {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(isDark ? Color(red: 0.13, green: 0.12, blue: 0.11, opacity: 0.38) : Color(red: 0.65, green: 0.60, blue: 0.55, opacity: 0.28))
                         .overlay(
@@ -634,8 +956,10 @@ struct SettingsSectionView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                            let window = windowScene.windows.first {
+                            let privacyView = PrivacyAndSecurityView()
+                                .environmentObject(authManager)
                             window.rootViewController?.present(
-                                UIHostingController(rootView: PrivacyAndSecurityView()), animated: true, completion: nil)
+                                UIHostingController(rootView: privacyView), animated: true, completion: nil)
                         }
                     }
                 }
@@ -974,205 +1298,587 @@ struct HelpView: View {
     }
 }
 
-// Elegant, aesthetic personal info view for future user auth integration
+// Elegant, aesthetic personal info view with Supabase integration
 struct PersonalInformationView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject var authManager: AuthenticationManager
+    
     @State private var name: String = ""
     @State private var email: String = ""
     @State private var phone: String = ""
+    @State private var selectedCountryCode: CountryCode = CountryCode.allCountries.first { $0.dialCode == "+1" } ?? CountryCode.allCountries[0]
     @State private var profileImage: Image? = nil
     @State private var inputImage: UIImage? = nil
     @State private var showingImagePicker = false
     @State private var isSaving = false
+    @State private var isLoading = true
     @State private var saveSuccess: Bool? = nil // nil: idle, true: success, false: error
     @State private var errorMessage: String? = nil
+    @State private var lastUpdated: Date? = nil
+    @State private var hasChanges = false
+    
+    // Store original values to detect changes
+    @State private var originalName: String = ""
+    @State private var originalEmail: String = ""
+    @State private var originalPhone: String = ""
+    
     private var cardBackground: Color {
         colorScheme == .dark ? Color.black.opacity(0.7) : .white
     }
+    
+    private var completionPercentage: Double {
+        var completed = 0.0
+        let total = 3.0
+        
+        if !name.trimmingCharacters(in: .whitespaces).isEmpty { completed += 1 }
+        if !email.trimmingCharacters(in: .whitespaces).isEmpty { completed += 1 }
+        if !phone.trimmingCharacters(in: .whitespaces).isEmpty { completed += 1 }
+        
+        return completed / total
+    }
+    
     var body: some View {
         NavigationView {
             ZStack {
-                // Improved, more distinct background
+                // Enhanced background with subtle animation
                 LinearGradient(
-                    gradient: Gradient(colors: [NuraColors.sand, NuraColors.primary.opacity(0.25), NuraColors.secondary.opacity(0.18), NuraColors.sage.opacity(0.18)]),
+                    gradient: Gradient(colors: [
+                        NuraColors.sand.opacity(0.95),
+                        NuraColors.primary.opacity(0.25),
+                        NuraColors.secondary.opacity(0.18),
+                        NuraColors.sage.opacity(0.18)
+                    ]),
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
                 .ignoresSafeArea()
-                VStack(spacing: 24) {
-                    // Profile image edit
-                    ZStack(alignment: .bottomTrailing) {
-                        if let profileImage = profileImage {
-                            profileImage
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 90, height: 90)
-                                .clipShape(Circle())
-                                .overlay(Circle().stroke(NuraColors.primary, lineWidth: 2))
-                                .shadow(radius: 4)
-                                .accessibilityLabel("Profile photo")
-                        } else {
-                            Circle()
-                                .fill(LinearGradient(gradient: Gradient(colors: [NuraColors.primary, NuraColors.secondary]), startPoint: .top, endPoint: .bottom))
-                                .frame(width: 90, height: 90)
-                                .overlay(
-                                    Image(systemName: "person.fill")
-                                        .font(.system(size: 36))
-                                        .foregroundColor(.white)
-                                )
-                                .accessibilityLabel("Default profile photo")
-                        }
-                        Button(action: { showingImagePicker = true }) {
-                            ZStack {
-                                Circle()
-                                    .fill(NuraColors.background)
-                                    .frame(width: 28, height: 28)
-                                    .shadow(radius: 2)
-                                Image(systemName: "camera.fill")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundColor(NuraColors.primary)
-                            }
-                        }
-                        .accessibilityLabel("Edit profile photo")
-                        .offset(x: 4, y: 4)
-                    }
-                    .padding(.top, 16)
-                    .sheet(isPresented: $showingImagePicker, onDismiss: loadImage) {
-                        ImagePicker(image: $inputImage)
-                    }
-                    Text("Personal Information")
-                        .font(.title)
-                        .fontWeight(.bold)
-                        .padding(.top, 8)
-                        .accessibilityAddTraits(.isHeader)
-                    // Aligned fields
+                .animation(.easeInOut(duration: 0.8), value: saveSuccess)
+                
+                if isLoading {
                     VStack(spacing: 16) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Name *")
-                                .font(.caption)
-                                .foregroundColor(colorScheme == .dark ? .secondary : NuraColors.textSecondary)
-                            HStack(spacing: 10) {
-                                Image(systemName: "person.fill")
-                                    .foregroundColor(NuraColors.secondary)
-                                TextField("", text: $name)
-                                    .textFieldStyle(PlainTextFieldStyle())
-                                    .padding(10)
-                                    .background(cardBackground)
-                                    .cornerRadius(10)
-                                    .accessibilityLabel("Name")
-                                    .foregroundColor(.primary)
-                            }
-                        }
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Email *")
-                                .font(.caption)
-                                .foregroundColor(NuraColors.textSecondary)
-                            HStack(spacing: 10) {
-                                Image(systemName: "envelope.fill")
-                                    .foregroundColor(NuraColors.secondary)
-                                TextField("", text: $email)
-                                    .textFieldStyle(PlainTextFieldStyle())
-                                    .padding(10)
-                                    .background(cardBackground)
-                                    .cornerRadius(10)
-                                    .keyboardType(.emailAddress)
-                                    .autocapitalization(.none)
-                                    .accessibilityLabel("Email")
-                                    .foregroundColor(.primary)
-                            }
-                        }
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Phone (optional)")
-                                .font(.caption)
-                                .foregroundColor(NuraColors.textSecondary)
-                            HStack(spacing: 10) {
-                                Image(systemName: "phone.fill")
-                                    .foregroundColor(NuraColors.secondary)
-                                TextField("", text: $phone)
-                                    .textFieldStyle(PlainTextFieldStyle())
-                                    .padding(10)
-                                    .background(cardBackground)
-                                    .cornerRadius(10)
-                                    .keyboardType(.phonePad)
-                                    .accessibilityLabel("Phone number")
-                                    .foregroundColor(.primary)
-                            }
-                        }
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: NuraColors.primary))
+                            .scaleEffect(1.2)
+                        Text("Loading your information...")
+                            .font(.subheadline)
+                            .foregroundColor(NuraColors.textSecondary)
                     }
-                    .padding(.horizontal, 12)
-                    // Save button and feedback
-                    VStack(spacing: 8) {
-                        Button(action: saveInfo) {
-                            HStack {
-                                if isSaving {
-                                    ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: NuraColors.primary))
+                } else {
+                    ScrollView {
+                        VStack(spacing: 24) {
+                            // Enhanced profile image section
+                            VStack(spacing: 12) {
+                                ZStack(alignment: .bottomTrailing) {
+                                    if let profileImage = profileImage {
+                                        profileImage
+                                            .resizable()
+                                            .scaledToFill()
+                                            .frame(width: 100, height: 100)
+                                            .clipShape(Circle())
+                                            .overlay(Circle().stroke(NuraColors.primary, lineWidth: 3))
+                                            .shadow(color: NuraColors.primary.opacity(0.3), radius: 8, x: 0, y: 4)
+                                            .accessibilityLabel("Profile photo")
+                                    } else {
+                                        Circle()
+                                            .fill(LinearGradient(
+                                                gradient: Gradient(colors: [NuraColors.primary, NuraColors.secondary]),
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            ))
+                                            .frame(width: 100, height: 100)
+                                            .overlay(
+                                                Image(systemName: "person.fill")
+                                                    .font(.system(size: 40))
+                                                    .foregroundColor(.white)
+                                            )
+                                            .shadow(color: NuraColors.primary.opacity(0.3), radius: 8, x: 0, y: 4)
+                                            .accessibilityLabel("Default profile photo")
+                                    }
+                                    
+                                    Button(action: { 
+                                        showingImagePicker = true
+                                        // Add haptic feedback
+                                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                                        impactFeedback.impactOccurred()
+                                    }) {
+                                        ZStack {
+                                            Circle()
+                                                .fill(NuraColors.background)
+                                                .frame(width: 32, height: 32)
+                                                .shadow(radius: 3)
+                                            Image(systemName: "camera.fill")
+                                                .font(.system(size: 16, weight: .bold))
+                                                .foregroundColor(NuraColors.primary)
+                                        }
+                                    }
+                                    .accessibilityLabel("Edit profile photo")
+                                    .offset(x: 6, y: 6)
+                                    .scaleEffect(showingImagePicker ? 1.1 : 1.0)
+                                    .animation(.spring(response: 0.3), value: showingImagePicker)
                                 }
-                                Text(isSaving ? "Saving..." : "Save")
-                                    .fontWeight(.semibold)
+                                
+                                // Completion indicator
+                                VStack(spacing: 4) {
+                                    ProgressView(value: completionPercentage)
+                                        .progressViewStyle(LinearProgressViewStyle(tint: NuraColors.primary))
+                                        .frame(width: 120)
+                                    Text("\(Int(completionPercentage * 100))% Complete")
+                                        .font(.caption2)
+                                        .foregroundColor(NuraColors.textSecondary)
+                                }
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(NuraColors.primary)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
-                        }
-                        .disabled(isSaving)
-                        .accessibilityLabel("Save personal information")
-                        if let saveSuccess = saveSuccess {
-                            if saveSuccess {
-                                Label("Saved!", systemImage: "checkmark.circle.fill")
-                                    .foregroundColor(NuraColors.success)
-                                    .accessibilityLabel("Information saved successfully")
-                            } else {
-                                Label(errorMessage ?? "Error saving", systemImage: "xmark.octagon.fill")
-                                    .foregroundColor(NuraColors.error)
-                                    .accessibilityLabel("Error saving information")
+                            .padding(.top, 16)
+                            .sheet(isPresented: $showingImagePicker, onDismiss: loadImage) {
+                                ImagePicker(image: $inputImage)
                             }
+                            
+                            VStack(spacing: 8) {
+                                Text("Personal Information")
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                                    .accessibilityAddTraits(.isHeader)
+                                
+                                HStack(spacing: 4) {
+                                    Image(systemName: "lock.shield.fill")
+                                        .font(.caption)
+                                        .foregroundColor(NuraColors.success)
+                                    Text("Your data is encrypted and secure")
+                                        .font(.caption)
+                                        .foregroundColor(NuraColors.textSecondary)
+                                }
+                            }
+                            
+                            // Enhanced form fields
+                            VStack(spacing: 20) {
+                                FormField(
+                                    title: "Full Name",
+                                    subtitle: "Required • How should we address you?",
+                                    icon: "person.fill",
+                                    text: $name,
+                                    isRequired: true,
+                                    hasChanges: name != originalName,
+                                    cardBackground: cardBackground
+                                )
+                                
+                                FormField(
+                                    title: "Email Address",
+                                    subtitle: "Required • For account access and updates",
+                                    icon: "envelope.fill",
+                                    text: $email,
+                                    isRequired: true,
+                                    keyboardType: .emailAddress,
+                                    hasChanges: email != originalEmail,
+                                    cardBackground: cardBackground,
+                                    isDisabled: true // Email comes from auth
+                                )
+                                
+                                PhoneFormField(
+                                    title: "Phone Number",
+                                    subtitle: "Optional • For important notifications",
+                                    icon: "phone.fill",
+                                    phoneNumber: $phone,
+                                    selectedCountryCode: $selectedCountryCode,
+                                    isRequired: false,
+                                    hasChanges: phone != originalPhone,
+                                    cardBackground: cardBackground
+                                )
+                                
+                                // Privacy notice for phone storage
+                                if !phone.trimmingCharacters(in: .whitespaces).isEmpty {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "info.circle.fill")
+                                            .foregroundColor(NuraColors.secondary)
+                                            .font(.caption)
+                                        Text("Phone numbers are stored securely in your account for cross-device access")
+                                            .font(.caption2)
+                                            .foregroundColor(NuraColors.textSecondary)
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(NuraColors.secondary.opacity(0.1))
+                                    .cornerRadius(8)
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            
+                            // Enhanced save section
+                            VStack(spacing: 12) {
+                                Button(action: saveInfo) {
+                                    HStack(spacing: 12) {
+                                        if isSaving {
+                                            ProgressView()
+                                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                                .scaleEffect(0.8)
+                                        }
+                                        Text(isSaving ? "Saving..." : (hasChanges ? "Save Changes" : "All Saved"))
+                                            .fontWeight(.semibold)
+                                        
+                                        if !hasChanges && !isSaving {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundColor(.white.opacity(0.8))
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(
+                                        hasChanges ? NuraColors.primary : NuraColors.success
+                                    )
+                                    .foregroundColor(.white)
+                                    .cornerRadius(12)
+                                    .shadow(color: (hasChanges ? NuraColors.primary : NuraColors.success).opacity(0.3), radius: 8, x: 0, y: 4)
+                                }
+                                .disabled(isSaving || !hasChanges)
+                                .scaleEffect(isSaving ? 0.98 : 1.0)
+                                .animation(.spring(response: 0.3), value: isSaving)
+                                .accessibilityLabel("Save personal information")
+                                
+                                // Status messages
+                                if let saveSuccess = saveSuccess {
+                                    if saveSuccess {
+                                        HStack(spacing: 8) {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundColor(NuraColors.success)
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text("Information saved successfully!")
+                                                    .foregroundColor(NuraColors.success)
+                                                    .fontWeight(.medium)
+                                                if let lastUpdated = lastUpdated {
+                                                    Text("Last updated: \(lastUpdated, formatter: timeFormatter)")
+                                                        .font(.caption)
+                                                        .foregroundColor(NuraColors.textSecondary)
+                                                }
+                                            }
+                                        }
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 12)
+                                        .background(NuraColors.success.opacity(0.1))
+                                        .cornerRadius(10)
+                                        .transition(.slide.combined(with: .opacity))
+                                        .accessibilityLabel("Information saved successfully")
+                                    } else {
+                                        HStack(spacing: 8) {
+                                            Image(systemName: "exclamationmark.triangle.fill")
+                                                .foregroundColor(NuraColors.error)
+                                            Text(errorMessage ?? "Error saving information")
+                                                .foregroundColor(NuraColors.error)
+                                                .fontWeight(.medium)
+                                        }
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 12)
+                                        .background(NuraColors.error.opacity(0.1))
+                                        .cornerRadius(10)
+                                        .transition(.slide.combined(with: .opacity))
+                                        .accessibilityLabel("Error saving information")
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            
+                            Spacer(minLength: 20)
                         }
+                        .padding()
                     }
-                    Spacer()
                 }
-                .padding()
             }
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarItems(trailing: Button("Done") { dismiss() })
+            .onAppear {
+                loadUserData()
+            }
+            .onChange(of: name) { oldValue, newValue in updateHasChanges() }
+            .onChange(of: email) { oldValue, newValue in updateHasChanges() }
+            .onChange(of: phone) { oldValue, newValue in updateHasChanges() }
+        }
+    }
+    
+    private var timeFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.dateStyle = .none
+        return formatter
+    }
+    
+    private func updateHasChanges() {
+        hasChanges = name != originalName || email != originalEmail || phone != originalPhone
+    }
+    
+    private func loadUserData() {
+        guard let user = authManager.session?.user else {
+            isLoading = false
+            return
+        }
+        
+        // Load data from auth user
+        email = user.email ?? ""
+        originalEmail = email
+        
+        // Use the proper display name logic that respects tempUserName priority
+        // This handles the case where userProfile.name might be empty but tempUserName has the value
+        // The getDisplayName() function has proper fallback logic: tempUserName -> userProfile.name -> "User"
+        name = authManager.getDisplayName()
+        
+        // Load phone from user profile if available
+        if let userProfile = authManager.userProfile {
+            let savedPhone = userProfile.phone ?? ""
+            
+            // Parse the phone number to extract country code and local number
+            if !savedPhone.isEmpty {
+                // Try to find the country code from the saved phone number
+                for country in CountryCode.allCountries {
+                    if savedPhone.hasPrefix(country.dialCode) {
+                        selectedCountryCode = country
+                        phone = String(savedPhone.dropFirst(country.dialCode.count))
+                        break
+                    }
+                }
+                
+                // If no country code found, assume US (+1)
+                if phone.isEmpty {
+                    phone = savedPhone
+                }
+            } else {
+                phone = ""
+            }
+            
+            print("📱 Loaded phone from profiles table: '\(savedPhone)' -> country: \(selectedCountryCode.dialCode), local: '\(phone)'")
+        } else {
+            // Fallback to auth metadata for name if no profile exists
+            let userMetadata = user.userMetadata
+            if let metaName = userMetadata["name"]?.stringValue {
+                name = metaName
+            } else if let fullName = userMetadata["full_name"]?.stringValue {
+                name = fullName
+            }
+            phone = ""
+            print("📱 No phone found in profiles table, using empty string")
+        }
+        
+        originalName = name
+        originalPhone = phone
+        updateHasChanges()
+        
+        // Load existing profile image if available
+        loadExistingProfileImage()
+        
+        isLoading = false
+    }
+    
+    private func loadExistingProfileImage() {
+        guard let userProfile = authManager.userProfile else {
+            print("📸 No user profile available for loading image")
+            return
+        }
+        
+        let profileImageKey = "profile_image_\(userProfile.id.lowercased())"
+        print("📸 Loading profile image for user: \(userProfile.id)")
+        print("📸 Profile image key: \(profileImageKey)")
+        
+        // Try to load the profile image from UserDefaults
+        if let imageData = UserDefaults.standard.data(forKey: profileImageKey),
+           let uiImage = UIImage(data: imageData) {
+            profileImage = Image(uiImage: uiImage)
+            print("✅ Profile image loaded successfully for user: \(userProfile.id)")
+        } else {
+            print("📸 No existing profile image found for user: \(userProfile.id)")
+            // Clear any existing image to show default state
+            profileImage = nil
         }
     }
     
     private func loadImage() {
         guard let inputImage = inputImage else { return }
+        
+        // Set the profile image immediately for better UX
         profileImage = Image(uiImage: inputImage)
+        
+        // Save the profile image to UserDefaults with proper user ID
+        guard let userProfile = authManager.userProfile else {
+            print("❌ No user profile available for saving image")
+            return
+        }
+        
+        let profileImageKey = "profile_image_\(userProfile.id.lowercased())"
+        
+        if let imageData = inputImage.jpegData(compressionQuality: 0.8) {
+            UserDefaults.standard.set(imageData, forKey: profileImageKey)
+            UserDefaults.standard.synchronize() // Force immediate save
+            
+            print("✅ Profile image saved for user: \(userProfile.id)")
+            print("✅ Profile image key: \(profileImageKey)")
+            print("✅ Image data size: \(imageData.count) bytes")
+            
+            // Verify the save was successful
+            if let savedData = UserDefaults.standard.data(forKey: profileImageKey) {
+                print("✅ Profile image save verified - data size: \(savedData.count) bytes")
+            } else {
+                print("❌ Profile image save verification failed")
+            }
+        } else {
+            print("❌ Failed to convert image to JPEG data")
+        }
+        
+        // Mark that we have changes to save
+        hasChanges = true
     }
     
     private func saveInfo() {
         // Reset feedback
         saveSuccess = nil
         errorMessage = nil
+        
         // Validate
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else {
             saveSuccess = false
-            errorMessage = "Name required"
+            errorMessage = "Name is required"
             return
         }
         guard isValidEmail(email) else {
             saveSuccess = false
-            errorMessage = "Invalid email"
+            errorMessage = "Please enter a valid email address"
             return
         }
-        // Phone is now optional, but if provided, validate
-        if !phone.trimmingCharacters(in: .whitespaces).isEmpty && !isValidPhone(phone) {
-            saveSuccess = false
-            errorMessage = "Invalid phone"
-            return
+        // Phone is optional, but if provided, validate
+        if !phone.trimmingCharacters(in: .whitespaces).isEmpty {
+            let fullPhoneNumber = selectedCountryCode.dialCode + phone.filter { $0.isNumber }
+            if !isValidPhoneNumber(fullPhoneNumber) {
+                saveSuccess = false
+                errorMessage = "Please enter a valid phone number"
+                return
+            }
         }
+        
         isSaving = true
-        // Simulate save delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-            isSaving = false
-            saveSuccess = true
+        
+        Task {
+            do {
+                // Update user profile in Supabase
+                try await updateUserProfile()
+                
+                await MainActor.run {
+                    isSaving = false
+                    saveSuccess = true
+                    lastUpdated = Date()
+                    originalName = name
+                    originalEmail = email
+                    originalPhone = phone
+                    updateHasChanges()
+                    
+                    // Haptic feedback for success
+                    let notificationFeedback = UINotificationFeedbackGenerator()
+                    notificationFeedback.notificationOccurred(.success)
+                }
+                
+                // Auto-hide success message after 3 seconds
+                try await Task.sleep(nanoseconds: 3_000_000_000)
+                await MainActor.run {
+                    if saveSuccess == true {
+                        withAnimation(.easeOut(duration: 0.5)) {
+                            saveSuccess = nil
+                        }
+                    }
+                }
+                
+            } catch {
+                await MainActor.run {
+                    isSaving = false
+                    saveSuccess = false
+                    errorMessage = "Failed to save: \(error.localizedDescription)"
+                    
+                    // Haptic feedback for error
+                    let notificationFeedback = UINotificationFeedbackGenerator()
+                    notificationFeedback.notificationOccurred(.error)
+                }
+            }
         }
+    }
+    
+    private func updateUserProfile() async throws {
+        guard let userId = authManager.session?.user.id else {
+            throw NSError(domain: "AuthError", code: 0, userInfo: [NSLocalizedDescriptionKey: "No authenticated user found"])
+        }
+        
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        let trimmedPhone = phone.trimmingCharacters(in: .whitespaces)
+        
+        // Format phone number with country code
+        let formattedPhone = trimmedPhone.isEmpty ? nil : (selectedCountryCode.dialCode + trimmedPhone.filter { $0.isNumber })
+        
+        print("📱 Updating profile with phone: '\(formattedPhone ?? "nil")'")
+        print("📱 Phone is empty: \(trimmedPhone.isEmpty)")
+        
+        // First, update the auth user metadata
+        try await authManager.client.auth.update(user: UserAttributes(data: ["name": AnyJSON.string(trimmedName)]))
+        
+        // Create a proper struct for the profile data
+        struct ProfileUpdateData: Codable {
+            let id: String
+            let name: String
+            let email: String
+            let phone: String?
+            let updated_at: String
+        }
+        
+        let profileData = ProfileUpdateData(
+            id: userId.uuidString,
+            name: trimmedName,
+            email: email,
+            phone: formattedPhone,
+            updated_at: ISO8601DateFormatter().string(from: Date())
+        )
+        
+        print("📱 Sending profile update to Supabase with phone: \(profileData.phone ?? "nil")")
+        
+        // Try to upsert the profile with proper error handling
+        do {
+            try await authManager.client
+                .from("profiles")
+                .upsert(profileData)
+                .execute()
+            
+            print("✅ Profile updated successfully in Supabase profiles table")
+            print("✅ Phone saved: \(profileData.phone ?? "nil")")
+        } catch {
+            print("❌ Error updating profile: \(error)")
+            print("❌ Error type: \(type(of: error))")
+            
+            // Handle different error types
+            if let postgrestError = error as? PostgrestError {
+                print("❌ PostgrestError: \(postgrestError)")
+                throw postgrestError
+            } else if let authError = error as? AuthError {
+                print("❌ AuthError: \(authError)")
+                throw authError
+            } else {
+                print("❌ Unknown error type: \(type(of: error))")
+                throw error
+            }
+        }
+        
+        // Refresh the user profile in auth manager
+        await authManager.refreshUserProfile()
+    }
+    
+    private func createProfilesTableIfNeeded() async throws {
+        // This would typically be done via Supabase migrations
+        // For now, we'll handle the 404 error gracefully
+        print("ℹ️ Please create the profiles table in your Supabase dashboard with the following columns:")
+        print("   - id (uuid, primary key)")
+        print("   - name (text)")
+        print("   - email (text)")
+        print("   - phone (text, nullable)")
+        print("   - created_at (timestamp)")
+        print("   - updated_at (timestamp)")
+        
+        // For development, you can create this table manually in Supabase Dashboard
+        // Go to: Database > Tables > Create new table
+        throw NSError(
+            domain: "DatabaseError", 
+            code: 404, 
+            userInfo: [
+                NSLocalizedDescriptionKey: "Profiles table not found. Please create it in your Supabase dashboard with the required columns."
+            ]
+        )
     }
     
     private func isValidEmail(_ email: String) -> Bool {
@@ -1180,10 +1886,307 @@ struct PersonalInformationView: View {
         let emailPred = NSPredicate(format:"SELF MATCHES %@", emailRegEx)
         return emailPred.evaluate(with: email)
     }
+    
     private func isValidPhone(_ phone: String) -> Bool {
-        let phoneRegEx = "^\\d{7,15}$"
+        let phoneRegEx = "^[\\d\\s\\-\\(\\)\\+\\.]{7,15}$"
         let phonePred = NSPredicate(format: "SELF MATCHES %@", phoneRegEx)
-        return phonePred.evaluate(with: phone.filter { $0.isNumber })
+        return phonePred.evaluate(with: phone.filter { $0.isNumber || "()- +.".contains($0) })
+    }
+}
+
+// Enhanced form field component
+struct FormField: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    @Binding var text: String
+    let isRequired: Bool
+    var keyboardType: UIKeyboardType = .default
+    let hasChanges: Bool
+    let cardBackground: Color
+    var isDisabled: Bool = false
+    
+    @FocusState private var isFocused: Bool
+    @Environment(\.colorScheme) private var colorScheme
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 4) {
+                Text(title)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(colorScheme == .dark ? .secondary : NuraColors.textSecondary)
+                
+                if isRequired {
+                    Text("*")
+                        .font(.caption)
+                        .foregroundColor(NuraColors.error)
+                }
+                
+                if hasChanges {
+                    Circle()
+                        .fill(NuraColors.primary)
+                        .frame(width: 6, height: 6)
+                        .animation(.spring(response: 0.3), value: hasChanges)
+                }
+                
+                Spacer()
+            }
+            
+            Text(subtitle)
+                .font(.caption2)
+                .foregroundColor(NuraColors.textSecondary.opacity(0.8))
+            
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .foregroundColor(isFocused ? NuraColors.primary : NuraColors.secondary)
+                    .animation(.easeInOut(duration: 0.2), value: isFocused)
+                
+                TextField("", text: $text)
+                    .textFieldStyle(PlainTextFieldStyle())
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(cardBackground)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(
+                                        isFocused ? NuraColors.primary : (hasChanges ? NuraColors.primary.opacity(0.5) : Color.clear),
+                                        lineWidth: isFocused ? 2 : 1
+                                    )
+                            )
+                    )
+                    .keyboardType(keyboardType)
+                    .autocapitalization(keyboardType == .emailAddress ? .none : .words)
+                    .disabled(isDisabled)
+                    .focused($isFocused)
+                    .accessibilityLabel(title)
+                    .foregroundColor(isDisabled ? NuraColors.textSecondary.opacity(0.6) : .primary)
+                    .scaleEffect(isFocused ? 1.02 : 1.0)
+                    .animation(.spring(response: 0.3), value: isFocused)
+                
+                if isDisabled {
+                    Image(systemName: "lock.fill")
+                        .font(.caption)
+                        .foregroundColor(NuraColors.textSecondary.opacity(0.6))
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Phone Form Field Component
+struct PhoneFormField: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    @Binding var phoneNumber: String
+    @Binding var selectedCountryCode: CountryCode
+    let isRequired: Bool
+    let hasChanges: Bool
+    let cardBackground: Color
+    
+    @FocusState private var isFocused: Bool
+    @State private var showingCountryPicker = false
+    @State private var phoneValidationStatus: PhoneValidationStatus = .neutral
+    @Environment(\.colorScheme) private var colorScheme
+    
+    enum PhoneValidationStatus {
+        case neutral, valid, invalid
+        
+        var color: Color {
+            switch self {
+            case .neutral: return .clear
+            case .valid: return .green
+            case .invalid: return .red
+            }
+        }
+        
+        var icon: String {
+            switch self {
+            case .neutral: return ""
+            case .valid: return "checkmark.circle.fill"
+            case .invalid: return "xmark.circle.fill"
+            }
+        }
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 4) {
+                Text(title)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(colorScheme == .dark ? .secondary : NuraColors.textSecondary)
+                
+                if isRequired {
+                    Text("*")
+                        .font(.caption)
+                        .foregroundColor(NuraColors.error)
+                }
+                
+                if hasChanges {
+                    Circle()
+                        .fill(NuraColors.primary)
+                        .frame(width: 6, height: 6)
+                        .animation(.spring(response: 0.3), value: hasChanges)
+                }
+                
+                Spacer()
+            }
+            
+            Text(subtitle)
+                .font(.caption2)
+                .italic()
+                .foregroundColor(NuraColors.textSecondary.opacity(0.8))
+            
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .foregroundColor(isFocused ? NuraColors.primary : NuraColors.secondary)
+                    .animation(.easeInOut(duration: 0.2), value: isFocused)
+                
+                // Country Code Button
+                Button(action: { showingCountryPicker = true }) {
+                    HStack(spacing: 4) {
+                        Text(selectedCountryCode.flag)
+                            .font(.title3)
+                        Text(selectedCountryCode.dialCode)
+                            .font(.caption)
+                            .fontWeight(.medium)
+                        Image(systemName: "chevron.down")
+                            .font(.caption2)
+                            .foregroundColor(NuraColors.secondary)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(6)
+                }
+                .buttonStyle(PlainButtonStyle())
+                
+                // Phone Number TextField
+                TextField("Phone number", text: $phoneNumber)
+                    .textFieldStyle(PlainTextFieldStyle())
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(cardBackground)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(
+                                        isFocused ? NuraColors.primary : (hasChanges ? NuraColors.primary.opacity(0.5) : phoneValidationStatus.color),
+                                        lineWidth: isFocused ? 2 : 1
+                                    )
+                            )
+                    )
+                    .keyboardType(.phonePad)
+                    .focused($isFocused)
+                    .accessibilityLabel(title)
+                    .scaleEffect(isFocused ? 1.02 : 1.0)
+                    .animation(.spring(response: 0.3), value: isFocused)
+                    .onChange(of: phoneNumber) { oldValue, newValue in
+                        validatePhoneNumber()
+                    }
+                
+                // Validation Icon
+                if phoneValidationStatus != .neutral {
+                    Image(systemName: phoneValidationStatus.icon)
+                        .foregroundColor(phoneValidationStatus.color)
+                        .font(.caption)
+                        .animation(.spring(response: 0.3), value: phoneValidationStatus)
+                }
+            }
+        }
+        .sheet(isPresented: $showingCountryPicker) {
+            CountryCodePickerView(selectedCountryCode: $selectedCountryCode)
+        }
+    }
+    
+    private func validatePhoneNumber() {
+        guard !phoneNumber.isEmpty else {
+            phoneValidationStatus = .neutral
+            return
+        }
+        
+        let fullNumber = selectedCountryCode.dialCode + phoneNumber.filter { $0.isNumber }
+        phoneValidationStatus = isValidPhoneNumber(fullNumber) ? .valid : .invalid
+    }
+}
+
+// MARK: - Country Code Picker View
+struct CountryCodePickerView: View {
+    @Binding var selectedCountryCode: CountryCode
+    @Environment(\.dismiss) var dismiss
+    @State private var searchText = ""
+    @Environment(\.colorScheme) private var colorScheme
+    
+    var filteredCountries: [CountryCode] {
+        if searchText.isEmpty {
+            return CountryCode.allCountries
+        } else {
+            return CountryCode.allCountries.filter { country in
+                country.name.localizedCaseInsensitiveContains(searchText) ||
+                country.dialCode.localizedCaseInsensitiveContains(searchText) ||
+                country.code.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+    }
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                // Search Bar
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.gray)
+                    TextField("Search countries", text: $searchText)
+                        .textFieldStyle(PlainTextFieldStyle())
+                }
+                .padding()
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(10)
+                .padding(.horizontal)
+                
+                // Country List
+                List(filteredCountries, id: \.id) { country in
+                    Button(action: {
+                        selectedCountryCode = country
+                        dismiss()
+                    }) {
+                        HStack {
+                            Text(country.flag)
+                                .font(.title2)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(country.name)
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.primary)
+                                
+                                Text(country.dialCode)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Spacer()
+                            
+                            if country.id == selectedCountryCode.id {
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(NuraColors.primary)
+                                    .font(.caption)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+            .navigationTitle("Select Country")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarItems(trailing: Button("Done") { dismiss() })
+        }
     }
 }
 
@@ -1428,9 +2431,14 @@ struct NotificationToggleRow: View {
 struct PrivacyAndSecurityView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject var authManager: AuthenticationManager
     @State private var trackingEnabled: Bool = false
     @State private var showDeleteAlert: Bool = false
-    var onDeleteAccount: (() -> Void)? = nil // for easy backend connection
+    @State private var showFinalConfirmation: Bool = false
+    @State private var isDeleting: Bool = false
+    @State private var deleteError: String? = nil
+    @State private var confirmationText: String = ""
+    @State private var deletionSuccessful: Bool = false
     private var cardBackground: Color {
         colorScheme == .dark ? Color.black.opacity(0.7) : .white
     }
@@ -1497,40 +2505,138 @@ struct PrivacyAndSecurityView: View {
                     .background(cardBackground)
                     .cornerRadius(12)
                     // Delete Account
-                    VStack(alignment: .center, spacing: 8) {
-                        Text("Delete My Account")
-                            .font(.headline)
-                            .foregroundColor(NuraColors.errorStrong)
-                        Text("Permanently delete your account and all associated data. This action cannot be undone.")
+                    VStack(alignment: .center, spacing: 12) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(NuraColors.errorStrong)
+                                .font(.title3)
+                            Text("Delete My Account")
+                                .font(.headline)
+                                .foregroundColor(NuraColors.errorStrong)
+                        }
+                        
+                        VStack(spacing: 8) {
+                            Text("⚠️ This will permanently deactivate:")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundColor(NuraColors.errorStrong)
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("•")
+                                    Text("Your account and profile data")
+                                }
+                                HStack {
+                                    Text("•")
+                                    Text("All skin analysis history")
+                                }
+                                HStack {
+                                    Text("•")
+                                    Text("Skin diary entries and progress")
+                                }
+                                HStack {
+                                    Text("•")
+                                    Text("Subscription and billing data")
+                                }
+                                HStack {
+                                    Text("•")
+                                    Text("App preferences and settings")
+                                }
+                            }
                             .font(.caption)
                             .foregroundColor(NuraColors.errorStrong.opacity(0.8))
-                            .multilineTextAlignment(.center)
+                            
+                            Text("This action cannot be undone!")
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundColor(NuraColors.errorStrong)
+                                .padding(.top, 4)
+                        }
+                        
+                        // Show success message if deletion was successful
+                        if deletionSuccessful {
+                            HStack(spacing: 8) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                Text("Account deactivated successfully. Redirecting to login...")
+                                    .font(.caption)
+                                    .foregroundColor(.green)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color.green.opacity(0.1))
+                            .cornerRadius(8)
+                        }
+                        // Show error if deletion failed
+                        else if let deleteError = deleteError {
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.circle.fill")
+                                    .foregroundColor(NuraColors.errorStrong)
+                                Text(deleteError)
+                                    .font(.caption)
+                                    .foregroundColor(NuraColors.errorStrong)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(NuraColors.errorStrong.opacity(0.1))
+                            .cornerRadius(8)
+                        }
+                        
                         Button(action: {
+                            if isDeleting || deletionSuccessful {
+                                return // Prevent multiple taps
+                            }
                             showDeleteAlert = true
                         }) {
-                            Text("Delete Account")
-                                .fontWeight(.semibold)
-                                .padding(.vertical, 8)
-                                .frame(maxWidth: .infinity)
-                                .background(NuraColors.errorStrong)
-                                .foregroundColor(.white)
-                                .cornerRadius(10)
-                        }
-                        .accessibilityLabel("Delete Account")
-                        .alert(isPresented: $showDeleteAlert) {
-                            Alert(
-                                title: Text("Delete Account?"),
-                                message: Text("Are you sure you want to permanently delete your account? This cannot be undone."),
-                                primaryButton: .destructive(Text("Delete"), action: {
-                                    onDeleteAccount?()
-                                }),
-                                secondaryButton: .cancel()
+                            HStack(spacing: 12) {
+                                if isDeleting {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                        .scaleEffect(0.8)
+                                } else if deletionSuccessful {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.white)
+                                }
+                                Text(isDeleting ? "Deactivating Account..." : (deletionSuccessful ? "Account Deactivated" : "Deactivate Account"))
+                                    .fontWeight(.semibold)
+                            }
+                            .padding(.vertical, 12)
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                isDeleting ? NuraColors.errorStrong.opacity(0.6) : 
+                                (deletionSuccessful ? Color.green : NuraColors.errorStrong)
                             )
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
                         }
+                        .disabled(isDeleting || deletionSuccessful)
+                        .accessibilityLabel("Delete Account")
                     }
                     .padding()
-                    .background(cardBackground)
-                    .cornerRadius(12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(cardBackground)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(NuraColors.errorStrong.opacity(0.3), lineWidth: 1)
+                            )
+                    )
+                    .alert("⚠️ Deactivate Account", isPresented: $showDeleteAlert) {
+                        Button("Cancel", role: .cancel) { }
+                        Button("Continue", role: .destructive) {
+                            showFinalConfirmation = true
+                        }
+                    } message: {
+                        Text("Are you absolutely sure? This will permanently deactivate your account and remove all data. This action cannot be undone.")
+                    }
+                    .sheet(isPresented: $showFinalConfirmation) {
+                        DeleteAccountConfirmationView(
+                            isDeleting: $isDeleting,
+                            deleteError: $deleteError,
+                            onConfirmDelete: deleteAccount
+                        )
+                        .environmentObject(authManager)
+                    }
                     Spacer()
                 }
                 .padding()
@@ -1538,6 +2644,290 @@ struct PrivacyAndSecurityView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarItems(trailing: Button("Done") { dismiss() })
         }
+    }
+    
+    // MARK: - Account Deletion Logic
+    private func deleteAccount() {
+        Task {
+            do {
+                isDeleting = true
+                deleteError = nil
+                
+                // Add a small delay for better UX feedback
+                try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                
+                try await authManager.deleteAccount()
+                
+                // Account deletion successful - dismiss all modals and redirect to login
+                await MainActor.run {
+                    deletionSuccessful = true
+                    
+                    // Haptic feedback for success
+                    let notificationFeedback = UINotificationFeedbackGenerator()
+                    notificationFeedback.notificationOccurred(.success)
+                    
+                    // Dismiss the confirmation modal
+                    showFinalConfirmation = false
+                    
+                    // Dismiss the privacy & security modal
+                    dismiss()
+                    
+                    // Show success message briefly before redirecting
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        // The auth state change will automatically redirect to login
+                        // but we can also force a sign out to ensure clean state
+                        Task {
+                            await authManager.signOut()
+                        }
+                    }
+                }
+                
+            } catch {
+                isDeleting = false
+                deleteError = error.localizedDescription
+                
+                // Haptic feedback for error
+                let notificationFeedback = UINotificationFeedbackGenerator()
+                notificationFeedback.notificationOccurred(.error)
+                
+                print("❌ Account deletion failed: \(error)")
+            }
+        }
+    }
+}
+
+// MARK: - Delete Account Confirmation View
+struct DeleteAccountConfirmationView: View {
+    @Environment(\.dismiss) var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject var authManager: AuthenticationManager
+    @Binding var isDeleting: Bool
+    @Binding var deleteError: String?
+    let onConfirmDelete: () -> Void
+    
+    @State private var confirmationText: String = ""
+    @State private var hasTypedCorrectly: Bool = false
+    
+    private let requiredText = "DELETE MY ACCOUNT"
+    
+    private var cardBackground: Color {
+        colorScheme == .dark ? Color.black.opacity(0.8) : .white
+    }
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                // Enhanced background
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        NuraColors.errorStrong.opacity(0.05),
+                        NuraColors.errorStrong.opacity(0.02),
+                        Color.clear
+                    ]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Header
+                        VStack(spacing: 16) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 50))
+                                .foregroundColor(NuraColors.errorStrong)
+                                .scaleEffect(isDeleting ? 0.8 : 1.0)
+                                .animation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true), value: isDeleting)
+                            
+                            Text("⚠️ Final Confirmation")
+                                .font(.title)
+                                .fontWeight(.bold)
+                                .foregroundColor(NuraColors.errorStrong)
+                            
+                            Text("This is your last chance to reconsider.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(.top, 20)
+                        
+                        // Critical info card
+                        VStack(spacing: 16) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "info.circle.fill")
+                                    .foregroundColor(.orange)
+                                Text("What happens next:")
+                                    .font(.headline)
+                                    .fontWeight(.semibold)
+                                Spacer()
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text("1.")
+                                        .fontWeight(.bold)
+                                        .foregroundColor(NuraColors.errorStrong)
+                                    Text("Your user account will be permanently deleted from our servers")
+                                }
+                                HStack {
+                                    Text("2.")
+                                        .fontWeight(.bold)
+                                        .foregroundColor(NuraColors.errorStrong)
+                                    Text("All your data will be immediately and permanently removed")
+                                }
+                                HStack {
+                                    Text("3.")
+                                        .fontWeight(.bold)
+                                        .foregroundColor(NuraColors.errorStrong)
+                                    Text("You will be logged out and cannot recover this account")
+                                }
+                                HStack {
+                                    Text("4.")
+                                        .fontWeight(.bold)
+                                        .foregroundColor(NuraColors.errorStrong)
+                                    Text("This action cannot be undone - no backups exist")
+                                }
+                            }
+                            .font(.subheadline)
+                        }
+                        .padding()
+                        .background(cardBackground)
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                        )
+                        
+                        // Confirmation input
+                        VStack(spacing: 12) {
+                            Text("Type '\(requiredText)' to confirm:")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundColor(NuraColors.errorStrong)
+                            
+                            TextField("Type here to confirm", text: $confirmationText)
+                                .textFieldStyle(PlainTextFieldStyle())
+                                .padding()
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(cardBackground)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 10)
+                                                .stroke(
+                                                    hasTypedCorrectly ? Color.green : (confirmationText.isEmpty ? Color.gray.opacity(0.3) : NuraColors.errorStrong),
+                                                    lineWidth: 1
+                                                )
+                                        )
+                                )
+                                .autocapitalization(.allCharacters)
+                                .disableAutocorrection(true)
+                                .onChange(of: confirmationText) { oldValue, newValue in
+                                    hasTypedCorrectly = (newValue.uppercased() == requiredText)
+                                }
+                            
+                            if !confirmationText.isEmpty && !hasTypedCorrectly {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(NuraColors.errorStrong)
+                                    Text("Please type exactly: '\(requiredText)'")
+                                        .font(.caption)
+                                        .foregroundColor(NuraColors.errorStrong)
+                                }
+                            } else if hasTypedCorrectly {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                    Text("Confirmation text correct")
+                                        .font(.caption)
+                                        .foregroundColor(.green)
+                                }
+                            }
+                        }
+                        .padding()
+                        .background(cardBackground)
+                        .cornerRadius(12)
+                        
+                        // Error display
+                        if let deleteError = deleteError {
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(NuraColors.errorStrong)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Deletion Failed")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(NuraColors.errorStrong)
+                                    Text(deleteError)
+                                        .font(.caption)
+                                        .foregroundColor(NuraColors.errorStrong.opacity(0.8))
+                                }
+                                Spacer()
+                            }
+                            .padding()
+                            .background(NuraColors.errorStrong.opacity(0.1))
+                            .cornerRadius(10)
+                        }
+                        
+                        // Action buttons
+                        VStack(spacing: 12) {
+                            Button(action: {
+                                if !isDeleting && hasTypedCorrectly {
+                                    onConfirmDelete()
+                                }
+                            }) {
+                                HStack(spacing: 12) {
+                                    if isDeleting {
+                                        ProgressView()
+                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                            .scaleEffect(0.9)
+                                    } else {
+                                        Image(systemName: "trash.fill")
+                                    }
+                                    Text(isDeleting ? "Deleting Account..." : "DELETE MY ACCOUNT PERMANENTLY")
+                                        .fontWeight(.bold)
+                                        .font(.subheadline)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(
+                                    hasTypedCorrectly && !isDeleting ? NuraColors.errorStrong : NuraColors.errorStrong.opacity(0.5)
+                                )
+                                .foregroundColor(.white)
+                                .cornerRadius(12)
+                            }
+                            .disabled(!hasTypedCorrectly || isDeleting)
+                            .accessibilityLabel("Permanently delete account")
+                            
+                            Button("Cancel - Keep My Account", action: {
+                                dismiss()
+                            })
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(colorScheme == .dark ? .white : .primary)
+                            .padding(.vertical, 12)
+                            .frame(maxWidth: .infinity)
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(10)
+                            .disabled(isDeleting)
+                        }
+                        
+                        Spacer(minLength: 20)
+                    }
+                    .padding()
+                }
+            }
+            .navigationTitle("Delete Account")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarItems(
+                leading: Button("Cancel") {
+                    if !isDeleting {
+                        dismiss()
+                    }
+                }
+                .disabled(isDeleting)
+            )
+        }
+        .interactiveDismissDisabled(isDeleting)
     }
 }
 

@@ -76,8 +76,16 @@ struct SignUpView: View {
     var body: some View {
         NavigationView {
             ZStack(alignment: .bottom) {
-                AnimatedGradientBackground()
-                VStack(spacing: 0) {
+                                    ZStack {
+                        AnimatedGradientBackground()
+                        // Soft vignette for depth
+                        LinearGradient(
+                            gradient: Gradient(colors: [Color.black.opacity(0.12), Color.clear, Color.black.opacity(0.12)]),
+                            startPoint: .top, endPoint: .bottom
+                        )
+                        .ignoresSafeArea()
+                    }
+                    VStack(spacing: 0) {
                     HStack {
                         Button(action: { 
                             isPresented = false
@@ -94,12 +102,56 @@ struct SignUpView: View {
                     .padding(.horizontal)
                     
                     // Clean title design
-                    VStack(spacing: 8) {
+                    VStack(spacing: 12) {
                         Text("Create your account")
                             .font(.largeTitle)
                             .fontWeight(.bold)
                             .foregroundColor(.primary)
                             .multilineTextAlignment(.center)
+                        
+                        VStack(spacing: 8) {
+                            Text("Join Nura to:")
+                                .font(.title3)
+                                .fontWeight(.medium)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                            
+                            HStack(spacing: 32) {
+                                VStack(spacing: 6) {
+                                    Image(systemName: "chart.line.uptrend.xyaxis")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(NuraColors.primary)
+                                    Text("Track Your Skin")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.center)
+                                }
+                                
+                                VStack(spacing: 6) {
+                                    Image(systemName: "lightbulb")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(NuraColors.primary)
+                                    Text("Get Insights")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.center)
+                                }
+                                
+                                VStack(spacing: 6) {
+                                    Image(systemName: "heart")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(NuraColors.primary)
+                                    Text("Feel Great")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.center)
+                                }
+                            }
+                            .padding(.top, 4)
+                        }
                     }
                     .padding(.top, 20)
                     
@@ -107,6 +159,16 @@ struct SignUpView: View {
                     
                     // Original Sign Up Form
                         VStack(spacing: 20) {
+                            // Accent card header
+                            HStack(spacing: 10) {
+                                Image(systemName: "sparkles")
+                                    .foregroundColor(NuraColors.primary)
+                                Text("Let’s get you set up in under a minute")
+                                    .font(.footnote)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 4)
                             // Name field (required)
                             HStack {
                                 Image(systemName: "person")
@@ -117,13 +179,19 @@ struct SignUpView: View {
                                     .autocorrectionDisabled()
                                     .textInputAutocapitalization(.words)
                             }
-                            .padding(12)
-                            .background(Color.white.opacity(0.15))
-                            .cornerRadius(12)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            .padding(14)
+                            .background(
+                                LinearGradient(
+                                    gradient: Gradient(colors: [Color.white.opacity(0.18), Color.white.opacity(0.10)]),
+                                    startPoint: .topLeading, endPoint: .bottomTrailing
+                                )
                             )
+                            .cornerRadius(14)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                            )
+                            .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 2)
                             
                             // Email field with error bubble
                             VStack(spacing: 4) {
@@ -256,13 +324,19 @@ struct SignUpView: View {
                                         }
                                     }
                                 }
-                                .padding(12)
-                                .background(Color.white.opacity(0.15))
-                                .cornerRadius(12)
+                                .padding(14)
+                                .background(
+                                    LinearGradient(
+                                        gradient: Gradient(colors: [Color.white.opacity(0.18), Color.white.opacity(0.10)]),
+                                        startPoint: .topLeading, endPoint: .bottomTrailing
+                                    )
+                                )
+                                .cornerRadius(14)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
+                                    RoundedRectangle(cornerRadius: 14)
                                         .stroke(getEmailFieldBorderColor(), lineWidth: getEmailFieldBorderWidth())
                                 )
+                                .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 2)
                             }
                             
                             // Password field
@@ -283,13 +357,19 @@ struct SignUpView: View {
                                         .foregroundColor(.gray)
                                 }
                             }
-                            .padding(12)
-                            .background(Color.white.opacity(0.15))
-                            .cornerRadius(12)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            .padding(14)
+                            .background(
+                                LinearGradient(
+                                    gradient: Gradient(colors: [Color.white.opacity(0.18), Color.white.opacity(0.10)]),
+                                    startPoint: .topLeading, endPoint: .bottomTrailing
+                                )
                             )
+                            .cornerRadius(14)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                            )
+                            .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 2)
                             .onTapGesture { showPasswordRequirements = true }
                             
                             // Confirm Password field
@@ -310,13 +390,19 @@ struct SignUpView: View {
                                         .foregroundColor(.gray)
                                 }
                             }
-                            .padding(12)
-                            .background(Color.white.opacity(0.15))
-                            .cornerRadius(12)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            .padding(14)
+                            .background(
+                                LinearGradient(
+                                    gradient: Gradient(colors: [Color.white.opacity(0.18), Color.white.opacity(0.10)]),
+                                    startPoint: .topLeading, endPoint: .bottomTrailing
+                                )
                             )
+                            .cornerRadius(14)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                            )
+                            .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 2)
                             
                             // Password match indicator
                             if passwordsMatch && !confirmPassword.isEmpty {
@@ -373,7 +459,7 @@ struct SignUpView: View {
                                 // Sign Up button with countdown
                                 Button(action: signUp) {
                                     VStack(spacing: 4) {
-                                        HStack {
+                                        HStack(spacing: 8) {
                                             if isLoading {
                                                 ProgressView()
                                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
@@ -393,17 +479,22 @@ struct SignUpView: View {
                                     .frame(maxWidth: .infinity)
                                     .padding()
                                     .background(
-                                        canSignUp && !isLoading && !isCountdownActive
-                                            ? NuraColors.primary 
-                                            : Color.gray.opacity(0.3)
+                                        LinearGradient(
+                                            gradient: Gradient(colors: canSignUp && !isLoading && !isCountdownActive ? [NuraColors.primary, NuraColors.primary.opacity(0.85)] : [Color.gray.opacity(0.3), Color.gray.opacity(0.25)]),
+                                            startPoint: .topLeading, endPoint: .bottomTrailing
+                                        )
                                     )
                                     .foregroundColor(.white)
-                                    .cornerRadius(12)
+                                    .cornerRadius(14)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 14)
+                                            .stroke(Color.white.opacity(canSignUp && !isLoading && !isCountdownActive ? 0.25 : 0.12), lineWidth: 1)
+                                    )
                                     .shadow(
                                         color: canSignUp && !isLoading && !isCountdownActive
-                                            ? NuraColors.primary.opacity(0.3) 
+                                            ? NuraColors.primary.opacity(0.35) 
                                             : .clear, 
-                                        radius: 8, x: 0, y: 2
+                                        radius: 10, x: 0, y: 3
                                     )
                                 }
                                                                     .disabled(!canSignUp || isLoading || isCountdownActive)

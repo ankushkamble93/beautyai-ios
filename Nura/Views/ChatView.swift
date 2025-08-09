@@ -3,9 +3,9 @@ import SwiftUI
 struct ChatView: View {
     @EnvironmentObject var chatManager: ChatManager
     @EnvironmentObject var appearanceManager: AppearanceManager
+    @EnvironmentObject var userTierManager: UserTierManager
     @State private var messageText = ""
     @FocusState private var isTextFieldFocused: Bool
-    @State private var hasPremium = false // Toggle for testing
     @State private var showNuraProSheet = false
     
     var body: some View {
@@ -97,7 +97,7 @@ struct ChatView: View {
                     .background(isDark ? NuraColors.cardDark : NuraColors.card)
                 }
                 // Full-screen paywall overlay (always topmost, covers everything, content perfectly centered)
-                if !hasPremium {
+                if userTierManager.tier == .free {
                     VisualEffectBlur(blurStyle: .systemUltraThinMaterialDark) {
                         GeometryReader { geo in
                             VStack {
@@ -170,20 +170,6 @@ struct ChatView: View {
                     .transition(.opacity)
                     .sheet(isPresented: $showNuraProSheet) {
                         NuraProView()
-                    }
-                }
-                // Floating premium toggle in the bottom right corner, always visible above the overlay
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        Toggle(isOn: $hasPremium) {
-                            Text("")
-                        }
-                        .labelsHidden()
-                        .toggleStyle(SwitchToggleStyle(tint: NuraColors.primary))
-                        .padding(.trailing, 24)
-                        .padding(.bottom, 32)
                     }
                 }
             }
