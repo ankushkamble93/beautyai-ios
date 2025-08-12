@@ -13,6 +13,8 @@ struct SkinDiaryView: View {
     @State private var animateEmojis: Bool = false
     @State private var pulseEffect: Bool = false
     @State private var showTimeRestriction: Bool = false
+    @State private var hasLoggedToday: Bool = false
+    @State private var isInitialized: Bool = false
     
     private let states = ["Clear", "Dry", "Oily", "Sensitive", "Bumpy", "Other"]
     private let stateEmojis = ["Clear": "✅", "Dry": "🔸", "Oily": "💧", "Sensitive": "⚠️", "Bumpy": "🔺", "Other": "📝"]
@@ -25,6 +27,7 @@ struct SkinDiaryView: View {
         formatter.dateStyle = .long
         return formatter.string(from: Date())
     }
+    
     var body: some View {
         NavigationView {
             ZStack {
@@ -54,213 +57,304 @@ struct SkinDiaryView: View {
                     }
                 }
                 
-                VStack(spacing: 0) {
-                    Spacer(minLength: 18)
-                    
-                    // Enhanced title with emoji and gradient
-                    VStack(spacing: 8) {
-                        HStack(spacing: 12) {
-                            Text("📊")
-                                .font(.system(size: 32))
-                                .scaleEffect(pulseEffect ? 1.1 : 1.0)
-                                .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: pulseEffect)
-                            
-                            Text("Skin Diary")
-                                .font(.largeTitle)
-                                .fontWeight(.bold)
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        gradient: Gradient(colors: [
-                                            colorScheme == .dark ? Color.white : Color(red: 0.2, green: 0.3, blue: 0.4),
-                                            colorScheme == .dark ? Color.gray.opacity(0.8) : Color(red: 0.4, green: 0.5, blue: 0.6)
-                                        ]),
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                        }
-                        .padding(.top, 8)
-                        .padding(.bottom, 2)
+                if isInitialized {
+                    VStack(spacing: 0) {
+                        Spacer(minLength: 18)
                         
-                        Text("How did your skin feel today? ✨")
-                            .font(.title2)
-                            .fontWeight(.medium)
-                            .multilineTextAlignment(.center)
-                            .foregroundColor(colorScheme == .dark ? Color.white.opacity(0.9) : Color.primary.opacity(0.8))
-                    }
-                    .padding(.bottom, 24)
-                    // Tap-to-select options
-                    VStack(spacing: 14) {
-                        HStack(spacing: 12) {
-                            ForEach(states.prefix(3), id: \.self) { state in
-                                DiaryStatePill(
-                                    label: state,
-                                    emoji: stateEmojis[state] ?? "😊",
-                                    selected: selectedStates.contains(state),
-                                    color: colorForState(state)
-                                ) {
-                                    withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
-                                        toggleState(state)
+                        // Enhanced title with emoji and gradient
+                        VStack(spacing: 8) {
+                            HStack(spacing: 12) {
+                                Text("📊")
+                                    .font(.system(size: 32))
+                                    .scaleEffect(pulseEffect ? 1.1 : 1.0)
+                                    .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: pulseEffect)
+                                
+                                Text("Skin Diary")
+                                    .font(.largeTitle)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(
+                                        LinearGradient(
+                                            gradient: Gradient(colors: [
+                                                colorScheme == .dark ? Color.white : Color(red: 0.2, green: 0.3, blue: 0.4),
+                                                colorScheme == .dark ? Color.gray.opacity(0.8) : Color(red: 0.4, green: 0.5, blue: 0.6)
+                                            ]),
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                    )
+                            }
+                            .padding(.top, 8)
+                            .padding(.bottom, 2)
+                            
+                            if hasLoggedToday {
+                                Text("You've already logged your skin today! ✨")
+                                    .font(.title2)
+                                    .fontWeight(.medium)
+                                    .multilineTextAlignment(.center)
+                                    .foregroundColor(colorScheme == .dark ? Color.white.opacity(0.9) : Color.primary.opacity(0.8))
+                            } else {
+                                Text("How did your skin feel today? ✨")
+                                    .font(.title2)
+                                    .fontWeight(.medium)
+                                    .multilineTextAlignment(.center)
+                                    .foregroundColor(colorScheme == .dark ? Color.white.opacity(0.9) : Color.primary.opacity(0.8))
+                            }
+                        }
+                        .padding(.bottom, 24)
+                        
+                        // Tap-to-select options
+                        VStack(spacing: 14) {
+                            HStack(spacing: 12) {
+                                ForEach(states.prefix(3), id: \.self) { state in
+                                    DiaryStatePill(
+                                        label: state,
+                                        emoji: stateEmojis[state] ?? "😊",
+                                        selected: selectedStates.contains(state),
+                                        color: colorForState(state),
+                                        disabled: hasLoggedToday
+                                    ) {
+                                        if !hasLoggedToday {
+                                            withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
+                                                toggleState(state)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            HStack(spacing: 12) {
+                                ForEach(states.suffix(3), id: \.self) { state in
+                                    DiaryStatePill(
+                                        label: state,
+                                        emoji: stateEmojis[state] ?? "😊",
+                                        selected: selectedStates.contains(state),
+                                        color: colorForState(state),
+                                        disabled: hasLoggedToday
+                                    ) {
+                                        if !hasLoggedToday {
+                                            withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
+                                                toggleState(state)
+                                            }
+                                            if state == "Other" && !showOtherText {
+                                                withAnimation(.easeInOut) { showOtherText = true }
+                                            } else if state != "Other" && showOtherText && !selectedStates.contains("Other") {
+                                                withAnimation(.easeInOut) { showOtherText = false }
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
-                        HStack(spacing: 12) {
-                            ForEach(states.suffix(3), id: \.self) { state in
-                                DiaryStatePill(
-                                    label: state,
-                                    emoji: stateEmojis[state] ?? "😊",
-                                    selected: selectedStates.contains(state),
-                                    color: colorForState(state)
-                                ) {
-                                    withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
-                                        toggleState(state)
-                                    }
-                                    if state == "Other" && !showOtherText {
-                                        withAnimation(.easeInOut) { showOtherText = true }
-                                    } else if state != "Other" && showOtherText && !selectedStates.contains("Other") {
-                                        withAnimation(.easeInOut) { showOtherText = false }
-                                    }
+                        .padding(.bottom, showOtherText ? 24 : 18)
+                        
+                        // Other text box
+                        if showOtherText && selectedStates.contains("Other") {
+                            TextField("Describe...", text: $otherText)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(colorScheme == .dark ? Color.black.opacity(0.3) : Color.white.opacity(0.9))
+                                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                                )
+                                .padding(.horizontal, 32)
+                                .padding(.bottom, 20)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                                .disabled(hasLoggedToday)
+                        }
+                        
+                        // Optional note
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Want to add a note?")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            TextField("e.g. Used retinol last night", text: $note)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(colorScheme == .dark ? Color.black.opacity(0.3) : Color.white.opacity(0.9))
+                                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                                )
+                                .disabled(hasLoggedToday)
+                        }
+                        .padding(.horizontal, 32)
+                        .padding(.bottom, 24)
+                        
+                        // Time restriction warning
+                        if !skinDiaryManager.canLogToday {
+                            VStack(spacing: 8) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "clock.fill")
+                                        .foregroundColor(.orange)
+                                    Text("Diary logging is only available from 6 PM to midnight")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.orange)
+                                }
+                                
+                                if skinDiaryManager.timeUntilNextLog > 0 {
+                                    Text("Next available in \(skinDiaryManager.formatTimeUntilNextLog())")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
                                 }
                             }
-                        }
-                    }
-                    .padding(.bottom, showOtherText ? 24 : 18)
-                    // Other text box
-                    if showOtherText && selectedStates.contains("Other") {
-                        TextField("Describe...", text: $otherText)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
+                            .padding()
                             .background(
                                 RoundedRectangle(cornerRadius: 12)
-                                    .fill(colorScheme == .dark ? Color.black.opacity(0.3) : Color.white.opacity(0.9))
-                                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                                    .fill(Color.orange.opacity(0.1))
+                                    .stroke(Color.orange.opacity(0.3), lineWidth: 1)
                             )
                             .padding(.horizontal, 32)
-                            .padding(.bottom, 20)
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                    }
-                    // Optional note
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Want to add a note?")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        TextField("e.g. Used retinol last night", text: $note)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(colorScheme == .dark ? Color.black.opacity(0.3) : Color.white.opacity(0.9))
-                                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                            )
-                    }
-                    .padding(.horizontal, 32)
-                    .padding(.bottom, 24)
-                    // Time restriction warning
-                    if !skinDiaryManager.canLogToday {
-                        VStack(spacing: 8) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "clock.fill")
-                                    .foregroundColor(.orange)
-                                Text("Diary logging is only available from 6 PM to midnight")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.orange)
-                            }
-                            
-                            if skinDiaryManager.timeUntilNextLog > 0 {
-                                Text("Next available in \(skinDiaryManager.formatTimeUntilNextLog())")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                            .padding(.bottom, 18)
+                        }
+                        
+                        // Enhanced log entry button
+                        Button(action: logEntry) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(
+                                        selectedStates.isEmpty || hasLoggedToday ? 
+                                        LinearGradient(
+                                            gradient: Gradient(colors: [Color.gray.opacity(0.15), Color.gray.opacity(0.15)]),
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        ) :
+                                        LinearGradient(
+                                            gradient: Gradient(colors: [vibrantAccent, accent]),
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                    )
+                                    .frame(height: 56)
+                                    .shadow(
+                                        color: (selectedStates.isEmpty || hasLoggedToday) ? .clear : vibrantAccent.opacity(0.3),
+                                        radius: (selectedStates.isEmpty || hasLoggedToday) ? 0 : 8,
+                                        x: 0,
+                                        y: (selectedStates.isEmpty || hasLoggedToday) ? 0 : 4
+                                    )
+                                
+                                if isSaving {
+                                    HStack(spacing: 12) {
+                                        ProgressView()
+                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                            .scaleEffect(0.9)
+                                        Text("Saving your thoughts...")
+                                            .font(.title3)
+                                            .fontWeight(.medium)
+                                            .foregroundColor(.white)
+                                    }
+                                } else if hasLoggedToday {
+                                    HStack(spacing: 8) {
+                                        Text("✅")
+                                            .font(.title2)
+                                        Text("Already logged today")
+                                            .font(.title3)
+                                            .fontWeight(.semibold)
+                                            .foregroundColor(.secondary)
+                                    }
+                                } else {
+                                    HStack(spacing: 8) {
+                                        Text("💾")
+                                            .font(.title2)
+                                        Text("Log entry")
+                                            .font(.title3)
+                                            .fontWeight(.semibold)
+                                            .foregroundColor(selectedStates.isEmpty ? .secondary : .white)
+                                    }
+                                }
                             }
                         }
-                        .padding()
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.orange.opacity(0.1))
-                                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
-                        )
+                        .disabled(selectedStates.isEmpty || isSaving || !skinDiaryManager.canLogToday || hasLoggedToday)
                         .padding(.horizontal, 32)
                         .padding(.bottom, 18)
-                    }
-                    
-                    // Enhanced log entry button
-                    Button(action: logEntry) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(
-                                    selectedStates.isEmpty ? 
-                                    LinearGradient(
-                                        gradient: Gradient(colors: [Color.gray.opacity(0.15), Color.gray.opacity(0.15)]),
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    ) :
-                                    LinearGradient(
-                                        gradient: Gradient(colors: [vibrantAccent, accent]),
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                                .frame(height: 56)
-                                .shadow(
-                                    color: selectedStates.isEmpty ? .clear : vibrantAccent.opacity(0.3),
-                                    radius: selectedStates.isEmpty ? 0 : 8,
-                                    x: 0,
-                                    y: selectedStates.isEmpty ? 0 : 4
-                                )
-                            
-                            if isSaving {
-                                HStack(spacing: 12) {
-                                    ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                        .scaleEffect(0.9)
-                                    Text("Saving your thoughts...")
-                                        .font(.title3)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.white)
-                                }
-                            } else {
-                                HStack(spacing: 8) {
-                                    Text("💾")
-                                        .font(.title2)
-                                    Text("Log entry")
-                                        .font(.title3)
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(selectedStates.isEmpty ? .secondary : .white)
-                                }
-                            }
+                        .scaleEffect(isSaving ? 0.97 : ((selectedStates.isEmpty || !skinDiaryManager.canLogToday || hasLoggedToday) ? 1.0 : 1.02))
+                        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isSaving)
+                        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: selectedStates.isEmpty)
+                        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: skinDiaryManager.canLogToday)
+                        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: hasLoggedToday)
+                        
+                        // Confirmation
+                        if let savedDate = savedDate {
+                            Text("Logged for \(dateString(savedDate))")
+                                .font(.footnote)
+                                .foregroundColor(accent)
+                                .padding(.top, 2)
+                                .transition(.opacity)
                         }
+                        
+                        Spacer()
                     }
-                    .disabled(selectedStates.isEmpty || isSaving || !skinDiaryManager.canLogToday)
-                    .padding(.horizontal, 32)
-                    .padding(.bottom, 18)
-                    .scaleEffect(isSaving ? 0.97 : (selectedStates.isEmpty || !skinDiaryManager.canLogToday ? 1.0 : 1.02))
-                    .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isSaving)
-                    .animation(.spring(response: 0.4, dampingFraction: 0.8), value: selectedStates.isEmpty)
-                    .animation(.spring(response: 0.4, dampingFraction: 0.8), value: skinDiaryManager.canLogToday)
-                    // Confirmation
-                    if let savedDate = savedDate {
-                        Text("Logged for \(dateString(savedDate))")
-                            .font(.footnote)
-                            .foregroundColor(accent)
-                            .padding(.top, 2)
-                            .transition(.opacity)
+                } else {
+                    // Loading state to prevent flash
+                    VStack(spacing: 20) {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .primary))
+                            .scaleEffect(1.5)
+                        Text("Loading your diary...")
+                            .font(.title3)
+                            .foregroundColor(.secondary)
                     }
-                    Spacer()
                 }
-                .navigationBarTitleDisplayMode(.inline)
-                .navigationBarItems(leading: Button("Done") { dismiss() })
-                .onAppear {
-                    withAnimation(.easeInOut(duration: 1.5)) {
-                        animateEmojis = true
-                    }
-                    withAnimation(.easeInOut(duration: 2).delay(0.5)) {
-                        pulseEffect = true
-                    }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarItems(leading: Button("Done") { dismiss() })
+            .onAppear {
+                // Initialize state immediately to prevent flash
+                checkTodayLogStatus()
+                isInitialized = true
+                
+                withAnimation(.easeInOut(duration: 1.5)) {
+                    animateEmojis = true
+                }
+                withAnimation(.easeInOut(duration: 2).delay(0.5)) {
+                    pulseEffect = true
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                // Check status when app comes to foreground (in case timer reset)
+                if isInitialized {
+                    checkTodayLogStatus()
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                // Check status when app becomes active
+                if isInitialized {
+                    checkTodayLogStatus()
+                }
+            }
+            .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
+                // Check every minute for timer reset
+                if isInitialized {
+                    checkTodayLogStatus()
                 }
             }
         }
     }
+    
+    func checkTodayLogStatus() {
+        // Check if user has already logged today
+        if let todayEntry = skinDiaryManager.getTodayEntry() {
+            hasLoggedToday = true
+            selectedStates = Set(todayEntry.selectedStates)
+            otherText = todayEntry.otherText
+            note = todayEntry.note
+            showOtherText = selectedStates.contains("Other")
+        } else {
+            // Check if it's a new day since last log
+            if skinDiaryManager.isNewDaySinceLastLog() {
+                // New day, reset everything
+                hasLoggedToday = false
+                selectedStates.removeAll()
+                otherText = ""
+                note = ""
+                showOtherText = false
+            } else {
+                // Same day, keep current state
+                hasLoggedToday = false
+            }
+        }
+    }
+    
     func toggleState(_ state: String) {
         if selectedStates.contains(state) {
             selectedStates.remove(state)
@@ -269,8 +363,9 @@ struct SkinDiaryView: View {
             selectedStates.insert(state)
         }
     }
+    
     func logEntry() {
-        guard !selectedStates.isEmpty && skinDiaryManager.canLogToday else { return }
+        guard !selectedStates.isEmpty && skinDiaryManager.canLogToday && !hasLoggedToday else { return }
         isSaving = true
         
         // Simulate save delay
@@ -285,13 +380,11 @@ struct SkinDiaryView: View {
             
             if success {
                 savedDate = Date()
-                // Reset after a short delay
+                hasLoggedToday = true
+                
+                // Show success message briefly, but keep selections visible
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                     savedDate = nil
-                    selectedStates.removeAll()
-                    otherText = ""
-                    note = ""
-                    showOtherText = false
                 }
             } else {
                 // Show error if logging failed
@@ -299,6 +392,7 @@ struct SkinDiaryView: View {
             }
         }
     }
+    
     func colorForState(_ state: String) -> Color {
         switch state {
         case "Clear": return Color(red: 0.2, green: 0.8, blue: 0.5).opacity(0.25) // Vibrant mint green
@@ -310,6 +404,7 @@ struct SkinDiaryView: View {
         default: return vibrantAccent.opacity(0.15)
         }
     }
+    
     func dateString(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateStyle = .long
@@ -322,16 +417,19 @@ struct DiaryStatePill: View {
     let emoji: String
     let selected: Bool
     let color: Color
+    let disabled: Bool
     let action: () -> Void
     
     @State private var bounceEffect: Bool = false
     
     var body: some View {
         Button(action: {
-            action()
-            // Trigger bounce effect
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                bounceEffect.toggle()
+            if !disabled {
+                action()
+                // Trigger bounce effect
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                    bounceEffect.toggle()
+                }
             }
         }) {
             HStack(spacing: 8) {
@@ -362,7 +460,7 @@ struct DiaryStatePill: View {
                         )
                     )
             )
-            .foregroundColor(selected ? .primary : .secondary)
+            .foregroundColor(selected ? .primary : (disabled ? .secondary.opacity(0.6) : .secondary))
             .overlay(
                 RoundedRectangle(cornerRadius: 20)
                     .stroke(
@@ -377,10 +475,12 @@ struct DiaryStatePill: View {
                 y: selected ? 3 : 0
             )
             .scaleEffect(selected ? 1.05 : 1.0)
+            .opacity(disabled ? 0.8 : 1.0)
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: selected)
             .animation(.spring(response: 0.3, dampingFraction: 0.6), value: bounceEffect)
         }
         .buttonStyle(PlainButtonStyle())
+        .disabled(disabled)
     }
 }
 

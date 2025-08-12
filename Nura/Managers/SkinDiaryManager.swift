@@ -155,6 +155,24 @@ class SkinDiaryManager: ObservableObject {
     
     // MARK: - Data Access for ViewProgressView
     
+    func getTodayEntry() -> SkinDiaryEntry? {
+        let calendar = Calendar.current
+        let now = Date()
+        
+        return diaryEntries.first { entry in
+            calendar.isDate(entry.date, inSameDayAs: now)
+        }
+    }
+    
+    func isNewDaySinceLastLog() -> Bool {
+        guard let lastEntry = diaryEntries.first else { return true }
+        
+        let calendar = Calendar.current
+        let now = Date()
+        
+        return !calendar.isDate(lastEntry.date, inSameDayAs: now)
+    }
+    
     func getEntriesForDateRange(_ range: DateRange) -> [SkinLog] {
         let calendar = Calendar.current
         let now = Date()
