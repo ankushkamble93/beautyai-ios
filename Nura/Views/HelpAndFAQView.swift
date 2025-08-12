@@ -6,24 +6,40 @@ struct HelpAndFAQView: View {
     @State private var expandedIndex: Int? = nil
     @State private var showingContactSupport = false
     let faqs: [FAQ] = [
-        FAQ(question: "How does Nura analyze my skin?", answer: "Nura uses advanced AI and computer vision to analyze your skin from a selfie, looking at hydration, texture, and more. Results are personalized and private."),
-        FAQ(question: "Is my data private?", answer: "Absolutely. Your data is encrypted and never sold. You control what is shared and can delete your data anytime in settings."),
-        FAQ(question: "How do I change my plan?", answer: "Go to App Preferences > Subscription. You can upgrade, downgrade, or cancel your plan at any time."),
-        FAQ(question: "Why do I see different results each scan?", answer: "Skin can change due to lighting, hydration, and other factors. For best results, scan in similar lighting and keep your skin clean."),
-        FAQ(question: "How do I cancel my subscription?", answer: "You can cancel anytime from the Subscription section. Your access will continue until the end of your billing period."),
-        FAQ(question: "What payment methods are supported?", answer: "We accept Visa, Mastercard, AmEx, and Discover. More options coming soon!"),
-        // Added FAQs for deeper product understanding and support
-        FAQ(question: "What is Nura Pro?", answer: "Nura Pro unlocks advanced features, personalized routines, and premium support for your skincare journey."),
-        FAQ(question: "How do I contact support?", answer: "Tap 'Contact Support' at the bottom of this page or in your Profile. Our team replies within 1 business day."),
-        FAQ(question: "Can I use Nura if I have sensitive skin?", answer: "Yes! Nura is designed for all skin types. Our recommendations are always gentle and customizable."),
-        FAQ(question: "Does Nura work offline?", answer: "Some features require internet for AI analysis, but you can view your routine and history offline."),
-        FAQ(question: "How do I update my personal information?", answer: "Go to Profile > Personal Information to update your name, email, or phone number."),
-        FAQ(question: "How do I delete my account?", answer: "You can permanently delete your account and all data in Profile > Privacy & Security. This action cannot be undone."),
-        FAQ(question: "What happens to my data if I uninstall the app?", answer: "Your data remains securely stored. To delete it, use the in-app delete option before uninstalling."),
-        FAQ(question: "How do I rate the app or leave feedback?", answer: "Go to Profile > Rate App to share your experience or suggestions. We love hearing from you!"),
-        FAQ(question: "Can I export my skin analysis data?", answer: "Yes, request a data export in Profile > Privacy & Security. We'll email you a download link."),
-        FAQ(question: "How do I enable dark mode?", answer: "Go to Profile > App Preferences and select your preferred appearance mode."),
-        FAQ(question: "What is the 'skin-confidence guarantee'?", answer: "If you’re not satisfied with Nura Pro, you can cancel anytime during your free trial—no questions asked."),
+        // Core Features
+        FAQ(question: "How does Nura analyze my skin?", answer: "Nura uses advanced AI and computer vision to analyze your skin from photos, tracking hydration, texture, and skin concerns. Our AI provides personalized insights and recommendations based on your unique skin profile."),
+        FAQ(question: "What are the different subscription plans?", answer: "Nura offers three plans: Free (basic tracking), Nura Pro ($7.99/month or $59.99/year), and Nura Pro Unlimited ($9.99/month or $79.99/year). Yearly plans save up to 35% compared to monthly billing."),
+        FAQ(question: "What features are included in each plan?", answer: "Free: 1 scan per day, basic dashboard. Nura Pro: 3 scans per day, AI chat support, dark mode, Apple Health integration, product matchmaking. Nura Pro Unlimited: Unlimited scans, expert consultations, custom formulations, exclusive products."),
+        
+        // Payment & Billing
+        FAQ(question: "What payment methods are supported?", answer: "We accept Apple Pay for quick, secure payments, plus all major credit cards including Visa, Mastercard, American Express, and Discover. You can also save cards for future payments."),
+        FAQ(question: "How do I change my subscription plan?", answer: "Go to Profile > Subscription to upgrade, downgrade, or switch between monthly and yearly billing. Changes take effect at your next billing cycle."),
+        FAQ(question: "How do I cancel my subscription?", answer: "You can cancel anytime from Profile > Subscription. Your access continues until the end of your current billing period. No cancellation fees apply."),
+        FAQ(question: "Where can I view my billing history?", answer: "Access your complete billing history in Profile > Billing History. Download invoices, view payment status, and filter by date ranges."),
+        FAQ(question: "What is the skin-confidence guarantee?", answer: "Try Nura Pro risk-free with our 7-day free trial. Cancel anytime during the trial period—no questions asked. We're confident you'll love the results."),
+        
+        // Privacy & Data
+        FAQ(question: "Is my data private and secure?", answer: "Absolutely. Your data is encrypted, never sold to third parties, and stored securely. You control what's shared and can delete your data anytime in Profile > Privacy & Security."),
+        FAQ(question: "Can I export my skin analysis data?", answer: "Yes, request a complete data export in Profile > Privacy & Security. We'll email you a secure download link with all your skin analysis history and personal data."),
+        FAQ(question: "What happens to my data if I delete my account?", answer: "When you delete your account, all personal data, skin analysis history, and preferences are permanently removed from our servers. This action cannot be undone."),
+        
+        // App Features
+        FAQ(question: "How do I use the skin diary feature?", answer: "Track your skin journey daily with photos, notes, and mood tracking. The diary helps identify patterns and track progress over time. Available in all plans."),
+        FAQ(question: "What is the AI chat support?", answer: "Get instant answers from our AI skin expert. Ask about ingredients, routines, or skin concerns. Available 24/7 for Pro and Pro Unlimited users."),
+        FAQ(question: "How does the routine feature work?", answer: "Get personalized daily routines based on your skin analysis. Sync with Apple Health for seamless tracking. Routines adapt based on your skin changes and preferences."),
+        FAQ(question: "Can I use Nura with sensitive skin?", answer: "Yes! Nura is designed for all skin types, including sensitive skin. Our AI provides gentle recommendations and you can customize routines to avoid irritants."),
+        FAQ(question: "How do I enable dark mode?", answer: "Go to Profile > App Preferences and select your preferred appearance. Choose between light, dark, or automatic mode that follows your device settings."),
+        
+        // Technical Support
+        FAQ(question: "Does Nura work offline?", answer: "Core features like viewing your routine, diary entries, and saved data work offline. AI analysis and chat support require an internet connection for real-time processing."),
+        FAQ(question: "How do I update my personal information?", answer: "Go to Profile > Personal Information to update your name, email, phone number, or profile photo. Changes are saved automatically."),
+        FAQ(question: "How do I contact support?", answer: "Tap 'Contact Support' at the bottom of this page or in your Profile. Our team responds within 1 business day. Pro users get priority support."),
+        FAQ(question: "How do I rate the app or leave feedback?", answer: "Go to Profile > Rate App to share your experience, suggestions, or report issues. We love hearing from our community and use feedback to improve Nura."),
+        
+        // Troubleshooting
+        FAQ(question: "Why do I see different results each scan?", answer: "Skin appearance can vary due to lighting, hydration, time of day, and other factors. For consistent results, scan in similar lighting conditions and keep your skin clean."),
+        FAQ(question: "What if my payment fails?", answer: "If a payment fails, we'll notify you and retry within 24 hours. You can update your payment method in Profile > Subscription. Your access continues during this period."),
+        FAQ(question: "How do I switch between monthly and yearly billing?", answer: "Go to Profile > Subscription and select your preferred billing cycle. Yearly plans offer significant savings and you can switch anytime."),
     ]
     var filteredFAQs: [FAQ] {
         if searchText.trimmingCharacters(in: .whitespaces).isEmpty { return faqs }

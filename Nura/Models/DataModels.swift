@@ -191,3 +191,100 @@ struct PaymentMethod: Codable {
     let brand: String
     let isDefault: Bool
 }
+
+// MARK: - Notification Models
+
+struct NotificationPreferences: Codable {
+    let id: String
+    let userId: String
+    let pushEnabled: Bool
+    let emailEnabled: Bool
+    let smsEnabled: Bool
+    let dailyPhotoReminder: NotificationTypePreference
+    let dashboardScoreShare: NotificationTypePreference
+    let routineFollowUp: NotificationTypePreference
+    let emailAddress: String?
+    let phoneNumber: String?
+    let preferredTime: Date
+    let timezone: String
+    let createdAt: Date
+    let updatedAt: Date
+}
+
+struct NotificationTypePreference: Codable {
+    let enabled: Bool
+    let frequency: NotificationFrequency
+    let channels: [NotificationChannel]
+    let customMessage: String?
+    
+    enum NotificationFrequency: String, Codable, CaseIterable {
+        case daily = "daily"
+        case weekly = "weekly"
+        case monthly = "monthly"
+        case never = "never"
+    }
+    
+    enum NotificationChannel: String, Codable, CaseIterable {
+        case push = "push"
+        case email = "email"
+        case sms = "sms"
+    }
+}
+
+struct NotificationTemplate: Codable, Identifiable {
+    let id: String
+    let type: NotificationType
+    let title: String
+    let body: String
+    let icon: String
+    let actionURL: String?
+    let category: NotificationCategory
+    
+    enum NotificationType: String, Codable, CaseIterable {
+        case dailyPhotoReminder = "daily_photo_reminder"
+        case dashboardScoreShare = "dashboard_score_share"
+        case routineFollowUp = "routine_follow_up"
+        case skinAnalysisComplete = "skin_analysis_complete"
+        case routineReminder = "routine_reminder"
+        case progressMilestone = "progress_milestone"
+    }
+    
+    enum NotificationCategory: String, Codable, CaseIterable {
+        case reminder = "reminder"
+        case achievement = "achievement"
+        case routine = "routine"
+        case analysis = "analysis"
+    }
+}
+
+struct ScheduledNotification: Codable, Identifiable {
+    let id: String
+    let userId: String
+    let templateId: String
+    let scheduledDate: Date
+    let status: NotificationStatus
+    let sentAt: Date?
+    let deliveredAt: Date?
+    let openedAt: Date?
+    let channels: [NotificationTypePreference.NotificationChannel]
+    
+    enum NotificationStatus: String, Codable, CaseIterable {
+        case scheduled = "scheduled"
+        case sent = "sent"
+        case delivered = "delivered"
+        case opened = "opened"
+        case failed = "failed"
+        case cancelled = "cancelled"
+    }
+}
+
+struct NotificationAnalytics: Codable {
+    let notificationId: String
+    let userId: String
+    let sentAt: Date
+    let deliveredAt: Date?
+    let openedAt: Date?
+    let actionTaken: String?
+    let timeToOpen: TimeInterval?
+    let channel: NotificationTypePreference.NotificationChannel
+}

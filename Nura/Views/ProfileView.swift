@@ -937,7 +937,7 @@ struct SettingsSectionView: View {
                         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                            let window = windowScene.windows.first {
                             window.rootViewController?.present(
-                                UIHostingController(rootView: NotificationsView()), animated: true, completion: nil)
+                                UIHostingController(rootView: LocalNotificationsView()), animated: true, completion: nil)
                         }
                     }
                 }
@@ -1044,8 +1044,8 @@ struct SubscriptionSectionView: View {
             
             VStack(spacing: 0) {
                 SettingsRow(
-                    title: "Nura Pro",
-                    subtitle: "Unlock advanced features",
+                    title: "Compare Plans",
+                    subtitle: "View subscription options",
                     icon: "crown.fill",
                     color: NuraColors.secondary
                 ) {
@@ -2254,179 +2254,7 @@ struct ImagePicker: UIViewControllerRepresentable {
     }
 }
 
-struct NotificationsView: View {
-    @Environment(\.dismiss) var dismiss
-    @Environment(\.colorScheme) private var colorScheme
-    @State private var pushEnabled: Bool = true
-    @State private var emailEnabled: Bool = false
-    @State private var smsEnabled: Bool = false
-    @State private var showPersonalInfoSheet: Bool = false
-    // Placeholder values for now
-    @State private var storedEmail: String = "user@email.com"
-    @State private var storedPhone: String = "+1 555-123-4567"
-    private var cardBackground: Color {
-        colorScheme == .dark ? Color.black.opacity(0.7) : .white
-    }
-    var body: some View {
-        NavigationView {
-            ZStack {
-                LinearGradient(
-                    gradient: Gradient(colors: [NuraColors.sand, NuraColors.primary.opacity(0.18), NuraColors.secondary.opacity(0.12)]),
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
-                VStack(alignment: .center, spacing: 28) {
-                    Text("Notifications")
-                        .font(.title)
-                        .fontWeight(.bold)
-                        .padding(.top, 16)
-                        .accessibilityAddTraits(.isHeader)
-                    VStack(spacing: 18) {
-                        NotificationToggleRow(
-                            title: "Push Notifications",
-                            subtitle: "Get alerts on your device",
-                            isOn: $pushEnabled,
-                            systemImage: "bell.fill"
-                        )
-                        VStack(spacing: 0) {
-                            NotificationToggleRow(
-                                title: "Email Notifications",
-                                subtitle: "Receive updates via email",
-                                isOn: $emailEnabled,
-                                systemImage: "envelope.fill"
-                            )
-                            if emailEnabled {
-                                AnimatedDropdown(cardBackground: cardBackground) {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        HStack(spacing: 8) {
-                                            Image(systemName: "envelope")
-                                                .foregroundColor(NuraColors.secondary)
-                                            Text(storedEmail)
-                                                .font(.subheadline)
-                                                .foregroundColor(.primary)
-                                        }
-                                        Button(action: { showPersonalInfoSheet = true }) {
-                                            Text("Edit")
-                                                .font(.caption)
-                                                .foregroundColor(Color.accentColor)
-                                                .underline()
-                                        }
-                                        .padding(.leading, 28)
-                                        .accessibilityLabel("Edit email")
-                                    }
-                                    .padding(10)
-                                    .background(cardBackground)
-                                    .cornerRadius(10)
-                                    .shadow(color: .black.opacity(0.06), radius: 2, x: 0, y: 1)
-                                }
-                            }
-                        }
-                        VStack(spacing: 0) {
-                            NotificationToggleRow(
-                                title: "SMS Notifications",
-                                subtitle: "Text message alerts",
-                                isOn: $smsEnabled,
-                                systemImage: "message.fill"
-                            )
-                            if smsEnabled {
-                                AnimatedDropdown(cardBackground: cardBackground) {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        HStack(spacing: 8) {
-                                            Image(systemName: "phone")
-                                                .foregroundColor(NuraColors.secondary)
-                                            Text(storedPhone)
-                                                .font(.subheadline)
-                                                .foregroundColor(.primary)
-                                        }
-                                        Button(action: { showPersonalInfoSheet = true }) {
-                                            Text("Edit")
-                                                .font(.caption)
-                                                .foregroundColor(Color.accentColor)
-                                                .underline()
-                                        }
-                                        .padding(.leading, 28)
-                                        .accessibilityLabel("Edit phone number")
-                                    }
-                                    .padding(10)
-                                    .background(cardBackground)
-                                    .cornerRadius(10)
-                                    .shadow(color: .black.opacity(0.06), radius: 2, x: 0, y: 1)
-                                }
-                            }
-                        }
-                    }
-                    .padding()
-                    .background(cardBackground)
-                    .cornerRadius(14)
-                    .shadow(color: .black.opacity(0.07), radius: 4, x: 0, y: 2)
-                    Spacer()
-                }
-                .padding()
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(trailing: Button("Done") { dismiss() })
-            .sheet(isPresented: $showPersonalInfoSheet) {
-                PersonalInformationView()
-            }
-        }
-    }
-}
 
-// Animated dropdown for notification details
-struct AnimatedDropdown<Content: View>: View {
-    let cardBackground: Color
-    @ViewBuilder let content: () -> Content
-    @State private var show: Bool = false
-    var body: some View {
-        VStack {
-            content()
-                .background(cardBackground)
-                .cornerRadius(10)
-                .transition(.move(edge: .top).combined(with: .opacity))
-                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: show)
-        }
-        .onAppear { show = true }
-        .onDisappear { show = false }
-    }
-}
-
-struct NotificationToggleRow: View {
-    let title: String
-    let subtitle: String
-    @Binding var isOn: Bool
-    let systemImage: String
-    @Environment(\.colorScheme) private var colorScheme
-    var body: some View {
-        Button(action: { isOn.toggle() }) {
-            HStack(spacing: 16) {
-                Image(systemName: systemImage)
-                    .foregroundColor(NuraColors.secondary)
-                    .frame(width: 24)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(colorScheme == .dark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
-                }
-                Spacer()
-                Toggle("", isOn: $isOn)
-                    .labelsHidden()
-                    .toggleStyle(SwitchToggleStyle(tint: NuraColors.primary))
-                    .accessibilityHidden(true)
-            }
-            .padding(.vertical, 8)
-        }
-        .buttonStyle(PlainButtonStyle())
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(title)
-        .accessibilityValue(isOn ? "On" : "Off")
-        .accessibilityHint(subtitle)
-        .accessibilityAddTraits(.isButton)
-    }
-}
 
 struct PrivacyAndSecurityView: View {
     @Environment(\.dismiss) var dismiss
