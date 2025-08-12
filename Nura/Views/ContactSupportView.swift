@@ -46,13 +46,13 @@ struct ContactSupportView: View {
                     VStack(spacing: 10) {
                         HStack(spacing: 10) {
                             PillButton(
-                                title: "Chat with us",
+                                title: "Chat with us (Coming Soon)",
                                 color: colorScheme == .dark ? Color(red: 0.95, green: 0.72, blue: 0.80).opacity(0.18) : accent,
                                 icon: "bubble.left.and.bubble.right.fill",
                                 minWidth: 170,
                                 fullWidth: false
                             ) {
-                                // Stub: Open chat
+                                showChatComingSoon()
                             }
                             PillButton(
                                 title: "Email support",
@@ -61,7 +61,7 @@ struct ContactSupportView: View {
                                 minWidth: 170,
                                 fullWidth: false
                             ) {
-                                // Stub: Open email
+                                openEmailSupport()
                             }
                         }
                         .frame(maxWidth: .infinity)
@@ -181,10 +181,17 @@ struct ContactSupportView: View {
                     .padding(.horizontal, 8)
                     .padding(.bottom, 10)
                     // Microcopy
-                    Text("We usually reply within a few hours.")
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-                        .padding(.bottom, 10)
+                    VStack(spacing: 4) {
+                        Text("We usually reply within a few hours.")
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                        
+                        Text("Live chat and phone support coming soon!")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .italic()
+                    }
+                    .padding(.bottom, 10)
                     // Send button
                     Button(action: sendMessage) {
                         ZStack {
@@ -249,6 +256,127 @@ struct ContactSupportView: View {
                 sent = false
             }
         }
+    }
+    
+    // MARK: - Support Actions
+    
+    func openEmailSupport() {
+        let email = "nura.help@gmail.com"
+        let subject = "Nura Support Request"
+        
+        // Get device info for better support
+        let deviceInfo = getDeviceInfo()
+        
+        let body = """
+        Hello Nura Support Team,
+        
+        I need help with the following:
+        
+        [Please describe your issue here]
+        
+        ---
+        User Information:
+        Name: \(name)
+        Email: \(email)
+        
+        Device Information:
+        \(deviceInfo)
+        
+        ---
+        Please provide as much detail as possible about your issue.
+        """
+        
+        if let url = createEmailURL(to: email, subject: subject, body: body) {
+            UIApplication.shared.open(url)
+        } else {
+            // Fallback: Copy email to clipboard
+            UIPasteboard.general.string = email
+            showEmailCopiedAlert()
+        }
+    }
+    
+    private func getDeviceInfo() -> String {
+        let device = UIDevice.current
+        let systemVersion = device.systemVersion
+        let model = device.model
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
+        let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
+        
+        return """
+        Device: \(model)
+        iOS Version: \(systemVersion)
+        App Version: \(appVersion) (\(buildNumber))
+        """
+    }
+    
+    func showChatComingSoon() {
+        // Show coming soon alert with alternative options
+        let alert = UIAlertController(
+            title: "Chat Coming Soon! 💬",
+            message: "We're working on live chat support. For now, please use email support or check our FAQ section for quick answers.",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Email Support", style: .default) { _ in
+            openEmailSupport()
+        })
+        
+        alert.addAction(UIAlertAction(title: "Browse FAQ", style: .default) { _ in
+            showFAQ = true
+        })
+        
+        alert.addAction(UIAlertAction(title: "OK", style: .cancel))
+        
+        // Present the alert
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first {
+            window.rootViewController?.present(alert, animated: true)
+        }
+    }
+    
+    func openChatSupport() {
+        // This will be used when chat is implemented
+        let chatURL = "https://nura.app/chat" // Replace with actual chat URL
+        if let url = URL(string: chatURL) {
+            UIApplication.shared.open(url)
+        } else {
+            // Fallback: Show chat info
+            showChatInfoAlert()
+        }
+    }
+    
+    private func createEmailURL(to: String, subject: String, body: String) -> URL? {
+        let encodedSubject = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let encodedBody = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let urlString = "mailto:\(to)?subject=\(encodedSubject)&body=\(encodedBody)"
+        return URL(string: urlString)
+    }
+    
+    private func showEmailCopiedAlert() {
+        let alert = UIAlertController(
+            title: "Email Copied! 📧",
+            message: "The support email address has been copied to your clipboard. You can paste it in your email app.",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Open Mail App", style: .default) { _ in
+            if let mailURL = URL(string: "mailto:nura.help@gmail.com") {
+                UIApplication.shared.open(mailURL)
+            }
+        })
+        
+        alert.addAction(UIAlertAction(title: "OK", style: .cancel))
+        
+        // Present the alert
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first {
+            window.rootViewController?.present(alert, animated: true)
+        }
+    }
+    
+    private func showChatInfoAlert() {
+        // Show chat availability and contact info
+        print("💬 Chat support info displayed")
     }
 }
 

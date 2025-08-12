@@ -36,6 +36,9 @@ class SkinAnalysisManager: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             self.isAnalyzing = false
             // Mock results
+            
+            // Send notification when analysis is complete
+            LocalNotificationService.shared.sendSkinAnalysisCompleteNotification()
         }
     }
     

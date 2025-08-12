@@ -11,6 +11,7 @@ struct NuraProView: View {
     @State private var yearlyPulse: Bool = false
     @State private var selectedPlan: ComparePlan = .proUnlimited
     @State private var currentIndex: Int = 0
+    @State private var navigateToPayment: Bool = false
 
     
     private var secondaryTextColor: Color {
@@ -226,26 +227,28 @@ struct NuraProView: View {
                 .cornerRadius(12)
                 .shadow(color: Color.purple.opacity(0.08), radius: 6, x: 0, y: 2)
                 .animation(.spring(response: 0.4, dampingFraction: 0.8), value: billingCycle)
-                Button(action: {
-                    // Upgrade logic here
-                }) {
-                    HStack {
-                        Spacer()
-                        Text(selectedPlan == .free ? "Start Free" : (selectedPlan == .proUnlimited ? "Go Pro Unlimited" : "Go Pro"))
-                            .fontWeight(.bold)
-                            .font(.title3)
-                            .padding(.vertical, 10)
-                        Spacer()
+                if selectedPlan != .free {
+                    Button(action: {
+                        navigateToPayment = true
+                    }) {
+                        HStack {
+                            Spacer()
+                            Text(selectedPlan == .proUnlimited ? "Go Pro Unlimited" : "Go Pro")
+                                .fontWeight(.bold)
+                                .font(.title3)
+                                .padding(.vertical, 10)
+                            Spacer()
+                        }
+                        .background(
+                            LinearGradient(gradient: Gradient(colors: [Color.purple, Color.blue]), startPoint: .leading, endPoint: .trailing)
+                        )
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                        .shadow(color: Color.purple.opacity(0.18), radius: 5, x: 0, y: 2)
                     }
-                    .background(
-                        LinearGradient(gradient: Gradient(colors: [Color.purple, Color.blue]), startPoint: .leading, endPoint: .trailing)
-                    )
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
-                    .shadow(color: Color.purple.opacity(0.18), radius: 5, x: 0, y: 2)
+                    .padding(.horizontal, 4)
+                    .padding(.bottom, 2)
                 }
-                .padding(.horizontal, 4)
-                .padding(.bottom, 2)
                 
                 // Add the two Text views here, below the button
                 Text("7-day free trial. Cancel anytime.")
@@ -264,6 +267,20 @@ struct NuraProView: View {
             .frame(maxHeight: .infinity, alignment: .bottom)
             .onAppear {
                 yearlyPulse = true
+            }
+            .sheet(isPresented: $navigateToPayment) {
+                let paymentPlan: SubscriptionPlan? = {
+                    switch selectedPlan {
+                    case .pro:
+                        return SubscriptionPlan.allPlans.first { $0.name == "Nura Pro" }
+                    case .proUnlimited:
+                        return SubscriptionPlan.allPlans.first { $0.name == "Nura Pro Unlimited" }
+                    case .free:
+                        return nil
+                    }
+                }()
+                
+                PaymentMethodsView(initialPlan: paymentPlan, initialBillingCycle: billingCycle)
             }
 
         }
@@ -517,10 +534,6 @@ struct CompareFeature {
                 .clipShape(Circle())
         )
     }
-}
-
-enum BillingCycle {
-    case monthly, yearly
 }
 
 // MARK: - Glow Modifier
