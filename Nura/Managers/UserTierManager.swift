@@ -6,7 +6,7 @@ class UserTierManager: ObservableObject {
     @Published var isPremium: Bool = false
     @Published var currentUserProfile: UserProfile?
     
-    enum Tier: String { case free, pro, proUnlimited }
+    enum Tier: String, Codable { case free, pro, proUnlimited }
     @Published var tier: Tier = .free
     
     private let authManager: AuthenticationManager

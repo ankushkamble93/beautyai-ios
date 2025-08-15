@@ -205,7 +205,6 @@ class SkinDiaryManager: ObservableObject {
     }
     
     private func applySpacingOptimization(entries: [SkinDiaryEntry], for range: DateRange) -> [SkinDiaryEntry] {
-        let calendar = Calendar.current
         let sortedEntries = entries.sorted { $0.date > $1.date } // Most recent first
         
         var optimizedEntries: [SkinDiaryEntry] = []
@@ -254,27 +253,50 @@ class SkinDiaryManager: ObservableObject {
 // MARK: - Data Models
 
 struct SkinDiaryEntry: Codable, Identifiable {
-    let id: UUID = UUID()
-    let date: Date
-    let selectedStates: [String]
-    let otherText: String
-    let note: String
-    let skinHealthPercent: Int
-    
-    var primaryMood: String {
-        if selectedStates.contains("Clear") { return "Clear" }
-        if selectedStates.contains("Oily") { return "Oily" }
-        if selectedStates.contains("Dry") { return "Dry" }
-        if selectedStates.contains("Sensitive") { return "Sensitive" }
-        if selectedStates.contains("Bumpy") { return "Bumpy" }
-        return selectedStates.first ?? "Other"
-    }
-    
-    var combinedStatesText: String {
-        var states = selectedStates
-        if !otherText.isEmpty {
-            states.append(otherText)
-        }
-        return states.joined(separator: ", ")
-    }
+	let id: UUID
+	let date: Date
+	let selectedStates: [String]
+	let otherText: String
+	let note: String
+	let skinHealthPercent: Int
+	
+	private enum CodingKeys: String, CodingKey {
+		case id, date, selectedStates, otherText, note, skinHealthPercent
+	}
+	
+	init(id: UUID = UUID(), date: Date, selectedStates: [String], otherText: String, note: String, skinHealthPercent: Int) {
+		self.id = id
+		self.date = date
+		self.selectedStates = selectedStates
+		self.otherText = otherText
+		self.note = note
+		self.skinHealthPercent = skinHealthPercent
+	}
+	
+	init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+		self.date = try container.decode(Date.self, forKey: .date)
+		self.selectedStates = try container.decode([String].self, forKey: .selectedStates)
+		self.otherText = try container.decode(String.self, forKey: .otherText)
+		self.note = try container.decode(String.self, forKey: .note)
+		self.skinHealthPercent = try container.decode(Int.self, forKey: .skinHealthPercent)
+	}
+	
+	var primaryMood: String {
+		if selectedStates.contains("Clear") { return "Clear" }
+		if selectedStates.contains("Oily") { return "Oily" }
+		if selectedStates.contains("Dry") { return "Dry" }
+		if selectedStates.contains("Sensitive") { return "Sensitive" }
+		if selectedStates.contains("Bumpy") { return "Bumpy" }
+		return selectedStates.first ?? "Other"
+	}
+	
+	var combinedStatesText: String {
+		var states = selectedStates
+		if !otherText.isEmpty {
+			states.append(otherText)
+		}
+		return states.joined(separator: ", ")
+	}
 } 

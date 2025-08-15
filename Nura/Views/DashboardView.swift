@@ -83,6 +83,198 @@ struct DashboardView: View {
         (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark)
     }
 
+    // Computed property for real skin health score
+    private var realSkinHealthScore: Double {
+        if let analysisResults = skinAnalysisManager.getCachedAnalysisResults() {
+            return Double(analysisResults.skinHealthScore) / 100.0
+        }
+        return 0.78 // Appealing sample score of 78% - shows room for improvement but positive
+    }
+    
+    // Computed property for real skin conditions with affected areas
+    private var realSkinConditions: [(name: String, areas: [String], severity: String)] {
+        if let analysisResults = skinAnalysisManager.getCachedAnalysisResults() {
+            return analysisResults.conditions.compactMap { condition -> (name: String, areas: [String], severity: String)? in
+                // Filter out invalid or empty conditions
+                guard !condition.name.isEmpty, !condition.affectedAreas.isEmpty else { return nil }
+                
+                let cleanName = condition.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                let cleanAreas = condition.affectedAreas.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                let severity = condition.severity.rawValue.capitalized
+                
+                return (name: cleanName, areas: cleanAreas, severity: severity)
+            }
+        }
+        return [] // Return empty array if no analysis results
+    }
+    
+    // Computed property for average confidence
+    private var averageConfidence: Double {
+        if let analysisResults = skinAnalysisManager.getCachedAnalysisResults() {
+            return analysisResults.confidence
+        }
+        return 0.0
+    }
+
+    // Computed property for AI-generated tasks from recommendations
+    private var aiGeneratedTasks: [DashboardTask] {
+        guard let recommendations = skinAnalysisManager.recommendations else {
+            // Return default sample tasks when no AI recommendations available
+            return [
+                DashboardTask(
+                    id: UUID(),
+                    title: "Morning Routine",
+                    description: "Complete your morning skincare routine",
+                    dueDate: Date(),
+                    priority: .high,
+                    isCompleted: false
+                ),
+                DashboardTask(
+                    id: UUID(),
+                    title: "Evening Routine",
+                    description: "Complete your evening skincare routine",
+                    dueDate: Date().addingTimeInterval(43200), // 12 hours
+                    priority: .high,
+                    isCompleted: false
+                )
+            ]
+        }
+        
+        // Generate tasks from AI recommendations
+        var tasks: [DashboardTask] = []
+        
+        // Morning routine task from AI recommendations
+        if !recommendations.morningRoutine.isEmpty {
+            let morningSteps = recommendations.morningRoutine.map { $0.name }.joined(separator: ", ")
+            tasks.append(DashboardTask(
+                id: UUID(),
+                title: "Morning Routine",
+                description: "\(morningSteps)",
+                dueDate: Calendar.current.nextDate(after: Date(), matching: DateComponents(hour: 7, minute: 0), matchingPolicy: .nextTimePreservingSmallerComponents) ?? Date(),
+                priority: .high,
+                isCompleted: false
+            ))
+        }
+        
+        // Evening routine task from AI recommendations
+        if !recommendations.eveningRoutine.isEmpty {
+            let eveningSteps = recommendations.eveningRoutine.map { $0.name }.joined(separator: ", ")
+            tasks.append(DashboardTask(
+                id: UUID(),
+                title: "Evening Routine", 
+                description: "\(eveningSteps)",
+                dueDate: Calendar.current.nextDate(after: Date(), matching: DateComponents(hour: 19, minute: 0), matchingPolicy: .nextTimePreservingSmallerComponents) ?? Date(),
+                priority: .high,
+                isCompleted: false
+            ))
+        }
+        
+        return tasks
+    }
+    
+    // Computed property for AI-generated weekly tasks
+    private var aiGeneratedWeeklyTask: DashboardTask {
+        guard let recommendations = skinAnalysisManager.recommendations,
+              !recommendations.weeklyTreatments.isEmpty else {
+            // Return default weekly task when no AI recommendations available
+            return DashboardTask(
+                id: UUID(),
+                title: "Weekly Mask",
+                description: "Apply your weekly treatment mask",
+                dueDate: Date().addingTimeInterval(86400 * 3), // 3 days
+                priority: .medium,
+                isCompleted: false
+            )
+        }
+        
+        // Generate weekly task from AI recommendations
+        let weeklyTreatments = recommendations.weeklyTreatments.map { $0.name }.joined(separator: ", ")
+        return DashboardTask(
+            id: UUID(),
+            title: "Weekly Routine",
+            description: "\(weeklyTreatments)",
+            dueDate: Date().addingTimeInterval(86400 * 3), // 3 days
+            priority: .medium,
+            isCompleted: false
+        )
+    }
+    
+    // Computed property for tier-based reload availability
+    private var canReloadTasks: Bool {
+        switch userTierManager.tier {
+        case .free:
+            // Free users can reload once per week
+            return true // TODO: Implement weekly cooldown tracking
+        case .pro:
+            // Pro users can reload once per day
+            return true // TODO: Implement daily cooldown tracking
+        case .proUnlimited:
+            // Pro Unlimited users can reload anytime
+            return true
+        }
+    }
+    
+    // Computed property for reload button text
+    private var reloadButtonText: String {
+        switch userTierManager.tier {
+        case .free:
+            return "Reload Tasks (Weekly)"
+        case .pro:
+            return "Reload Tasks (Daily)"
+        case .proUnlimited:
+            return "Reload Tasks"
+        }
+    }
+
+    // Computed property for AI-powered routines to pass to UpcomingTasksCard
+    private var aiGeneratedRoutines: [[String]] {
+        // Try to get AI recommendations first
+        if let recommendations = skinAnalysisManager.recommendations {
+            var aiRoutines: [[String]] = []
+            
+            // Morning routine from AI
+            if !recommendations.morningRoutine.isEmpty {
+                aiRoutines.append(recommendations.morningRoutine.map { "\($0.category.rawValue.capitalized): \($0.name)" })
+            }
+            
+            // Evening routine from AI  
+            if !recommendations.eveningRoutine.isEmpty {
+                aiRoutines.append(recommendations.eveningRoutine.map { "\($0.category.rawValue.capitalized): \($0.name)" })
+            }
+            
+            // Weekly treatments from AI
+            if !recommendations.weeklyTreatments.isEmpty {
+                aiRoutines.append(recommendations.weeklyTreatments.map { "\($0.category.rawValue.capitalized): \($0.name)" })
+            }
+            
+            // Ensure we have at least 3 routines for display
+            while aiRoutines.count < 3 {
+                aiRoutines.append(["Sample routine step"])
+            }
+            
+            return aiRoutines
+        }
+        
+        // Fallback to placeholder routines
+        return [
+            [
+                "Cleanser: CeraVe Gentle Cleanser",
+                "Serum: The Ordinary Niacinamide", 
+                "Moisturizer: Neutrogena Hydro Boost",
+                "Sunscreen: La Roche-Posay Anthelios"
+            ],
+            [
+                "Cleanser: Vanicream Gentle Cleanser",
+                "Toner: Paula's Choice BHA",
+                "Night Cream: CeraVe PM Lotion"
+            ],
+            [
+                "Exfoliating Mask: The Ordinary AHA 30%",
+                "Hydrating Mask: Laneige Water Sleeping Mask"
+            ]
+        ]
+    }
+
     var body: some View {
         NavigationView {
             ScrollView {
@@ -107,40 +299,50 @@ struct DashboardView: View {
                     }
                     // Welcome section with premium styling for pro users
                     WelcomeSection(isDark: isDark, isPremium: userTierManager.isPremium)
+                        .padding(.bottom, 8)
                     
                     // Progress overview with premium styling for pro users
                     ProgressOverviewCard(
                         progress: dashboardData.progress,
                         confettiCounter: $confettiCounter,
                         isDark: isDark,
-                        isPremium: userTierManager.isPremium
+                        isPremium: userTierManager.isPremium,
+                        realSkinHealthScore: realSkinHealthScore,
+                        realSkinConditions: realSkinConditions,
+                        averageConfidence: averageConfidence,
+                        analysisDate: skinAnalysisManager.getCachedAnalysisResults()?.analysisDate
                     )
+                        .padding(.bottom, 8)
                     
                     // Current routine
                     if !dashboardData.currentRoutine.isEmpty {
                         CurrentRoutineCard(routine: dashboardData.currentRoutine, isDark: isDark)
+                            .padding(.bottom, 8)
                     }
                     
-                    // Recent analysis
-                    if let recentAnalysis = skinAnalysisManager.analysisResults {
-                        RecentAnalysisCard(analysis: recentAnalysis, isDark: isDark)
-                    }
-                    
-                    // Upcoming tasks (including weekly mask at the end)
+                    // Upcoming tasks (AI-powered, including weekly treatment)
                     UpcomingTasksCard(
-                        tasks: dashboardData.upcomingTasks,
+                        tasks: aiGeneratedTasks,
                         weeklyMaskCompletedAt: $weeklyMaskCompletedAt,
-                        weeklyMaskTask: weeklyMaskTask,
-                        isDark: isDark
+                        weeklyMaskTask: aiGeneratedWeeklyTask,
+                        isDark: isDark,
+                        canReloadTasks: canReloadTasks,
+                        reloadButtonText: reloadButtonText,
+                        onReloadTasks: reloadTasksAction,
+                        routines: aiGeneratedRoutines,
+                        isReloading: skinAnalysisManager.isReloading,
+                        lastUpdated: skinAnalysisManager.recommendationsUpdatedAt
                     )
+                        .padding(.bottom, 8)
                     
                     // Insights with premium styling for pro users
                     InsightsCard(insights: dashboardData.insights, isDark: isDark, isPremium: userTierManager.isPremium)
                     
                     Spacer()
                 }
-                .padding()
-                .onChange(of: Int(dashboardData.progress.skinHealthScore * 100)) { oldValue, newValue in
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+                .onChange(of: Int(realSkinHealthScore * 100)) { oldValue, newValue in
                     let milestones: [Int] = [75, 80, 85, 90, 100]
                     if let milestone = milestones.first(where: { $0 > lastMilestone && newValue >= $0 }) {
                         confettiCounter += 1
@@ -159,6 +361,8 @@ struct DashboardView: View {
         .onAppear {
             print("🔍 DashboardView: Appeared")
             print("🔍 DashboardView: User profile - onboarding_complete = \(authManager.userProfile?.onboarding_complete ?? false)")
+            // Load cached AI recommendations once per app launch
+            skinAnalysisManager.loadCachedRecommendations()
         }
     }
     
@@ -166,6 +370,13 @@ struct DashboardView: View {
         // Simulate API call to refresh dashboard data
         try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
         // Update dashboard data here
+    }
+
+    // Action to reload tasks (triggers new AI recommendations)
+    private func reloadTasksAction() {
+        Task {
+            await skinAnalysisManager.regenerateRecommendations()
+        }
     }
 }
 
@@ -224,6 +435,10 @@ struct ProgressOverviewCard: View {
     @Binding var confettiCounter: Int
     var isDark: Bool
     var isPremium: Bool = false
+    let realSkinHealthScore: Double
+    let realSkinConditions: [(name: String, areas: [String], severity: String)]
+    let averageConfidence: Double
+    let analysisDate: Date?
 
     private func ringColor(for score: Double) -> Color {
         let percent = score * 100
@@ -240,135 +455,376 @@ struct ProgressOverviewCard: View {
             return base.blend(with: darken, fraction: darkness)
         }
     }
+    
+    // Helper function for severity colors
+    private func severityColor(for severity: String) -> Color {
+        switch severity.lowercased() {
+        case "excellent", "good", "mild": return .green
+        case "monitor", "moderate": return .orange
+        case "severe": return .red
+        default: return .gray
+        }
+    }
+    
+    // Helper function for severity icons (supports both real and sample severities)
+    private func severityIconName(for severity: String) -> String {
+        switch severity.lowercased() {
+        case "excellent": return "arrow.up.circle.fill"
+        case "good", "mild": return "checkmark.seal.fill"
+        case "monitor", "moderate": return "exclamationmark.circle.fill"
+        case "severe": return "exclamationmark.triangle.fill"
+        default: return "circle.fill"
+        }
+    }
+    
+    // Helper function for confidence colors
+    private func confidenceColor(for confidence: Double) -> Color {
+        switch confidence {
+        case 0.85...1.0: return isDark ? Color.green : Color.green
+        case 0.7..<0.85: return .orange
+        default: return .red
+        }
+    }
+    
+    // Helper function for formatting dates
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        return formatter.string(from: date)
+    }
+    
+    // Computed properties to break up complex expressions
+    private var ctaBackgroundFill: Color {
+        isDark ? Color.purple.opacity(0.08) : Color.purple.opacity(0.05)
+    }
+    
+    private var ctaGradientColors: [Color] {
+        [
+            isDark ? Color.purple.opacity(0.25) : Color.purple.opacity(0.2),
+            isDark ? Color.blue.opacity(0.2) : Color.blue.opacity(0.15)
+        ]
+    }
+    
+    private var ctaGradient: LinearGradient {
+        LinearGradient(
+            gradient: Gradient(colors: ctaGradientColors),
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    // MARK: - Split subviews to help type-checker
+    @ViewBuilder private var headerSection: some View {
+        HStack(alignment: .lastTextBaseline, spacing: 8) {
+            Text("Skin Health Score")
+                .font(.title3)
+                .fontWeight(.bold)
+                .underline()
+                .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                .fixedSize()
+            Spacer(minLength: 0)
+            Text("Your journey to healthier skin")
+                .font(.caption)
+                .italic()
+                .foregroundColor(.gray.opacity(0.7))
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .offset(y: 6)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, -10)
+    }
+
+    @ViewBuilder private var scoreBubble: some View {
+        ZStack {
+            Circle()
+                .fill(Color.white.opacity(isDark ? 0.05 : 0.3))
+                .frame(width: 100, height: 100)
+            AnimatedRingView(
+                progress: realSkinHealthScore,
+                ringColor: isDark ? NuraColors.successDark : ringColor(for: realSkinHealthScore),
+                ringWidth: isPremium ? 16 : 14,
+                label: "\(Int(realSkinHealthScore * 100))%"
+            )
+            .frame(width: isPremium ? 95 : 90, height: isPremium ? 95 : 90)
+            .scaleEffect(isPremium ? 1.05 : 1.0)
+            .animation(.easeInOut(duration: 0.5), value: isPremium)
+        }
+        .confettiCannon(trigger: $confettiCounter, num: 40, colors: [.green, .blue, .purple])
+    }
+
+    @ViewBuilder private var ctaOrSummary: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if realSkinConditions.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .center, spacing: 8) {
+                        Image(systemName: "camera.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(isDark ? Color.purple.opacity(0.8) : Color.purple)
+                        Text("Ready for Your Analysis?")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                    }
+                    Text("Upload photos to unlock personalized insights!")
+                        .font(.caption2)
+                        .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.7))
+                        .lineLimit(3)
+                        .multilineTextAlignment(.leading)
+                }
+                .padding(.vertical, 14)
+                .padding(.horizontal, 14)
+                .frame(minWidth: 190, minHeight: 110)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(ctaBackgroundFill)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(ctaGradient, lineWidth: 1)
+                        )
+                )
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Upload photos to get your personalized skin analysis")
+                .accessibilityHint("Tap the camera tab to start your skin analysis")
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("\(realSkinConditions.count) conditions detected")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.7))
+                    if let analysisDate = analysisDate {
+                        Text("Analysis Date: \(formatDate(analysisDate))")
+                            .font(.caption2)
+                            .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.6))
+                    }
+                }
+                .padding(.vertical, 14)
+                .padding(.horizontal, 14)
+                .frame(minWidth: 190, minHeight: 110)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(isDark ? Color.green.opacity(0.05) : Color.green.opacity(0.03))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.green.opacity(0.2), lineWidth: 1)
+                        )
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder private var realAnalysisNotes: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(realSkinConditions.enumerated()).filter { _, c in c.name.lowercased() != "analysis completed" }, id: \.offset) { index, condition in
+                HStack(alignment: .top, spacing: 6) {
+                    Text(condition.name)
+                        .font(.caption)
+                        .fontWeight(index == 0 ? .semibold : .medium)
+                        .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Image(systemName: severityIconName(for: condition.severity))
+                        .font(.caption)
+                        .foregroundColor(severityColor(for: condition.severity))
+                    if !condition.areas.isEmpty {
+                        Text("Areas: \(condition.areas.joined(separator: ", "))")
+                            .font(.caption2)
+                            .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.7))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            HStack(spacing: 6) {
+                Text("Analysis Confidence")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .foregroundColor(isDark ? Color.blue.opacity(0.7) : Color.blue)
+                    .font(.caption)
+                Text("\(Int(averageConfidence * 100))%")
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .foregroundColor(confidenceColor(for: averageConfidence))
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    @ViewBuilder private var sampleAnalysisNotes: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Healthy Glow – Excellent
+            HStack(spacing: 6) {
+                Text("Healthy Glow")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                    .lineLimit(1)
+                Image(systemName: severityIconName(for: "excellent"))
+                    .font(.caption)
+                    .foregroundColor(severityColor(for: "excellent"))
+                Text("Areas: Forehead, cheeks, chin")
+                    .font(.caption2)
+                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.7))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
+            }
+            // Even Tone – Good
+            HStack(spacing: 6) {
+                Text("Even Tone")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                    .lineLimit(1)
+                Image(systemName: severityIconName(for: "good"))
+                    .font(.caption)
+                    .foregroundColor(severityColor(for: "good"))
+                Text("Areas: Face, neck")
+                    .font(.caption2)
+                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.7))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
+            }
+            // Hydration Needs – Monitor
+            HStack(spacing: 6) {
+                Text("Hydration Needs")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                    .lineLimit(1)
+                Image(systemName: severityIconName(for: "monitor"))
+                    .font(.caption)
+                    .foregroundColor(severityColor(for: "monitor"))
+                Text("Areas: T-zone, around eyes")
+                    .font(.caption2)
+                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.7))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
+            }
+            // Confidence line
+            HStack(spacing: 6) {
+                Text("Analysis Confidence")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .foregroundColor(isDark ? Color.blue.opacity(0.7) : Color.blue)
+                    .font(.caption)
+                Text("95%")
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .foregroundColor(NuraColors.success)
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    @ViewBuilder private var notesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center) {
+                Text("Analysis Notes:")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                Spacer()
+                // Inline share button on the same row as the title
+                HStack(spacing: 6) {
+                    SkinScoreShareButton(skinScore: realSkinHealthScore, isDark: isDark)
+                    Text("Share")
+                        .font(.caption2)
+                        .foregroundColor(.gray.opacity(0.6))
+                }
+            }
+            if !realSkinConditions.isEmpty {
+                realAnalysisNotes
+            } else {
+                sampleAnalysisNotes
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.gray.opacity(0.12), lineWidth: 1)
+                )
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder private var backgroundLayer: some View {
+        ZStack {
+            if isDark {
+                NuraColors.cardDark
+            } else {
+                Color(red: 1.0, green: 0.913, blue: 0.839)
+                LinearGradient(
+                    gradient: Gradient(colors: [Color.white.opacity(0.08), Color.clear]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                if isPremium {
+                    LinearGradient(
+                        gradient: Gradient(colors: [
+                            Color.purple.opacity(0.08),
+                            Color.yellow.opacity(0.05),
+                            Color.purple.opacity(0.03)
+                        ]),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    .animation(.easeInOut(duration: 3).repeatForever(autoreverses: true), value: isPremium)
+                }
+                if isPremium {
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(
+                            LinearGradient(
+                                gradient: Gradient(colors: [Color.purple.opacity(0.4), Color.yellow.opacity(0.3)]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 2.0
+                        )
+                } else {
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color(red: 0.98, green: 0.839, blue: 0.706).opacity(0.2), lineWidth: 1.2)
+                }
+            }
+        }
+    }
 
     var body: some View {
         ZStack {
-            VStack(alignment: .leading, spacing: 15) {
-                // Header with title and subtitle with balanced spacing
-                HStack(alignment: .lastTextBaseline) {
-                    Text("Skin Health Score")
-                        .font(.headline)
-                        .fontWeight(.semibold)
-                        .underline()
-                        .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
-                    
-                    Spacer().frame(minWidth: 12, maxWidth: 20)
-                    
-                    Text("Your journey to healthier skin")
-                        .font(.caption2)
-                        .italic()
-                        .foregroundColor(.gray.opacity(0.7))
-                        .multilineTextAlignment(.center)
-                    
-                    Spacer().frame(minWidth: 12, maxWidth: 20)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 20) {
+                // Header with title and subtitle
+                headerSection
                 
-                HStack(alignment: .center, spacing: 20) {
-                    // Left half: Centered AnimatedRingView
-                    VStack {
-                        Spacer()
-                        ZStack {
-                            // Subtle background circle for prominence
-                            Circle()
-                                .fill(Color.white.opacity(isDark ? 0.05 : 0.3))
-                                .frame(width: 110, height: 110)
-                            
-                            AnimatedRingView(
-                                progress: Double(progress.skinHealthScore),
-                                ringColor: isDark ? NuraColors.successDark : ringColor(for: progress.skinHealthScore),
-                                ringWidth: isPremium ? 18 : 16,
-                                label: "\(Int(progress.skinHealthScore * 100))%"
-                            )
-                            .frame(width: isPremium ? 100 : 95, height: isPremium ? 100 : 95)
-                            .scaleEffect(isPremium ? 1.05 : 1.0)
-                            .animation(.easeInOut(duration: 0.5), value: isPremium)
-                        }
-                        .confettiCannon(trigger: $confettiCounter, num: 40, colors: [.green, .blue, .purple])
-                        Spacer()
+                // 4-Rectangle Layout: Top Row = Score + CTA, Bottom Row = Analysis Notes (spans full width)
+                VStack(spacing: 16) {
+                    // Top Row: Rectangle 1 (Score) + Rectangle 2 (CTA)
+                    HStack(alignment: .top, spacing: 16) {
+                        // Rectangle 1: Score Progress View (Top Left)
+                        scoreBubble
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        
+                        // Rectangle 2: Ready for Analysis CTA (Top Right)
+                        ctaOrSummary
                     }
-                    .frame(maxWidth: .infinity, alignment: .center)
                     
-                    // Right half: Improving Areas
-                    VStack(alignment: .leading, spacing: 8) {
-                        if !progress.improvementAreas.isEmpty {
-                            Text("Improving Areas:")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                                .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
-                            ForEach(Array(progress.improvementAreas.enumerated()), id: \.offset) { index, area in
-                                HStack {
-                                    Image(systemName: index == 0 ? "star.circle.fill" : "arrow.up.circle.fill")
-                                        .foregroundColor(index == 0 ? 
-                                            (isDark ? Color.yellow.opacity(0.8) : Color.orange) : 
-                                            (isDark ? NuraColors.successDark : Color(red: 0.11, green: 0.60, blue: 0.36)))
-                                        .font(.caption)
-                                    Text(area)
-                                        .font(.caption)
-                                        .fontWeight(index == 0 ? .semibold : .regular)
-                                        .foregroundColor(isDark ? NuraColors.textSecondaryDark : .primary)
-                                }
-                            }
-                            // Additional improving area with secondary priority
-                            HStack {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(isDark ? Color.blue.opacity(0.7) : Color.blue)
-                                    .font(.caption)
-                                Text("Skin texture")
-                                    .font(.caption)
-                                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : .primary)
-                            }
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    // Bottom Row: Rectangles 3&4 Merged - Analysis Notes (Full Width)
+                    notesSection
                 }
+            }
         }
         .padding()
         .background(
-            ZStack {
-                if isDark {
-                    NuraColors.cardDark
-                } else {
-                    // Regular light mode background
-                    Color(red: 1.0, green: 0.913, blue: 0.839) // #FFE9D6
-                    LinearGradient(
-                        gradient: Gradient(colors: [Color.white.opacity(0.08), Color.clear]),
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    
-                    // Premium light mode styling
-                    if isPremium {
-                        LinearGradient(
-                            gradient: Gradient(colors: [
-                                Color.purple.opacity(0.08),
-                                Color.yellow.opacity(0.05),
-                                Color.purple.opacity(0.03)
-                            ]),
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                        .animation(.easeInOut(duration: 3).repeatForever(autoreverses: true), value: isPremium)
-                    }
-                    
-                    // Premium border
-                    if isPremium {
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(
-                                LinearGradient(
-                                    gradient: Gradient(colors: [Color.purple.opacity(0.4), Color.yellow.opacity(0.3)]),
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 2.0
-                            )
-                    } else {
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color(red: 0.98, green: 0.839, blue: 0.706).opacity(0.2), lineWidth: 1.2)
-                    }
-                }
-            }
+            backgroundLayer
         )
         .cornerRadius(12)
         .shadow(
@@ -379,23 +835,7 @@ struct ProgressOverviewCard: View {
         )
         .scaleEffect(isPremium ? 1.02 : 1.0)
         .animation(.easeInOut(duration: 0.3), value: isPremium)
-        
-        // Floating share button overlay - bottom right
-        VStack {
-            Spacer()
-            HStack {
-                Spacer()
-                VStack(spacing: 2) {
-                    SkinScoreShareButton(skinScore: progress.skinHealthScore, isDark: isDark)
-                    Text("Share")
-                        .font(.caption2)
-                        .foregroundColor(.gray.opacity(0.6))
-                }
-            }
-        }
-        .padding(.bottom, 8)
-        .padding(.trailing, 8)
-    }
+        // Removed old outer share overlay; moved inline with Analysis Notes
     }
 }
 
@@ -513,108 +953,18 @@ struct CurrentRoutineCard: View {
     }
 }
 
-struct RecentAnalysisCard: View {
-    let analysis: SkinAnalysisResult
-    var isDark: Bool = false
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 15) {
-            HStack {
-                Text("Recent Analysis")
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                
-                Spacer()
-                
-                // Share button in top right
-                ShareButton(analysis: analysis, skinScore: 8.7) // Using a sample skin score
-            }
-            
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("\(analysis.conditions.count) conditions detected")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    
-                    Text("Confidence: \(Int(analysis.confidence * 100))%")
-                        .font(.caption)
-                        .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
-                }
-                
-                Spacer()
-                
-                Text(formatDate(analysis.analysisDate))
-                    .font(.caption)
-                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
-            }
-            
-            if !analysis.conditions.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(analysis.conditions.prefix(3)) { condition in
-                            VStack(spacing: 4) {
-                                Text(condition.name.capitalized)
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                                
-                                Text(condition.severity.rawValue.capitalized)
-                                    .font(.caption2)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(severityColor(for: condition.severity).opacity(0.2))
-                                    .foregroundColor(severityColor(for: condition.severity))
-                                    .cornerRadius(6)
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 6)
-                            .background(isDark ? NuraColors.cardDark : NuraColors.card)
-                            .cornerRadius(8)
-                        }
-                    }
-                }
-            }
-        }
-        .padding()
-        .background(
-            ZStack {
-                if isDark {
-                    NuraColors.cardDark
-                } else {
-                    Color(red: 1.0, green: 0.913, blue: 0.839) // #FFE9D6
-                    LinearGradient(
-                        gradient: Gradient(colors: [Color.white.opacity(0.08), Color.clear]),
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color(red: 0.98, green: 0.839, blue: 0.706).opacity(0.2), lineWidth: 1.2) // #FAD6B4 20%
-                }
-            }
-        )
-        .cornerRadius(12)
-        .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
-    }
-    
-    private func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        return formatter.string(from: date)
-    }
-    
-    private func severityColor(for severity: SkinCondition.Severity) -> Color {
-        switch severity {
-        case .mild: return .green
-        case .moderate: return .orange
-        case .severe: return .red
-        }
-    }
-}
-
 struct UpcomingTasksCard: View {
     let tasks: [DashboardTask]
     @Binding var weeklyMaskCompletedAt: Date?
     let weeklyMaskTask: DashboardTask
     var isDark: Bool
+    var canReloadTasks: Bool = true
+    var reloadButtonText: String = "Reload Tasks"
+    var onReloadTasks: (() -> Void)? = nil
+    var routines: [[String]] = [["Sample routine"]]
+    var isReloading: Bool = false
+    var lastUpdated: Date? = nil
+    @State private var showToast: Bool = false
     private let weekInterval: TimeInterval = 7 * 24 * 60 * 60
     @State private var maskPop: Bool = false
     @State private var taskPopIndex: Int? = nil
@@ -623,24 +973,50 @@ struct UpcomingTasksCard: View {
     @State private var lastCompletedDates: [Date?] = [nil, nil, nil] // For demo, up to 3 tasks
     @State private var now: Date = Date()
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-    // Placeholder routines for demo
-    let routines: [[String]] = [
-        [
-            "Cleanser: CeraVe Gentle Cleanser",
-            "Serum: The Ordinary Niacinamide",
-            "Moisturizer: Neutrogena Hydro Boost",
-            "Sunscreen: La Roche-Posay Anthelios"
-        ],
-        [
-            "Cleanser: Vanicream Gentle Cleanser",
-            "Toner: Paula's Choice BHA",
-            "Night Cream: CeraVe PM Lotion"
-        ],
-        [
-            "Exfoliating Mask: The Ordinary AHA 30%",
-            "Hydrating Mask: Laneige Water Sleeping Mask"
-        ]
-    ]
+
+    // MARK: - Header (split out to help type-checker)
+    @ViewBuilder private var headerRow: some View {
+        HStack {
+            Text("Today's Tasks")
+                .font(.headline)
+                .fontWeight(.semibold)
+            Spacer()
+            if canReloadTasks, let onReloadTasks = onReloadTasks {
+                HStack(spacing: 6) {
+                    if isReloading {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                    }
+                    Button(action: {
+                        onReloadTasks()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.caption)
+                            Text("Reload")
+                                .font(.caption2)
+                                .fontWeight(.medium)
+                        }
+                        .foregroundColor(isDark ? Color.purple.opacity(0.8) : Color.purple)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(isDark ? Color.purple.opacity(0.1) : Color.purple.opacity(0.05))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.purple.opacity(0.3), lineWidth: 1)
+                                )
+                        )
+                    }
+                    .disabled(isReloading)
+                    .accessibilityLabel(reloadButtonText)
+                    .accessibilityHint("Generates new AI-powered task recommendations")
+                }
+            }
+        }
+    }
+
     var nextAvailableDateForTask: [Date?] {
         [
             lastCompletedDates[0].flatMap { date in Calendar.current.nextDate(after: date, matching: DateComponents(hour: 5, minute: 0), matchingPolicy: .nextTimePreservingSmallerComponents) }, // Morning: next 5am
@@ -661,9 +1037,13 @@ struct UpcomingTasksCard: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
-            Text("Today's Tasks")
-                .font(.headline)
-                .fontWeight(.semibold)
+            // Header with reload button
+            headerRow
+            if let lastUpdated = lastUpdated {
+                Text("Updated: \(relativeDate(lastUpdated))")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
             ForEach(Array(tasks.prefix(3).enumerated()), id: \.offset) { idx, task in
                 let routineItems = routines.indices.contains(idx) ? routines[idx] : ["Step 1", "Step 2"]
                 VStack(alignment: .leading, spacing: 0) {
@@ -696,9 +1076,13 @@ struct UpcomingTasksCard: View {
                                 .font(.subheadline)
                                 .fontWeight(.medium)
                                 .strikethrough(checkedStates[idx])
-                            Text(task.description)
-                                .font(.caption)
-                                .foregroundColor(isDark ? Color.white.opacity(0.82) : Color.primary.opacity(0.75))
+                            VStack(alignment: .leading, spacing: 2) {
+                                ForEach(bulletItems(from: task.description), id: \.self) { item in
+                                    Text("• \(item)")
+                                        .font(.caption2)
+                                        .foregroundColor(isDark ? Color.white.opacity(0.82) : Color.primary.opacity(0.75))
+                                }
+                            }
                             if checkedStates[idx], let time = timeRemainingForTask[idx], !canCompleteTask[idx] {
                                 HStack(spacing: 4) {
                                     Image(systemName: "timer")
@@ -714,29 +1098,7 @@ struct UpcomingTasksCard: View {
                             .font(.caption)
                             .foregroundColor(Color(red: 0.85, green: 0.4, blue: 0.0)) // Deep orange
                     }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation(.easeInOut(duration: 0.35)) {
-                            expandedTaskIndex = (expandedTaskIndex == idx) ? nil : idx
-                        }
-                    }
-                    if expandedTaskIndex == idx {
-                        HStack(alignment: .top, spacing: 0) {
-                            Spacer().frame(width: 28)
-                            VStack(alignment: .leading, spacing: 2) {
-                                ForEach(routineItems, id: \.self) { item in
-                                    Text("• " + item)
-                                        .font(.caption2)
-                                        .foregroundColor(isDark ? Color.white.opacity(0.82) : Color(red: 0.13, green: 0.11, blue: 0.09))
-                                }
-                            }
-                            .padding(.vertical, 4)
-                            .padding(.horizontal, 8)
-                            // No background, just text on card
-                            .frame(minWidth: 220, maxWidth: 320, alignment: .leading)
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                        }
-                    }
+                    
                 }
             }
             // Weekly Mask row at the end
@@ -791,9 +1153,13 @@ struct UpcomingTasksCard: View {
                             .font(.subheadline)
                             .fontWeight(.medium)
                             .strikethrough(weeklyMaskCompletedAt != nil && !canComplete)
-                        Text(weeklyMaskTask.description)
-                            .font(.caption)
-                            .foregroundColor(isDark ? Color.white.opacity(0.82) : Color.primary.opacity(0.75))
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(bulletItems(from: weeklyMaskTask.description), id: \.self) { item in
+                                Text("• \(item)")
+                                    .font(.caption2)
+                                    .foregroundColor(isDark ? Color.white.opacity(0.82) : Color.primary.opacity(0.75))
+                            }
+                        }
                         if !canComplete, let time = timeRemaining {
                             HStack(spacing: 4) {
                                 Image(systemName: "timer")
@@ -809,33 +1175,16 @@ struct UpcomingTasksCard: View {
                         .font(.caption)
                         .foregroundColor(Color(red: 0.85, green: 0.4, blue: 0.0)) // Deep orange
                 }
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    withAnimation(.easeInOut(duration: 0.35)) {
-                        expandedTaskIndex = (expandedTaskIndex == 9999) ? nil : 9999
-                    }
-                }
-                if expandedTaskIndex == 9999 {
-                    HStack(alignment: .top, spacing: 0) {
-                        Spacer().frame(width: 28)
-                        VStack(alignment: .leading, spacing: 2) {
-                            ForEach(weeklyRoutine, id: \.self) { item in
-                                Text("• " + item)
-                                    .font(.caption2)
-                                    .foregroundColor(isDark ? Color.white.opacity(0.82) : Color(red: 0.13, green: 0.11, blue: 0.09))
-                            }
-                        }
-                        .padding(.vertical, 4)
-                        .padding(.horizontal, 8)
-                        // No background, just text on card
-                        .frame(minWidth: 220, maxWidth: 320, alignment: .leading)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-                }
+                
             }
         }
         .onReceive(timer) { input in
             now = input
+        }
+        .onChange(of: isReloading) { oldValue, newValue in
+            if oldValue == true && newValue == false {
+                withAnimation { showToast = true }
+            }
         }
         .padding()
         .background(
@@ -856,6 +1205,23 @@ struct UpcomingTasksCard: View {
         )
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
+        // Mini toast
+        .overlay(alignment: .top) {
+            if showToast {
+                HStack { Spacer() 
+                    Text("Routines refreshed")
+                        .font(.caption)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(.regularMaterial)
+                        .cornerRadius(12)
+                        .shadow(radius: 2)
+                    Spacer() }
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { withAnimation { showToast = false } } }
+                .padding(.top, 6)
+            }
+        }
     }
     private func priorityIcon(for priority: DashboardTask.Priority) -> String {
         switch priority {
@@ -882,6 +1248,18 @@ struct UpcomingTasksCard: View {
         } else {
             return "\(minutes)m"
         }
+    }
+    private func relativeDate(_ date: Date) -> String {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .short
+        return f.localizedString(for: date, relativeTo: Date())
+    }
+    private func bulletItems(from description: String) -> [String] {
+        let separators = CharacterSet(charactersIn: ".,;\n")
+        return description
+            .components(separatedBy: separators)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 }
 
@@ -1047,7 +1425,12 @@ struct SkinScoreShareButton: View {
             conditions: mockConditions,
             confidence: 0.95,
             analysisDate: Date(),
-            recommendations: ["Maintain your current skincare routine"]
+            recommendations: ["Maintain your current skincare routine"],
+            skinHealthScore: 87,
+            analysisVersion: "1.0",
+            routineGenerationTimestamp: nil,
+            analysisProvider: .mock,
+            imageCount: 1
         )
     }
 }
@@ -1145,7 +1528,7 @@ struct ProBadgeView: View {
 
 #Preview {
     DashboardView()
-        .environmentObject(SkinAnalysisManager())
+        .environmentObject(SkinAnalysisManager(userTierManager: UserTierManager(authManager: AuthenticationManager.shared)))
         .environmentObject(ShareManager())
         .environmentObject(UserTierManager(authManager: AuthenticationManager.shared))
 } 

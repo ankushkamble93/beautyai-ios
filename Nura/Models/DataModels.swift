@@ -30,11 +30,106 @@ struct SkinAnalysisRequest: Codable {
     let userProfile: LocalUserProfile
 }
 
+// MARK: - ChatGPT API Models
+
+struct ChatGPTVisionRequest: Codable {
+    let model: String
+    let messages: [ChatGPTMessage]
+    let maxTokens: Int
+    let temperature: Double
+    
+    enum CodingKeys: String, CodingKey {
+        case model, messages, temperature
+        case maxTokens = "max_tokens"
+    }
+}
+
+struct ChatGPTMessage: Codable {
+    let role: String
+    let content: [ChatGPTContent]
+}
+
+struct ChatGPTContent: Codable {
+    let type: String
+    let text: String?
+    let imageURL: ChatGPTImageURL?
+    
+    enum CodingKeys: String, CodingKey {
+        case type, text
+        case imageURL = "image_url"
+    }
+}
+
+struct ChatGPTImageURL: Codable {
+    let url: String
+}
+
+struct ChatGPTVisionResponse: Codable {
+    let id: String
+    let choices: [ChatGPTChoice]
+    let usage: ChatGPTUsage
+}
+
+struct ChatGPTChoice: Codable {
+    let message: ChatGPTResponseMessage
+    let finishReason: String
+    
+    enum CodingKeys: String, CodingKey {
+        case message
+        case finishReason = "finish_reason"
+    }
+}
+
+struct ChatGPTResponseMessage: Codable {
+    let content: String
+}
+
+struct ChatGPTUsage: Codable {
+    let promptTokens: Int
+    let completionTokens: Int
+    let totalTokens: Int
+    
+    enum CodingKeys: String, CodingKey {
+        case promptTokens = "prompt_tokens"
+        case completionTokens = "completion_tokens"
+        case totalTokens = "total_tokens"
+    }
+}
+
+// MARK: - Chat Memory Models
+struct ChatMemory: Codable {
+    var morningRoutine: [String]
+    var eveningRoutine: [String]
+    var weeklyTreatments: [String]
+    var analysisNotes: [String]
+    var lastUpdated: Date
+    var lastAnalysisDate: Date?
+}
+
+struct ChatMemoryUpdate: Codable {
+    var morningRoutine: [String]?
+    var eveningRoutine: [String]?
+    var weeklyTreatments: [String]?
+    var analysisNotes: [String]?
+}
+
 struct SkinAnalysisResult: Codable {
     let conditions: [SkinCondition]
     let confidence: Double
     let analysisDate: Date
     let recommendations: [String]
+    let skinHealthScore: Int // ChatGPT-generated score (0-100)
+    let analysisVersion: String // Version tracking for routine generation
+    let routineGenerationTimestamp: Date? // When routine was generated
+    let analysisProvider: AnalysisProvider // Which AI service was used
+    let imageCount: Int // Number of images analyzed
+    
+    enum AnalysisProvider: String, Codable {
+        case chatGPT35 = "gpt-3.5-turbo"
+        case chatGPT4 = "gpt-4-vision-preview"
+        case replicate = "replicate"
+        case mock = "mock"
+    }
 }
 
 struct SkinCondition: Codable, Identifiable {
@@ -44,6 +139,29 @@ struct SkinCondition: Codable, Identifiable {
     let confidence: Double
     let description: String
     let affectedAreas: [String]
+    
+    private enum CodingKeys: String, CodingKey {
+        case id, name, severity, confidence, description, affectedAreas
+    }
+    
+    init(id: UUID = UUID(), name: String, severity: Severity, confidence: Double, description: String, affectedAreas: [String]) {
+        self.id = id
+        self.name = name
+        self.severity = severity
+        self.confidence = confidence
+        self.description = description
+        self.affectedAreas = affectedAreas
+    }
+    
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        self.name = try c.decode(String.self, forKey: .name)
+        self.severity = try c.decode(Severity.self, forKey: .severity)
+        self.confidence = try c.decode(Double.self, forKey: .confidence)
+        self.description = try c.decode(String.self, forKey: .description)
+        self.affectedAreas = try c.decode([String].self, forKey: .affectedAreas)
+    }
     
     enum Severity: String, Codable, CaseIterable {
         case mild = "mild"
@@ -89,7 +207,86 @@ struct SkincareStep: Codable, Identifiable {
     let category: StepCategory
     let duration: Int
     let frequency: Frequency
+    let stepTime: StepTime
+    let conflictsWith: [String]
+    let requiresSPF: Bool
     let tips: [String]
+    
+    private enum CodingKeys: String, CodingKey { case id, name, description, category, duration, frequency, stepTime, conflictsWith, requiresSPF, tips }
+    
+    init(id: UUID = UUID(), name: String, description: String, category: StepCategory, duration: Int, frequency: Frequency, stepTime: StepTime = .anytime, conflictsWith: [String] = [], requiresSPF: Bool = false, tips: [String]) {
+        self.id = id
+        self.name = name
+        self.description = description
+        self.category = category
+        self.duration = duration
+        self.frequency = frequency
+        self.stepTime = stepTime
+        self.conflictsWith = conflictsWith
+        self.requiresSPF = requiresSPF
+        self.tips = tips
+    }
+    
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        // ID: accept UUID, string, or generate fallback
+        if let uuid = try? c.decode(UUID.self, forKey: .id) {
+            self.id = uuid
+        } else if let idString = try? c.decode(String.self, forKey: .id), let parsed = UUID(uuidString: idString) {
+            self.id = parsed
+        } else if let intId = try? c.decode(Int.self, forKey: .id) {
+            // Create a deterministic UUID namespace using the integer
+            self.id = UUID(uuidString: "00000000-0000-0000-0000-\(String(format: "%012d", intId))") ?? UUID()
+            print("⚠️ SkincareStep: Non-UUID id=\(intId) received, generated fallback UUID")
+        } else {
+            self.id = UUID()
+            print("⚠️ SkincareStep: Missing/invalid id, generated UUID")
+        }
+        self.name = try c.decode(String.self, forKey: .name)
+        self.description = try c.decode(String.self, forKey: .description)
+        // Category tolerant parsing
+        if let cat = try? c.decode(StepCategory.self, forKey: .category) {
+            self.category = cat
+        } else if let catRaw = try? c.decode(String.self, forKey: .category) {
+            self.category = StepCategory(rawValue: catRaw.lowercased()) ?? .treatment
+            print("⚠️ SkincareStep: Unknown category='\(catRaw)'; defaulting to .treatment")
+        } else {
+            self.category = .treatment
+        }
+        if let d = try? c.decode(Int.self, forKey: .duration) {
+            self.duration = d
+        } else if let dStr = try? c.decode(String.self, forKey: .duration), let d = Int(dStr) {
+            self.duration = d
+        } else {
+            self.duration = 60
+        }
+        // Frequency tolerant
+        if let f = try? c.decode(Frequency.self, forKey: .frequency) {
+            self.frequency = f
+        } else if let fRaw = try? c.decode(String.self, forKey: .frequency) {
+            self.frequency = Frequency(rawValue: fRaw.lowercased()) ?? .daily
+            if Frequency(rawValue: fRaw.lowercased()) == nil { print("⚠️ SkincareStep: Unknown frequency='\(fRaw)'; defaulting to .daily") }
+        } else {
+            self.frequency = .daily
+        }
+        // StepTime tolerant
+        if let st = try? c.decode(StepTime.self, forKey: .stepTime) {
+            self.stepTime = st
+        } else if let stRaw = try? c.decode(String.self, forKey: .stepTime) {
+            self.stepTime = StepTime(rawValue: stRaw.lowercased()) ?? .anytime
+        } else {
+            self.stepTime = .anytime
+        }
+        self.conflictsWith = try c.decodeIfPresent([String].self, forKey: .conflictsWith) ?? []
+        if let rs = try? c.decode(Bool.self, forKey: .requiresSPF) {
+            self.requiresSPF = rs
+        } else if let rsStr = try? c.decode(String.self, forKey: .requiresSPF) {
+            self.requiresSPF = (rsStr as NSString).boolValue
+        } else {
+            self.requiresSPF = name.lowercased().contains("spf") || name.lowercased().contains("sunscreen") || category == .sunscreen
+        }
+        self.tips = try c.decodeIfPresent([String].self, forKey: .tips) ?? []
+    }
     
     enum StepCategory: String, Codable, CaseIterable {
         case cleanser = "cleanser"
@@ -104,8 +301,16 @@ struct SkincareStep: Codable, Identifiable {
     enum Frequency: String, Codable, CaseIterable {
         case daily = "daily"
         case twiceDaily = "twice_daily"
+        case nightly = "nightly"
+        case twoToThreePerWeek = "two_to_three_per_week"
         case weekly = "weekly"
         case asNeeded = "as_needed"
+    }
+    
+    enum StepTime: String, Codable, CaseIterable {
+        case morning = "morning"
+        case evening = "evening"
+        case anytime = "anytime"
     }
 }
 
@@ -121,6 +326,37 @@ struct ProductRecommendation: Codable, Identifiable {
     let benefits: [String]
     let imageURL: String?
     let purchaseURL: String?
+    
+    private enum CodingKeys: String, CodingKey { case id, name, brand, category, price, rating, description, ingredients, benefits, imageURL, purchaseURL }
+    
+    init(id: UUID = UUID(), name: String, brand: String, category: String, price: Double, rating: Double, description: String, ingredients: [String], benefits: [String], imageURL: String?, purchaseURL: String?) {
+        self.id = id
+        self.name = name
+        self.brand = brand
+        self.category = category
+        self.price = price
+        self.rating = rating
+        self.description = description
+        self.ingredients = ingredients
+        self.benefits = benefits
+        self.imageURL = imageURL
+        self.purchaseURL = purchaseURL
+    }
+    
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        self.name = try c.decode(String.self, forKey: .name)
+        self.brand = try c.decodeIfPresent(String.self, forKey: .brand) ?? ""
+        self.category = try c.decodeIfPresent(String.self, forKey: .category) ?? ""
+        self.price = try c.decodeIfPresent(Double.self, forKey: .price) ?? 0
+        self.rating = try c.decodeIfPresent(Double.self, forKey: .rating) ?? 0
+        self.description = try c.decodeIfPresent(String.self, forKey: .description) ?? ""
+        self.ingredients = try c.decodeIfPresent([String].self, forKey: .ingredients) ?? []
+        self.benefits = try c.decodeIfPresent([String].self, forKey: .benefits) ?? []
+        self.imageURL = try c.decodeIfPresent(String.self, forKey: .imageURL)
+        self.purchaseURL = try c.decodeIfPresent(String.self, forKey: .purchaseURL)
+    }
 }
 
 struct ProgressMetrics: Codable {
@@ -128,6 +364,65 @@ struct ProgressMetrics: Codable {
     let improvementAreas: [String]
     let nextCheckIn: Date
     let goals: [String]
+
+    private enum CodingKeys: String, CodingKey { case skinHealthScore, improvementAreas, nextCheckIn, goals }
+
+    init(skinHealthScore: Double, improvementAreas: [String], nextCheckIn: Date, goals: [String]) {
+        self.skinHealthScore = skinHealthScore
+        self.improvementAreas = improvementAreas
+        self.nextCheckIn = nextCheckIn
+        self.goals = goals
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.skinHealthScore = try c.decodeIfPresent(Double.self, forKey: .skinHealthScore) ?? 0.0
+        self.improvementAreas = try c.decodeIfPresent([String].self, forKey: .improvementAreas) ?? []
+        // Tolerant date parsing: ISO8601 string or numeric seconds
+        if let isoString = try? c.decode(String.self, forKey: .nextCheckIn) {
+            let f = ISO8601DateFormatter()
+            if let d = f.date(from: isoString) {
+                self.nextCheckIn = d
+            } else if let seconds = Double(isoString) {
+                self.nextCheckIn = Date(timeIntervalSince1970: seconds)
+            } else {
+                print("⚠️ ProgressMetrics: Unrecognized nextCheckIn string='\(isoString)'; defaulting to +7d")
+                self.nextCheckIn = Date().addingTimeInterval(7*24*3600)
+            }
+        } else if let seconds = try? c.decode(Double.self, forKey: .nextCheckIn) {
+            self.nextCheckIn = Date(timeIntervalSince1970: seconds)
+        } else {
+            self.nextCheckIn = Date().addingTimeInterval(7*24*3600)
+            print("⚠️ ProgressMetrics: Missing nextCheckIn; defaulting to +7d")
+        }
+        self.goals = try c.decodeIfPresent([String].self, forKey: .goals) ?? []
+    }
+}
+
+// MARK: - Routine History Tracking
+
+struct RoutineHistory: Codable, Identifiable {
+    let id: UUID
+    let userId: String
+    let routineVersion: String
+    let generatedAt: Date
+    let analysisResultId: String
+    let skinHealthScore: Int
+    let routine: [SkincareStep]
+    let reloadCount: Int
+    let maxReloads: Int
+    let nextReloadTime: Date?
+    let isActive: Bool
+}
+
+struct ReloadTracking: Codable {
+    let userId: String
+    let routineId: String
+    let reloadCount: Int
+    let maxReloads: Int
+    let lastReloadTime: Date
+    let nextReloadTime: Date?
+    let tier: UserTierManager.Tier
 }
 
 struct DashboardData: Codable {

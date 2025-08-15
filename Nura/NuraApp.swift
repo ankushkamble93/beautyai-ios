@@ -4,7 +4,7 @@ import SwiftUI
 @main
 struct NuraApp: App {
     @StateObject private var authManager = AuthenticationManager.shared
-    @StateObject private var skinAnalysisManager = SkinAnalysisManager()
+    @StateObject private var skinAnalysisManager: SkinAnalysisManager
     @StateObject private var chatManager = ChatManager()
     @StateObject private var shareManager = ShareManager()
     @StateObject private var skinDiaryManager = SkinDiaryManager()
@@ -17,6 +17,7 @@ struct NuraApp: App {
         // FirebaseApp.configure() // Temporarily disabled until Firebase is set up
         let authManager = AuthenticationManager.shared
         self._userTierManager = StateObject(wrappedValue: UserTierManager(authManager: authManager))
+        self._skinAnalysisManager = StateObject(wrappedValue: SkinAnalysisManager(userTierManager: UserTierManager(authManager: authManager)))
     }
     
     var body: some Scene {
@@ -31,6 +32,21 @@ struct NuraApp: App {
                         .environmentObject(skinDiaryManager)
                         .environmentObject(appearanceManager)
                         .environmentObject(userTierManager)
+                        .onAppear {
+                            // On app open, let chat absorb any cached recommendations
+                            chatManager.absorb(skinAnalysisManager.recommendations)
+                            chatManager.absorbAnalysisSummary(skinAnalysisManager.analysisResults)
+                            skinAnalysisManager.loadCachedRecommendations()
+                            chatManager.absorb(skinAnalysisManager.recommendations)
+                            NotificationCenter.default.addObserver(forName: .nuraAnalysisCompleted, object: nil, queue: .main) { note in
+                                let result = note.object as? SkinAnalysisResult
+                                chatManager.absorbAnalysisSummary(result)
+                            }
+                            NotificationCenter.default.addObserver(forName: .nuraRecommendationsUpdated, object: nil, queue: .main) { note in
+                                let recs = note.object as? SkincareRecommendations
+                                chatManager.absorb(recs)
+                            }
+                        }
                 } else {
                     LoginView()
                         .environmentObject(authManager)
@@ -40,6 +56,20 @@ struct NuraApp: App {
                         .environmentObject(skinDiaryManager)
                         .environmentObject(appearanceManager)
                         .environmentObject(userTierManager)
+                        .onAppear {
+                            chatManager.absorb(skinAnalysisManager.recommendations)
+                            chatManager.absorbAnalysisSummary(skinAnalysisManager.analysisResults)
+                            skinAnalysisManager.loadCachedRecommendations()
+                            chatManager.absorb(skinAnalysisManager.recommendations)
+                            NotificationCenter.default.addObserver(forName: .nuraAnalysisCompleted, object: nil, queue: .main) { note in
+                                let result = note.object as? SkinAnalysisResult
+                                chatManager.absorbAnalysisSummary(result)
+                            }
+                            NotificationCenter.default.addObserver(forName: .nuraRecommendationsUpdated, object: nil, queue: .main) { note in
+                                let recs = note.object as? SkincareRecommendations
+                                chatManager.absorb(recs)
+                            }
+                        }
                 }
             }
             .preferredColorScheme(

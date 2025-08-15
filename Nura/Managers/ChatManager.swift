@@ -4,101 +4,205 @@ class ChatManager: ObservableObject {
     @Published var messages: [ChatMessage] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var memory: ChatMemory = ChatMemory(morningRoutine: [], eveningRoutine: [], weeklyTreatments: [], analysisNotes: [], lastUpdated: Date())
     
-    private let apiBaseURL = "https://your-fastapi-backend.com"
+    private let userDefaults = UserDefaults.standard
+    private let messagesKey = "nura_chat_messages_v1"
+    private let memoryKey = "nura_chat_memory_v1"
     
+    private let maxHistoryMessages = 16 // frugal token use while preserving flow
+    
+    // Location for SkinAnalysisManager disk cache (duplicated path to avoid tight coupling)
+    private var recommendationsCacheURL: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = appSupport.appendingPathComponent("Nura", isDirectory: true)
+        if !FileManager.default.fileExists(atPath: dir.path) {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        return dir.appendingPathComponent("recommendations.json")
+    }
+
     init() {
-        messages.append(ChatMessage(
-            id: UUID(),
-            content: "Hi, I’m Nura. Your personal skin concierge. I’m here to help you with all things skin—routine, products, and confidence. What’s on your mind today?",
-            isUser: false,
-            timestamp: Date()
-        ))
+        loadPersistedState()
+        if messages.isEmpty {
+            messages.append(ChatMessage(
+                id: UUID(),
+                content: "Hi, I’m Nura. Your personal skin concierge. I’m here to help you with all things skin—routine, products, and confidence. What’s on your mind today?",
+                isUser: false,
+                timestamp: Date()
+            ))
+            persistMessages()
+        }
     }
     
     func sendMessage(_ content: String) {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        
         let userMessage = ChatMessage(
             id: UUID(),
-            content: content,
+            content: trimmed,
             isUser: true,
             timestamp: Date()
         )
         
         messages.append(userMessage)
+        persistMessages()
         isLoading = true
         errorMessage = nil
         
-        sendToGPT4o(content: content) { [weak self] response in
-            DispatchQueue.main.async {
-                self?.isLoading = false
-                
-                if let response = response {
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                // Opportunistically sync memory from disk-cached recommendations before sending
+                self.syncMemoryFromRecommendationsIfAvailable()
+                let reply = try await self.requestChatCompletion(userPrompt: trimmed)
+                await MainActor.run {
+                    self.isLoading = false
+                    let visible = self.extractAndApplyMemory(from: reply)
                     let aiMessage = ChatMessage(
                         id: UUID(),
-                        content: response,
+                        content: visible,
                         isUser: false,
                         timestamp: Date()
                     )
-                    self?.messages.append(aiMessage)
-                } else {
-                    self?.errorMessage = "Failed to get response from AI assistant"
+                    self.messages.append(aiMessage)
+                    self.persistMessages()
+                }
+            } catch {
+                await MainActor.run {
+                    self.isLoading = false
+                    self.errorMessage = "Failed to get response from AI assistant"
                 }
             }
         }
     }
     
-    private func sendToGPT4o(content: String, completion: @escaping (String?) -> Void) {
-        guard let url = URL(string: "\(apiBaseURL)/chat") else {
-            completion(nil)
-            return
+    private func requestChatCompletion(userPrompt: String) async throws -> String {
+        guard APIConfig.openAIAPIKey != "YOUR_OPENAI_API_KEY" else {
+            throw NSError(domain: "ChatManager", code: -1, userInfo: [NSLocalizedDescriptionKey: APIConfig.apiKeyMissingError])
         }
         
-        let requestData = ChatRequest(
-            message: content,
-            conversationHistory: messages.map { $0.content },
-            userContext: getUserContext()
+        // Build system prompt with current memory
+        let memoryText = """
+        You maintain concise, to-the-point skin coaching. Keep answers practical, in plain language. Avoid fluff.
+        You remember the user's routine and analysis notes. Update memory gently when the user gives new info.
+        Current memory (arrays may be empty):
+        morningRoutine: \(memory.morningRoutine)
+        eveningRoutine: \(memory.eveningRoutine)
+        weeklyTreatments: \(memory.weeklyTreatments)
+        analysisNotes: \(memory.analysisNotes)
+        Response rules:
+        - Be brief and actionable.
+        - If the user asks for a routine change or shares symptoms/preferences, incorporate them.
+        - If memory has information, use it confidently and summarize what we know; do not say we have no info.
+        - If memory is empty, ask for needed details.
+        - At the END of your message, include a hidden memory block using this exact format:
+          <memory>{"morningRoutine":[...],"eveningRoutine":[...],"weeklyTreatments":[...],"analysisNotes":[...]}</memory>
+        - The memory block must be valid JSON with only those four keys. Do not mention the memory block in the visible text.
+        """
+        
+        let systemMessage = ChatGPTMessage(
+            role: "system",
+            content: [ChatGPTContent(type: "text", text: memoryText, imageURL: nil)]
         )
         
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        do {
-            request.httpBody = try JSONEncoder().encode(requestData)
-        } catch {
-            completion(nil)
-            return
+        // Convert recent conversation to ChatGPT messages (frugal history)
+        let recent = Array(messages.suffix(maxHistoryMessages))
+        var history: [ChatGPTMessage] = recent.map { msg in
+            let role = msg.isUser ? "user" : "assistant"
+            return ChatGPTMessage(role: role, content: [ChatGPTContent(type: "text", text: msg.content, imageURL: nil)])
         }
+        history.insert(systemMessage, at: 0)
+        history.append(ChatGPTMessage(role: "user", content: [ChatGPTContent(type: "text", text: userPrompt, imageURL: nil)]))
         
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error {
-                print("Chat error: \(error)")
-                completion(nil)
-                return
-            }
-            
-            guard let data = data else {
-                completion(nil)
-                return
-            }
-            
-            do {
-                let response = try JSONDecoder().decode(ChatResponse.self, from: data)
-                completion(response.message)
-            } catch {
-                print("Decode error: \(error)")
-                completion(nil)
-            }
-        }.resume()
+        let request = ChatGPTVisionRequest(
+            model: APIConfig.fastTextModel,
+            messages: history,
+            maxTokens: APIConfig.maxTokensPerRequest,
+            temperature: 0.3
+        )
+        
+        var urlRequest = URLRequest(url: URL(string: APIConfig.chatCompletionsEndpoint)!)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(APIConfig.openAIAPIKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.timeoutInterval = APIConfig.requestTimeout
+        urlRequest.httpBody = try JSONEncoder().encode(request)
+        
+        let (data, _) = try await URLSession.shared.data(for: urlRequest)
+        let response = try JSONDecoder().decode(ChatGPTVisionResponse.self, from: data)
+        guard let content = response.choices.first?.message.content else {
+            throw NSError(domain: "ChatManager", code: -2, userInfo: [NSLocalizedDescriptionKey: "Empty response"])
+        }
+        return content
     }
     
-    private func getUserContext() -> UserContext {
-        return UserContext(
-            skinType: "combination",
-            recentConditions: ["acne", "dryness"],
-            preferences: ["natural products", "budget-friendly"],
-            lastAnalysis: Date().addingTimeInterval(-86400)
-        )
+    // MARK: - Memory ingestion APIs
+    func absorb(_ recs: SkincareRecommendations?) {
+        guard let recs else { return }
+        let morning = recs.morningRoutine.map { $0.name }
+        let evening = recs.eveningRoutine.map { $0.name }
+        let weekly = recs.weeklyTreatments.map { $0.name }
+        let notes: [String] = Array(recs.lifestyleTips.prefix(4))
+        mergeMemory(with: ChatMemoryUpdate(morningRoutine: morning, eveningRoutine: evening, weeklyTreatments: weekly, analysisNotes: notes))
+    }
+
+    func absorbAnalysisSummary(_ result: SkinAnalysisResult?) {
+        guard let result else { return }
+        // Create concise notes such as "acne (moderate)", "dark spots (mild)"
+        let notes = result.conditions.prefix(5).map { "\($0.name) (\($0.severity.rawValue))" }
+        mergeMemory(with: ChatMemoryUpdate(morningRoutine: nil, eveningRoutine: nil, weeklyTreatments: nil, analysisNotes: notes))
+        memory.lastAnalysisDate = result.analysisDate
+        persistMemory()
+    }
+
+    @discardableResult
+    private func syncMemoryFromRecommendationsIfAvailable() -> Bool {
+        guard let data = try? Data(contentsOf: recommendationsCacheURL), let recs = try? JSONDecoder().decode(SkincareRecommendations.self, from: data) else {
+            return false
+        }
+        let before = memory
+        absorb(recs)
+        return before.morningRoutine != memory.morningRoutine || before.eveningRoutine != memory.eveningRoutine || before.weeklyTreatments != memory.weeklyTreatments || before.analysisNotes != memory.analysisNotes
+    }
+
+    // Extract <memory>{...}</memory> block, merge into stored memory, and return visible text
+    private func extractAndApplyMemory(from fullText: String) -> String {
+        let pattern = #"<memory>(\{[\s\S]*?\})</memory>"#
+        if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
+            let range = NSRange(location: 0, length: (fullText as NSString).length)
+            if let match = regex.firstMatch(in: fullText, options: [], range: range), match.numberOfRanges > 1 {
+                let jsonRange = match.range(at: 1)
+                if let swiftRange = Range(jsonRange, in: fullText) {
+                    let jsonString = String(fullText[swiftRange])
+                    if let data = jsonString.data(using: .utf8), let update = try? JSONDecoder().decode(ChatMemoryUpdate.self, from: data) {
+                        mergeMemory(with: update)
+                    }
+                }
+                // Remove memory block from visible text
+                let visible = regex.stringByReplacingMatches(in: fullText, options: [], range: range, withTemplate: "").trimmingCharacters(in: .whitespacesAndNewlines)
+                return visible
+            }
+        }
+        return fullText
+    }
+    
+    private func mergeMemory(with update: ChatMemoryUpdate) {
+        func merge(_ current: inout [String], _ new: [String]?) {
+            guard let new else { return }
+            let combined = (current + new).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+            // Deduplicate while preserving order
+            var seen: Set<String> = []
+            current = combined.filter { seen.insert($0.lowercased()).inserted }
+            if current.count > 12 { current = Array(current.prefix(12)) }
+        }
+        merge(&memory.morningRoutine, update.morningRoutine)
+        merge(&memory.eveningRoutine, update.eveningRoutine)
+        merge(&memory.weeklyTreatments, update.weeklyTreatments)
+        merge(&memory.analysisNotes, update.analysisNotes)
+        memory.lastUpdated = Date()
+        persistMemory()
     }
     
     func clearChat() {
@@ -109,5 +213,36 @@ class ChatManager: ObservableObject {
             isUser: false,
             timestamp: Date()
         ))
+        persistMessages()
+    }
+    
+    func resetChatAndMemory() {
+        // Clear memory
+        memory = ChatMemory(morningRoutine: [], eveningRoutine: [], weeklyTreatments: [], analysisNotes: [], lastUpdated: Date(), lastAnalysisDate: nil)
+        persistMemory()
+        // Reset chat to the initial greeting
+        clearChat()
+    }
+    
+    // MARK: - Persistence
+    private func loadPersistedState() {
+        if let data = userDefaults.data(forKey: messagesKey), let saved = try? JSONDecoder().decode([ChatMessage].self, from: data) {
+            self.messages = saved
+        }
+        if let data = userDefaults.data(forKey: memoryKey), let saved = try? JSONDecoder().decode(ChatMemory.self, from: data) {
+            self.memory = saved
+        }
+    }
+    
+    private func persistMessages() {
+        if let data = try? JSONEncoder().encode(messages) {
+            userDefaults.set(data, forKey: messagesKey)
+        }
+    }
+    
+    private func persistMemory() {
+        if let data = try? JSONEncoder().encode(memory) {
+            userDefaults.set(data, forKey: memoryKey)
+        }
     }
 }

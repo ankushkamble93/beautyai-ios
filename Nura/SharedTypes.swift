@@ -22,4 +22,10 @@ public enum BillingCycle: String, CaseIterable {
         case .yearly: return "Save up to 35%"
         }
     }
+}
+
+// MARK: - Notifications
+extension Notification.Name {
+    static let nuraAnalysisCompleted = Notification.Name("nura.analysis.completed")
+    static let nuraRecommendationsUpdated = Notification.Name("nura.recommendations.updated")
 } 
