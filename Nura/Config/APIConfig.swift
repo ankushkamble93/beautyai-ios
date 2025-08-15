@@ -3,7 +3,12 @@ import Foundation
 struct APIConfig {
     // MARK: - ChatGPT Configuration
     static let openAIBaseURL = "https://api.openai.com/v1"
-    static let openAIAPIKey = "YOUR_OPENAI_API_KEY"
+    static let openAIAPIKey: String = {
+        guard let envKey = ProcessInfo.processInfo.environment["OPENAI_API_KEY"], !envKey.isEmpty else {
+            fatalError("OPENAI_API_KEY environment variable not set. Please add it to your .env file or environment.")
+        }
+        return envKey
+    }()
     
     // MARK: - API Endpoints
     static let chatGPTVisionEndpoint = "\(openAIBaseURL)/chat/completions" // legacy path for vision usage
