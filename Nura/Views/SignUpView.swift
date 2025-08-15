@@ -624,7 +624,7 @@ struct SignUpView: View {
                         
                         print("✅ User signed in successfully after sign-up")
                         print("🔄 Sign-in session user: \(signInResponse.user.email ?? "no email")")
-                        print("🔄 Sign-in session exists: \(signInResponse != nil)")
+                        print("🔄 Sign-in session exists: true")
                         print("🔄 User ID: \(signInResponse.user.id)")
                         print("🔄 User confirmed: \(signInResponse.user.emailConfirmedAt != nil)")
                         
@@ -666,7 +666,7 @@ struct SignUpView: View {
                         print("🔄 SignUpView forceRefreshUserProfile completed")
                         
                         // Cache successful signup for future email checks
-                        await self.authManager.cacheSuccessfulSignup(email: normalizedEmail)
+                        self.authManager.cacheSuccessfulSignup(email: normalizedEmail)
                         
                         // Show success message and complete signup flow (only if we got here via sign-in)
                         await MainActor.run {
@@ -694,7 +694,7 @@ struct SignUpView: View {
                    errorMessage.contains("already registered") ||
                    errorMessage.contains("user already") {
                     // Cache failed signup for future email checks
-                    await self.authManager.cacheFailedSignup(email: normalizedEmail)
+                    self.authManager.cacheFailedSignup(email: normalizedEmail)
                 }
                 
                 await MainActor.run {

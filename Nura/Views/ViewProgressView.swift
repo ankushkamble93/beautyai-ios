@@ -73,7 +73,8 @@ struct ViewProgressView: View {
     var logsToUse: [SkinLog] {
         // IMPORTANT: Graph is independent of diary. Do NOT switch to diary entries.
         // Only switch to real data when skin analysis (Dashboard) produces a valid score.
-        if let analysisResults = skinAnalysisManager.analysisResults {
+        // Use cached results to ensure consistency with DashboardView cache expiry
+        if let analysisResults = skinAnalysisManager.getCachedAnalysisResults() {
             // Prefer percent from recommendations.progressTracking.skinHealthScore if available
             let recommendedScore = skinAnalysisManager.recommendations?.progressTracking.skinHealthScore
             let percent = recommendedScore.map { Int($0 * 100) } ?? max(1, min(100, Int(analysisResults.confidence * 100)))
@@ -139,8 +140,8 @@ struct ViewProgressView: View {
     }
     
     var isEmpty: Bool { 
-        // Only consider empty if we have no real data and no analysis data
-        return !skinDiaryManager.hasRealData && (skinAnalysisManager.analysisResults?.conditions.isEmpty ?? true)
+        // Only consider empty if we have no real data and no cached analysis data
+        return !skinDiaryManager.hasRealData && (skinAnalysisManager.getCachedAnalysisResults()?.conditions.isEmpty ?? true)
     }
     
     var graphDataDescription: String {
@@ -330,7 +331,7 @@ struct ViewProgressView: View {
                                         .fill(Color.green.opacity(0.1))
                                         .stroke(Color.green.opacity(0.3), lineWidth: 1)
                                 )
-                            } else if skinAnalysisManager.analysisResults != nil {
+                            } else if skinAnalysisManager.getCachedAnalysisResults() != nil {
                                 HStack(spacing: 8) {
                                     Image(systemName: "camera.fill")
                                         .foregroundColor(.blue)

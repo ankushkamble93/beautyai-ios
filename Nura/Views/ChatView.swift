@@ -14,13 +14,26 @@ struct ChatView: View {
                 // Main content (chat UI and sample conversation)
                 VStack {
                     let isDark = appearanceManager.colorSchemePreference == "dark" || (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark)
-                    // Custom large, centered title
-                    HStack {
-                        Spacer()
-                        Text("Skin Concierge")
-                            .font(.largeTitle).fontWeight(.bold)
-                            .padding(.top, 8)
-                        Spacer()
+                    // Custom large, centered title with trailing menu
+                    ZStack(alignment: .topTrailing) {
+                        HStack {
+                            Spacer()
+                            Text("Skin Concierge")
+                                .font(.largeTitle).fontWeight(.bold)
+                                .padding(.top, 8)
+                            Spacer()
+                        }
+                        Menu {
+                            Button(role: .destructive) {
+                                chatManager.resetChatAndMemory()
+                            } label: {
+                                Label("Reset Chat & Memory", systemImage: "arrow.counterclockwise")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                                .padding(.top, 8)
+                                .padding(.trailing, 16)
+                        }
                     }
                     Spacer().frame(height: 12)
                     ScrollViewReader { proxy in
@@ -72,6 +85,23 @@ struct ChatView: View {
                             .font(.caption)
                             .padding(.horizontal)
                     }
+                    // Last analyzed chip
+                    if let last = chatManager.memory.lastAnalysisDate {
+                        HStack {
+                            Text("Last analyzed on \(formatDateTime(last))")
+                                .font(.caption)
+                                .foregroundColor(NuraColors.textSecondary)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(
+                                    (appearanceManager.colorSchemePreference == "dark" || (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark)) ? NuraColors.cardDark : NuraColors.card
+                                )
+                                .cornerRadius(14)
+                            Spacer()
+                        }
+                        .padding(.horizontal)
+                        .padding(.bottom, 4)
+                    }
                     VStack(spacing: 0) {
                         Divider()
                         HStack(spacing: 12) {
@@ -82,6 +112,8 @@ struct ChatView: View {
                                 .cornerRadius(24)
                                 .focused($isTextFieldFocused)
                                 .lineLimit(1...4)
+                                .submitLabel(.send)
+                                .onSubmit { sendMessage() }
                             Button(action: sendMessage) {
                                 Image(systemName: "paperplane.fill")
                                     .foregroundColor(.white)
@@ -188,6 +220,13 @@ struct ChatView: View {
         messageText = ""
         isTextFieldFocused = false
     }
+    
+    private func formatDateTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
 }
 
 struct MessageBubble: View {
@@ -208,6 +247,9 @@ struct MessageBubble: View {
                         .foregroundColor(isDark ? NuraColors.textPrimaryDark : .black)
                         .cornerRadius(20)
                         .cornerRadius(4, corners: [.topLeft, .topRight, .bottomLeft])
+                        .contextMenu {
+                            Button("Copy") { UIPasteboard.general.string = message.content }
+                        }
                     
                     Text(formatTime(message.timestamp))
                         .font(.caption2)
@@ -229,6 +271,9 @@ struct MessageBubble: View {
                             .foregroundColor(isDark ? NuraColors.textPrimaryDark : .white)
                             .cornerRadius(20)
                             .cornerRadius(4, corners: [.topLeft, .topRight, .bottomRight])
+                            .contextMenu {
+                                Button("Copy") { UIPasteboard.general.string = message.content }
+                            }
                     }
                     
                     Text(formatTime(message.timestamp))
