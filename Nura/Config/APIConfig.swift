@@ -3,12 +3,35 @@ import Foundation
 struct APIConfig {
     // MARK: - ChatGPT Configuration
     static let openAIBaseURL = "https://api.openai.com/v1"
+    
+    // MARK: - API Key Management
+    // For development: Set your API key here temporarily
+    // For production: Use a secure key management service or backend
+    private static let developmentAPIKey = "YOUR_OPENAI_API_KEY_HERE"
+    
     static let openAIAPIKey: String = {
-        guard let envKey = ProcessInfo.processInfo.environment["OPENAI_API_KEY"], !envKey.isEmpty else {
-            fatalError("OPENAI_API_KEY environment variable not set. Please add it to your .env file or environment.")
+        // First try to get from UserDefaults (if user has set it in app)
+        if let userKey = UserDefaults.standard.string(forKey: "OPENAI_API_KEY"), !userKey.isEmpty {
+            return userKey
         }
-        return envKey
+        
+        // Fallback to development key (remove this in production)
+        #if DEBUG
+        return developmentAPIKey
+        #else
+        // In production, you might want to fetch from a secure backend
+        fatalError("OpenAI API key not configured. Please set it in UserDefaults or use a secure key management service.")
+        #endif
     }()
+    
+    // MARK: - Runtime API Key Configuration
+    static func setAPIKey(_ key: String) {
+        UserDefaults.standard.set(key, forKey: "OPENAI_API_KEY")
+    }
+    
+    static func clearAPIKey() {
+        UserDefaults.standard.removeObject(forKey: "OPENAI_API_KEY")
+    }
     
     // MARK: - API Endpoints
     static let chatGPTVisionEndpoint = "\(openAIBaseURL)/chat/completions" // legacy path for vision usage
@@ -33,7 +56,7 @@ struct APIConfig {
     static let analysisCacheDuration: TimeInterval = 24 * 60 * 60 // 24 hours
     
     // MARK: - Error Messages
-    static let apiKeyMissingError = "OpenAI API key not configured"
+    static let apiKeyMissingError = "OpenAI API key not configured. Use APIConfig.setAPIKey() or set in UserDefaults."
     static let rateLimitExceededError = "Rate limit exceeded. Please try again later."
     static let invalidImageFormatError = "Unsupported image format. Please use JPEG or PNG."
     static let imageTooLargeError = "Image too large. Please use an image smaller than 20MB."
