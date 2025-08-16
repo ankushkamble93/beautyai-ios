@@ -1274,19 +1274,23 @@ struct InsightsCard: View {
     var isPremium: Bool = false
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 15) {
-            Text("Insights")
-                .font(.headline)
-                .fontWeight(.semibold)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Insights")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                Spacer()
+            }
+            .padding(.bottom, 2)
             
-            ForEach(insights.prefix(3)) { insight in
-                HStack(alignment: .top, spacing: 12) {
+            ForEach(Array(insights.prefix(3).enumerated()), id: \.offset) { index, insight in
+                HStack(alignment: .center, spacing: 12) {
                     Image(systemName: insightIcon(for: insight.type))
                         .foregroundColor(insightColor(for: insight.type))
-                        .font(.caption)
-                        .padding(.top, 2)
+                        .font(.system(size: 18, weight: .semibold))
+                        .frame(width: 22, height: 22)
                     
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(insight.title)
                             .font(.subheadline)
                             .fontWeight(.medium)
@@ -1295,12 +1299,19 @@ struct InsightsCard: View {
                             .font(.caption)
                             .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
                     }
-                    
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     Spacer()
+                }
+                .padding(.vertical, 6)
+                if index < min(2, insights.count - 1) {
+                    Divider()
+                        .background(Color.black)
+                        .padding(.vertical, 6)
                 }
             }
         }
-        .padding()
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
         .background(
             ZStack {
                 if isDark {

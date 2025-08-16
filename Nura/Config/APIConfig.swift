@@ -7,7 +7,7 @@ struct APIConfig {
     // MARK: - API Key Management
     // For development: Set your API key here temporarily
     // For production: Use a secure key management service or backend
-    private static let developmentAPIKey = "YOUR_OPENAI_API_KEY_HERE" // placeholder for local dev only
+    private static let developmentAPIKey = "your api key" // ⚠️ REMOVE BEFORE MERGING TO MAIN
     
     static let openAIAPIKey: String = {
         print("🔍 APIConfig: openAIAPIKey getter called!")

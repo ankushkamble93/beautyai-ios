@@ -124,30 +124,78 @@ struct InsightEngine {
             ))
         }
 
-        // If we still have fewer than 3, add a motivational fallback
-        if insights.count < 3 {
-            insights.append(Insight(
-                id: UUID(),
-                title: "Stay Consistent",
-                description: "Small daily habits create big changes. You've got this.",
-                type: .achievement,
-                date: now,
-                reason: "General motivation when limited data is available."
-            ))
-        }
+        // Always include a motivation and a helping quote, plus one additional contextual item
+        let motivationPool: [String] = [
+            "Small daily habits create big changes. You've got this.",
+            "Progress over perfection. Show up for your skin today.",
+            "Consistency is the most powerful active in your routine."
+        ]
+        let helpingPool: [String] = [
+            "Apply moisturizer on damp skin to lock in hydration.",
+            "Use a pea-sized amount of retinoid; buffer with moisturizer if sensitive.",
+            "Reapply sunscreen every 2 hours when outdoors.",
+            "Patch test new actives on the jawline for 2-3 nights before full-face.",
+            "The two-finger rule helps you apply enough SPF for face and neck.",
+            "Avoid stacking strong exfoliants in the same routine as retinoids.",
+            "Cleanse for ~60 seconds to gently lift oils and sunscreen."
+        ]
 
-        // Always return up to 3 prioritized items: improvement/warning first, then tip, then achievement
-        let prioritized = insights.sorted { lhs, rhs in
-            func rank(_ t: Insight.InsightType) -> Int {
-                switch t {
-                case .improvement: return 0
-                case .warning: return 1
-                case .achievement: return 2
-                case .tip: return 3
-                }
+        let motivation = Insight(
+            id: UUID(),
+            title: "Motivation",
+            description: motivationPool.randomElement() ?? motivationPool[0],
+            type: .achievement,
+            date: now,
+            reason: "Always include one motivational nudge."
+        )
+
+        // Helpful tip should add value beyond simply listing routine steps
+        let helpingDescription: String = {
+            guard let recs = recommendations else { return helpingPool.randomElement() ?? helpingPool[0] }
+
+            let lowerNames: [String] = (
+                recs.morningRoutine + recs.eveningRoutine + recs.weeklyTreatments
+            ).map { $0.name.lowercased() }
+
+            var candidates: [String] = []
+            // Context-aware candidates based on present actives
+            if lowerNames.contains(where: { $0.contains("vitamin c") || $0.contains("ascorbic") }) {
+                candidates.append("Use vitamin C in the morning and reapply SPF every 2 hours when outdoors.")
             }
-            return rank(lhs.type) < rank(rhs.type)
-        }
-        return Array(prioritized.prefix(3))
+            if lowerNames.contains(where: { $0.contains("retinol") || $0.contains("retinoid") || $0.contains("tretinoin") }) {
+                candidates.append("Introduce retinoids slowly (2-3x/week) and use a pea-sized amount—buffer with moisturizer if sensitive.")
+            }
+            if lowerNames.contains(where: { $0.contains("aha") || $0.contains("bha") || $0.contains("glycolic") || $0.contains("salicylic") || $0.contains("lactic") || $0.contains("peel") }) {
+                candidates.append("Avoid combining strong exfoliants with retinoids in the same night to reduce irritation.")
+            }
+            if lowerNames.contains(where: { $0.contains("clay") || $0.contains("mask") }) {
+                candidates.append("After a clay mask, follow with a hydrating serum and rich moisturizer to prevent dryness.")
+            }
+
+            // If we generated context-aware tips, prefer one of them; otherwise fall back to general pool
+            if let chosen = candidates.randomElement() { return chosen }
+            return helpingPool.randomElement() ?? helpingPool[0]
+        }()
+
+        let helping = Insight(
+            id: UUID(),
+            title: "Helpful Tip",
+            description: helpingDescription,
+            type: .tip,
+            date: now,
+            reason: "Provide one practical step the user can apply right now."
+        )
+
+        // Choose one contextual insight from computed list above if available
+        let contextual = insights.first ?? Insight(
+            id: UUID(),
+            title: "Routine Ready",
+            description: "Your personalized routine is ready to follow.",
+            type: .improvement,
+            date: now,
+            reason: "Fallback contextual insight."
+        )
+
+        return [motivation, helping, contextual]
     }
 }
