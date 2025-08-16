@@ -454,6 +454,7 @@ struct Insight: Codable, Identifiable {
     let description: String
     let type: InsightType
     let date: Date
+    let reason: String?
     
     enum InsightType: String, Codable, CaseIterable {
         case improvement = "improvement"

@@ -40,29 +40,7 @@ struct DashboardView: View {
             ),
             // Weekly Mask will be handled in the tasks list below
         ],
-        insights: [
-            Insight(
-                id: UUID(),
-                title: "Great Progress!",
-                description: "Your skin health score improved by 15% this week",
-                type: .improvement,
-                date: Date()
-            ),
-            Insight(
-                id: UUID(),
-                title: "Weather Alert",
-                description: "High UV index today - don't forget sunscreen!",
-                type: .warning,
-                date: Date()
-            ),
-            Insight(
-                id: UUID(),
-                title: "Hydration Tip",
-                description: "Drink more water to improve skin hydration",
-                type: .tip,
-                date: Date()
-            )
-        ]
+        insights: []
     )
     
     @State private var confettiCounter = 0
@@ -226,6 +204,29 @@ struct DashboardView: View {
         }
     }
 
+    // MARK: - Insights
+    private func updateInsights() {
+        let profile = authManager.getOnboardingAnswers()
+        let analysis = skinAnalysisManager.getCachedAnalysisResults()
+        let recs = skinAnalysisManager.recommendations
+        let weekly = weeklyMaskTask
+        let generated = InsightEngine.generate(
+            profile: profile,
+            analysis: analysis,
+            recommendations: recs,
+            tasks: [],
+            weeklyTask: weekly,
+            lastUpdated: nil
+        )
+        dashboardData = DashboardData(
+            currentRoutine: dashboardData.currentRoutine,
+            progress: dashboardData.progress,
+            recentAnalysis: dashboardData.recentAnalysis,
+            upcomingTasks: dashboardData.upcomingTasks,
+            insights: generated
+        )
+    }
+
     // Computed property for AI-powered routines to pass to UpcomingTasksCard
     private var aiGeneratedRoutines: [[String]] {
         // Try to get AI recommendations first
@@ -363,6 +364,10 @@ struct DashboardView: View {
             print("🔍 DashboardView: User profile - onboarding_complete = \(authManager.userProfile?.onboarding_complete ?? false)")
             // Load cached AI recommendations once per app launch
             skinAnalysisManager.loadCachedRecommendations()
+            updateInsights()
+        }
+        .onReceive(skinAnalysisManager.$recommendations) { _ in
+            updateInsights()
         }
     }
     

@@ -7,16 +7,21 @@ struct APIConfig {
     // MARK: - API Key Management
     // For development: Set your API key here temporarily
     // For production: Use a secure key management service or backend
-    private static let developmentAPIKey = "YOUR_OPENAI_API_KEY_HERE"
+    private static let developmentAPIKey = "YOUR_OPENAI_API_KEY_HERE" // placeholder for local dev only
     
     static let openAIAPIKey: String = {
+        print("🔍 APIConfig: openAIAPIKey getter called!")
+        print("🔍 APIConfig: developmentAPIKey = \(developmentAPIKey)")
+        
         // First try to get from UserDefaults (if user has set it in app)
         if let userKey = UserDefaults.standard.string(forKey: "OPENAI_API_KEY"), !userKey.isEmpty {
+            print("🔍 APIConfig: Using UserDefaults API key: \(userKey.prefix(10))...")
             return userKey
         }
         
         // Fallback to development key (remove this in production)
         #if DEBUG
+        print("🔍 APIConfig: Using development API key: \(developmentAPIKey.prefix(10))...")
         return developmentAPIKey
         #else
         // In production, you might want to fetch from a secure backend
@@ -31,6 +36,7 @@ struct APIConfig {
     
     static func clearAPIKey() {
         UserDefaults.standard.removeObject(forKey: "OPENAI_API_KEY")
+        print("🔍 APIConfig: Cleared UserDefaults API key")
     }
     
     // MARK: - API Endpoints
