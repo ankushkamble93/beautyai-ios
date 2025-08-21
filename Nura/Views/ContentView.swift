@@ -5,6 +5,7 @@ struct ContentView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @EnvironmentObject var skinAnalysisManager: SkinAnalysisManager
     @EnvironmentObject var appearanceManager: AppearanceManager
+    @StateObject private var streakManager = StreakManager.shared
     @State private var selectedTab = 0
     @State private var isTabBarVisible = true
     @State private var fadeOutWorkItem: DispatchWorkItem?
@@ -24,6 +25,7 @@ struct ContentView: View {
                             .environmentObject(authManager)
                             .environmentObject(skinAnalysisManager)
                             .environmentObject(appearanceManager)
+                            .environmentObject(streakManager)
                             .tag(0)
                         SkinAnalysisView()
                             .environmentObject(authManager)

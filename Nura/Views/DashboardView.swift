@@ -2,12 +2,66 @@ import SwiftUI
 import ConfettiSwiftUI
 import Combine
 
+// Shared style helpers to avoid repeating complex ternaries and reduce type-checking load
+private enum DashboardStyle {
+    static func primaryText(isDark: Bool) -> Color {
+        isDark ? NuraColors.textPrimaryDark : .primary
+    }
+
+    static func secondaryText(isDark: Bool) -> Color {
+        isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75)
+    }
+
+    static func secondaryTextLight(isDark: Bool) -> Color {
+        isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.7)
+    }
+
+    static func secondaryTextLighter(isDark: Bool) -> Color {
+        isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.6)
+    }
+
+    static func secondaryTextMedium(isDark: Bool) -> Color {
+        isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.8)
+    }
+
+    static func whiteText(isDark: Bool) -> Color {
+        isDark ? Color.white.opacity(0.82) : Color.primary.opacity(0.75)
+    }
+
+    static func backgroundOrange(isDark: Bool) -> Color {
+        isDark ? Color.orange.opacity(0.18) : Color.orange.opacity(0.12)
+    }
+
+    static func whiteCircle(isDark: Bool) -> Color {
+        isDark ? Color.white.opacity(0.06) : Color.white.opacity(0.25)
+    }
+
+    static func scoreBubble(isDark: Bool) -> Color {
+        isDark ? Color.white.opacity(0.05) : Color.white.opacity(0.3)
+    }
+
+    static func greenBackground(isDark: Bool) -> Color {
+        isDark ? Color.green.opacity(0.05) : Color.green.opacity(0.03)
+    }
+
+    static func greenStroke() -> Color {
+        Color.green.opacity(0.2)
+    }
+}
+
 struct DashboardView: View {
     @EnvironmentObject var skinAnalysisManager: SkinAnalysisManager
     @EnvironmentObject var appearanceManager: AppearanceManager
     @EnvironmentObject var authManager: AuthenticationManager
     @EnvironmentObject var shareManager: ShareManager
     @EnvironmentObject var userTierManager: UserTierManager
+    @ObservedObject private var streakManager = StreakManager.shared
+    
+    @State private var navigateToAnalysis: Bool = false
+    @State private var showAnalyzeBanner: Bool = false
+    @State private var showWelcomeCard: Bool = true
+    @State private var welcomeCardOffset: CGFloat = 0
+    @State private var welcomeCardOpacity: Double = 1
     
     init() {
         print("🔍 DashboardView: Initialized")
@@ -91,8 +145,10 @@ struct DashboardView: View {
         if let analysisResults = skinAnalysisManager.getCachedAnalysisResults() {
             return analysisResults.confidence
         }
-        return 0.0
+        return 0.85 // Default confidence
     }
+    
+    // MARK: - Replace in-body color vars with centralized helpers (see DashboardStyle)
 
     // Computed property for AI-generated tasks from recommendations
     private var aiGeneratedTasks: [DashboardTask] {
@@ -277,9 +333,9 @@ struct DashboardView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: 12) {
                     // Custom large, centered title with PRO badge for premium users
                     HStack(alignment: .top, spacing: 8) {
                         Spacer()
@@ -287,7 +343,7 @@ struct DashboardView: View {
                             Text("Dashboard")
                                 .font(.largeTitle).fontWeight(.bold)
                                 .padding(.top, 8)
-                                .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                                .foregroundColor(DashboardStyle.primaryText(isDark: isDark))
                             
                             // Pro badge positioned right after title
                             if userTierManager.isPremium {
@@ -299,8 +355,62 @@ struct DashboardView: View {
                         Spacer()
                     }
                     // Welcome section with premium styling for pro users
-                    WelcomeSection(isDark: isDark, isPremium: userTierManager.isPremium)
+                    if showWelcomeCard {
+                        WelcomeSection(
+                            isDark: isDark, 
+                            isPremium: userTierManager.isPremium,
+                            onDismiss: {
+                                dismissWelcomeCard()
+                            }
+                        )
                         .padding(.bottom, 8)
+                        .offset(y: welcomeCardOffset)
+                        .opacity(welcomeCardOpacity)
+                        .scaleEffect(welcomeCardOpacity == 1 ? 1.0 : 0.95)
+                        .animation(.easeInOut(duration: 0.8), value: welcomeCardOffset)
+                        .animation(.easeInOut(duration: 0.6), value: welcomeCardOpacity)
+                        .animation(.easeOut(duration: 0.4), value: welcomeCardOpacity == 1)
+                    }
+
+                    // Streak Card
+                    StreakCard(
+                        currentStreak: streakManager.currentStreak,
+                        longestStreak: streakManager.longestStreak,
+                        nextMilestoneDays: streakManager.nextMilestone(),
+                        daysToNextMilestone: streakManager.daysToNextMilestone(),
+                        pendingReward: streakManager.pendingReward,
+                        onClaimReward: {
+                            streakManager.redeemFreeProMonth(using: userTierManager)
+                        },
+                        isDark: isDark,
+                        showAnalyzeCTA: {
+                            if let res = skinAnalysisManager.getCachedAnalysisResults() {
+                                return !Calendar.current.isDate(res.analysisDate, inSameDayAs: Date())
+                            }
+                            return true
+                        }(),
+                        onAnalyze: {
+                            navigateToAnalysis = true
+                        }
+                    )
+                    .onAppear {
+                        if let res = skinAnalysisManager.getCachedAnalysisResults() {
+                            showAnalyzeBanner = !Calendar.current.isDate(res.analysisDate, inSameDayAs: Date())
+                        } else { showAnalyzeBanner = true }
+                    }
+                    .padding(.bottom, 4)
+                    // Hidden navigation trigger to analysis - using modern NavigationLink
+                    NavigationLink(value: "analysis") {
+                        EmptyView()
+                    }
+                    .navigationDestination(for: String.self) { destination in
+                        if destination == "analysis" {
+                            SkinAnalysisView()
+                                .environmentObject(skinAnalysisManager)
+                                .environmentObject(appearanceManager)
+                                .environmentObject(userTierManager)
+                        }
+                    }
                     
                     // Progress overview with premium styling for pro users
                     ProgressOverviewCard(
@@ -332,6 +442,8 @@ struct DashboardView: View {
                         onReloadTasks: reloadTasksAction,
                         routines: aiGeneratedRoutines,
                         isReloading: skinAnalysisManager.isReloading,
+                        reloadElapsedTime: skinAnalysisManager.reloadElapsedTime,
+                        reloadCountdownTime: skinAnalysisManager.reloadCountdownTime,
                         lastUpdated: skinAnalysisManager.recommendationsUpdatedAt
                     )
                         .padding(.bottom, 8)
@@ -365,10 +477,37 @@ struct DashboardView: View {
             // Load cached AI recommendations once per app launch
             skinAnalysisManager.loadCachedRecommendations()
             updateInsights()
+            
+            // Welcome card auto-dismiss logic
+            if showWelcomeCard {
+                // Start the dismissal timer
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                    withAnimation(.easeInOut(duration: 0.8)) {
+                        welcomeCardOffset = -200 // Swipe up animation
+                        welcomeCardOpacity = 0
+                    }
+                    
+                    // Hide the card completely after animation
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        showWelcomeCard = false
+                    }
+                }
+            }
         }
         .onReceive(skinAnalysisManager.$recommendations) { _ in
             updateInsights()
         }
+        .onChange(of: streakManager.pendingReward) { oldValue, newValue in
+            guard oldValue != newValue, let reward = newValue else { return }
+            if case .celebration = reward { confettiCounter += 1 }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            // Reset welcome card when app becomes active
+            resetWelcomeCard()
+        }
+                       .onAppear {
+                   // Dashboard loaded
+               }
     }
     
     private func refreshDashboard() async {
@@ -383,21 +522,355 @@ struct DashboardView: View {
             await skinAnalysisManager.regenerateRecommendations()
         }
     }
+    
+    // Reset welcome card state when app becomes active
+    private func resetWelcomeCard() {
+        showWelcomeCard = true
+        welcomeCardOffset = 0
+        welcomeCardOpacity = 1
+    }
+    
+    // Dismiss welcome card with animation
+    private func dismissWelcomeCard() {
+        withAnimation(.easeInOut(duration: 0.8)) {
+            welcomeCardOffset = -200 // Swipe up animation
+            welcomeCardOpacity = 0
+        }
+        
+        // Hide the card completely after animation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            showWelcomeCard = false
+        }
+    }
+}
+
+// MARK: - Body sections extracted for compiler performance
+private extension StreakCard {
+    var streakHeader: some View {
+        HStack(alignment: .center, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "flame.fill")
+                    .foregroundColor(.orange)
+                    .font(.title3)
+                Text("Daily Streak")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            Button(action: {
+                showStreakInfo = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+                    showStreakInfo = false
+                }
+            }) {
+                Image(systemName: "info.circle")
+                    .font(.subheadline)
+                    .foregroundColor(.orange.opacity(0.8))
+            }
+            Spacer()
+            Text(subtitleText)
+                .font(.footnote)
+                .fontWeight(.semibold)
+                .foregroundColor(DashboardStyle.secondaryTextMedium(isDark: isDark))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(.bottom, 12)
+    }
+
+    var streakMiddleRow: some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .center, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "target")
+                        .font(.subheadline)
+                        .foregroundColor(.blue)
+                    Text("Next")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.blue)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                Text("\(displayedNext)d")
+                    .font(.system(size: 22, weight: .heavy, design: .rounded))
+                    .foregroundColor(.blue)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.trailing, 6)
+
+            StreakAnimatedTrackerView(
+                isDark: isDark,
+                startBreathing: startBreathing,
+                ringRotationDegrees: ringRotationDegrees,
+                sparkleOpacity: sparkleOpacity,
+                progressToNext: progressToNext,
+                currentStreak: currentStreak
+            )
+            .frame(maxWidth: .infinity)
+            .padding(.top, showStreakInfo ? 10 : -10)
+
+            VStack(alignment: .center, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text("Best")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.orange)
+                    Image(systemName: "trophy.fill")
+                        .font(.subheadline)
+                        .foregroundColor(.orange)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                Text("\(displayedBest)d")
+                    .font(.system(size: 22, weight: .heavy, design: .rounded))
+                    .foregroundColor(.orange)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.leading, 6)
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder var analyzeOrProgressRow: some View {
+        if showAnalyzeCTA {
+            HStack(spacing: 8) {
+                Image(systemName: "camera.circle.fill")
+                    .foregroundColor(.purple)
+                Text("Keep your streak alive — your skin deserves daily care.")
+                    .font(.caption)
+                    .foregroundColor(DashboardStyle.secondaryTextMedium(isDark: isDark))
+                Spacer()
+                if let onAnalyze = onAnalyze {
+                    Button(action: {
+                        NotificationCenter.default.post(name: .nuraSwitchTab, object: 1)
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.impactOccurred()
+                        onAnalyze()
+                    }) {
+                        Text("Analyze")
+                            .font(.caption2).fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.purple)
+                            .cornerRadius(8)
+                    }
+                }
+            }
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.purple.opacity(0.06))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.purple.opacity(0.15), lineWidth: 1)
+                    )
+            )
+            .padding(.top, 16)
+        } else if let daysLeft = daysToNextMilestone, daysLeft > 0, let next = nextMilestoneDays {
+            VStack(spacing: 6) {
+                HStack(spacing: 8) {
+                    Image(systemName: "clock.fill")
+                        .font(.caption2)
+                        .foregroundColor(.purple)
+                    Text("\(daysLeft) to \(next)d • \(Int(progressToNext * 100))%")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.purple)
+                    Spacer()
+                }
+                HStack(spacing: 8) {
+                    ProgressView(value: progressToNext)
+                        .progressViewStyle(LinearProgressViewStyle(tint: .purple))
+                        .scaleEffect(y: 1.5)
+                    Text("\(Int(progressToNext * 100))%")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.purple)
+                        .frame(minWidth: 30, alignment: .trailing)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.purple.opacity(0.05))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.purple.opacity(0.2), lineWidth: 1)
+                    )
+            )
+            .padding(.top, 16)
+        }
+    }
+
+    @ViewBuilder var rewardBannerRow: some View {
+        if let reward = pendingReward {
+            VStack(alignment: .leading, spacing: 8) {
+                switch reward {
+                case .celebration(let days):
+                    HStack(spacing: 8) {
+                        Image(systemName: "sparkles")
+                            .foregroundColor(.yellow)
+                        Text("Milestone reached: \(days) days! 🎉")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                    }
+                case .freeProMonth:
+                    HStack(alignment: .center, spacing: 10) {
+                        Image(systemName: "gift.fill").foregroundColor(.pink)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Reward unlocked")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                            Text("Claim 1 free month of Pro")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Button(action: onClaimReward) {
+                            Text("Claim")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(Color.pink)
+                                .cornerRadius(8)
+                        }
+                    }
+                    .padding(10)
+                    .background((isDark ? Color.pink.opacity(0.15) : Color.pink.opacity(0.08)))
+                    .cornerRadius(10)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Extracted subview for the animated streak tracker
+private struct StreakAnimatedTrackerView: View {
+    let isDark: Bool
+    let startBreathing: Bool
+    let ringRotationDegrees: Double
+    let sparkleOpacity: Double
+    let progressToNext: Double
+    let currentStreak: Int
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(DashboardStyle.backgroundOrange(isDark: isDark))
+                .frame(width: 92, height: 92)
+                .blur(radius: 0.5)
+                .scaleEffect(startBreathing ? 1.03 : 0.97)
+                .animation(.easeInOut(duration: 1.2).repeatCount(3, autoreverses: true), value: startBreathing)
+
+            let innerShadowGradient = LinearGradient(
+                gradient: Gradient(colors: [Color.black.opacity(0.12), Color.clear]),
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            let maskGradient = LinearGradient(
+                gradient: Gradient(colors: [Color.white, Color.clear]),
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            Circle()
+                .fill(DashboardStyle.whiteCircle(isDark: isDark))
+                .frame(width: 82, height: 82)
+                .overlay(
+                    Circle()
+                        .stroke(innerShadowGradient, lineWidth: 2)
+                        .blur(radius: 0.6)
+                        .mask(Circle().fill(maskGradient))
+                )
+
+            let ringGradient = AngularGradient(
+                gradient: Gradient(colors: [
+                    Color(red: 1.00, green: 0.72, blue: 0.42),
+                    Color(red: 1.00, green: 0.53, blue: 0.36),
+                    Color(red: 1.00, green: 0.72, blue: 0.42)
+                ]),
+                center: .center
+            )
+
+            Circle()
+                .stroke(ringGradient, lineWidth: 4)
+                .frame(width: 78, height: 78)
+                .rotationEffect(.degrees(ringRotationDegrees))
+                .animation(.linear(duration: 1.8), value: ringRotationDegrees)
+
+            let dotCount = 4
+            ForEach(0..<dotCount, id: \.self) { idx in
+                let angle = Double(idx) / Double(dotCount) * 360.0
+                let complete = (Double(idx + 1) / Double(dotCount)) <= progressToNext
+                Circle()
+                    .fill(complete ? Color.orange : Color.orange.opacity(0.25))
+                    .frame(width: 5, height: 5)
+                    .offset(y: -46)
+                    .rotationEffect(.degrees(angle))
+            }
+
+            Text("\(currentStreak)d")
+                .font(.system(size: 24, weight: .heavy, design: .rounded))
+                .monospacedDigit()
+                .foregroundColor(DashboardStyle.primaryText(isDark: isDark))
+                .shadow(color: Color.orange.opacity(0.35), radius: 2, x: 0, y: 1)
+
+            Image(systemName: "flame.fill")
+                .font(.system(size: 11))
+                .foregroundColor(.orange)
+                .offset(y: -44)
+                .rotationEffect(.degrees(ringRotationDegrees))
+                .animation(.linear(duration: 1.8), value: ringRotationDegrees)
+                .overlay(
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 9))
+                        .foregroundColor(.yellow)
+                        .opacity(sparkleOpacity)
+                        .offset(x: 10, y: -6)
+                )
+        }
+    }
 }
 
 struct WelcomeSection: View {
     @EnvironmentObject var authManager: AuthenticationManager
     var isDark: Bool
     var isPremium: Bool = false
+    var onDismiss: (() -> Void)? = nil
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Welcome back! ✨")
-                .font(.title2)
-                .fontWeight(.bold)
-                .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
-            Text("Ready to take care of your skin today?")
-                .font(.subheadline)
-                .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
+            HStack {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Welcome back! ✨")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(DashboardStyle.primaryText(isDark: isDark))
+                    Text("Ready to take care of your skin today?")
+                        .font(.subheadline)
+                        .foregroundColor(DashboardStyle.secondaryText(isDark: isDark))
+
+                }
+                
+                Spacer()
+                
+                // Dismiss button
+                if let onDismiss = onDismiss {
+                    Button(action: onDismiss) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title2)
+                            .foregroundColor(.gray.opacity(0.6))
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
@@ -407,20 +880,25 @@ struct WelcomeSection: View {
                     // Unify dark-mode card color with Today's Tasks card
                     NuraColors.cardDark
                 } else {
+                    // Extract gradient colors to reduce complexity
+                    let baseGradientColors = [Color.purple.opacity(0.1), Color.pink.opacity(0.1)]
+                    
                     LinearGradient(
-                        gradient: Gradient(colors: [Color.purple.opacity(0.1), Color.pink.opacity(0.1)]),
+                        gradient: Gradient(colors: baseGradientColors),
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                     
                     // Premium light mode styling
                     if isPremium {
+                        let premiumGradientColors = [
+                            Color.purple.opacity(0.12),
+                            Color.yellow.opacity(0.08),
+                            Color.purple.opacity(0.05)
+                        ]
+                        
                         LinearGradient(
-                            gradient: Gradient(colors: [
-                                Color.purple.opacity(0.12),
-                                Color.yellow.opacity(0.08),
-                                Color.purple.opacity(0.05)
-                            ]),
+                            gradient: Gradient(colors: premiumGradientColors),
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -456,7 +934,8 @@ struct ProgressOverviewCard: View {
             let darkness = (percent - 75) / 25 // 0 to 1
             // Start with .green, blend towards .black
             let base = Color.green
-            let darken = Color.black.opacity(darkness * 0.5)
+            let darkenOpacity = darkness * 0.5
+            let darken = Color.black.opacity(darkenOpacity)
             return base.blend(with: darken, fraction: darkness)
         }
     }
@@ -525,7 +1004,7 @@ struct ProgressOverviewCard: View {
                 .font(.title3)
                 .fontWeight(.bold)
                 .underline()
-                .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                .foregroundColor(DashboardStyle.primaryText(isDark: isDark))
                 .fixedSize()
             Spacer(minLength: 0)
             Text("Your journey to healthier skin")
@@ -543,11 +1022,14 @@ struct ProgressOverviewCard: View {
     @ViewBuilder private var scoreBubble: some View {
         ZStack {
             Circle()
-                .fill(Color.white.opacity(isDark ? 0.05 : 0.3))
+                .fill(DashboardStyle.scoreBubble(isDark: isDark))
                 .frame(width: 100, height: 100)
+            // Extract ring color to reduce complexity
+            let currentRingColor = isDark ? NuraColors.successDark : ringColor(for: realSkinHealthScore)
+            
             AnimatedRingView(
                 progress: realSkinHealthScore,
-                ringColor: isDark ? NuraColors.successDark : ringColor(for: realSkinHealthScore),
+                ringColor: currentRingColor,
                 ringWidth: isPremium ? 16 : 14,
                 label: "\(Int(realSkinHealthScore * 100))%"
             )
@@ -563,17 +1045,20 @@ struct ProgressOverviewCard: View {
             if realSkinConditions.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(alignment: .center, spacing: 8) {
+                        // Extract camera icon color to reduce complexity
+                        let cameraIconColor = isDark ? Color.purple.opacity(0.8) : Color.purple
+                        
                         Image(systemName: "camera.circle.fill")
                             .font(.system(size: 16))
-                            .foregroundColor(isDark ? Color.purple.opacity(0.8) : Color.purple)
+                            .foregroundColor(cameraIconColor)
                         Text("Ready for Your Analysis?")
                             .font(.caption)
                             .fontWeight(.semibold)
-                            .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                            .foregroundColor(DashboardStyle.primaryText(isDark: isDark))
                     }
                     Text("Upload photos to unlock personalized insights!")
                         .font(.caption2)
-                        .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.7))
+                        .foregroundColor(DashboardStyle.secondaryTextLight(isDark: isDark))
                         .lineLimit(3)
                         .multilineTextAlignment(.leading)
                 }
@@ -596,11 +1081,11 @@ struct ProgressOverviewCard: View {
                     Text("\(realSkinConditions.count) conditions detected")
                         .font(.caption)
                         .fontWeight(.medium)
-                        .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.7))
+                        .foregroundColor(DashboardStyle.secondaryTextLight(isDark: isDark))
                     if let analysisDate = analysisDate {
                         Text("Analysis Date: \(formatDate(analysisDate))")
                             .font(.caption2)
-                            .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.6))
+                            .foregroundColor(DashboardStyle.secondaryTextLighter(isDark: isDark))
                     }
                 }
                 .padding(.vertical, 14)
@@ -608,10 +1093,10 @@ struct ProgressOverviewCard: View {
                 .frame(minWidth: 190, minHeight: 110)
                 .background(
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(isDark ? Color.green.opacity(0.05) : Color.green.opacity(0.03))
+                        .fill(DashboardStyle.greenBackground(isDark: isDark))
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.green.opacity(0.2), lineWidth: 1)
+                                .stroke(DashboardStyle.greenStroke(), lineWidth: 1)
                         )
                 )
             }
@@ -626,7 +1111,7 @@ struct ProgressOverviewCard: View {
                     Text(condition.name)
                         .font(.caption)
                         .fontWeight(index == 0 ? .semibold : .medium)
-                        .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                        .foregroundColor(DashboardStyle.primaryText(isDark: isDark))
                         .fixedSize(horizontal: false, vertical: true)
                     Image(systemName: severityIconName(for: condition.severity))
                         .font(.caption)
@@ -634,7 +1119,7 @@ struct ProgressOverviewCard: View {
                     if !condition.areas.isEmpty {
                         Text("Areas: \(condition.areas.joined(separator: ", "))")
                             .font(.caption2)
-                            .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.7))
+                            .foregroundColor(DashboardStyle.secondaryTextLight(isDark: isDark))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 0)
@@ -644,9 +1129,12 @@ struct ProgressOverviewCard: View {
                 Text("Analysis Confidence")
                     .font(.caption)
                     .fontWeight(.medium)
-                    .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                    .foregroundColor(DashboardStyle.primaryText(isDark: isDark))
+                // Extract chart icon color to reduce complexity
+                let chartIconColor = isDark ? Color.blue.opacity(0.7) : Color.blue
+                
                 Image(systemName: "chart.line.uptrend.xyaxis")
-                    .foregroundColor(isDark ? Color.blue.opacity(0.7) : Color.blue)
+                    .foregroundColor(chartIconColor)
                     .font(.caption)
                 Text("\(Int(averageConfidence * 100))%")
                     .font(.caption)
@@ -664,14 +1152,14 @@ struct ProgressOverviewCard: View {
                 Text("Healthy Glow")
                     .font(.caption)
                     .fontWeight(.semibold)
-                    .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                    .foregroundColor(DashboardStyle.primaryText(isDark: isDark))
                     .lineLimit(1)
                 Image(systemName: severityIconName(for: "excellent"))
                     .font(.caption)
                     .foregroundColor(severityColor(for: "excellent"))
                 Text("Areas: Forehead, cheeks, chin")
                     .font(.caption2)
-                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.7))
+                    .foregroundColor(DashboardStyle.secondaryTextLight(isDark: isDark))
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: 0)
@@ -681,14 +1169,14 @@ struct ProgressOverviewCard: View {
                 Text("Even Tone")
                     .font(.caption)
                     .fontWeight(.medium)
-                    .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                    .foregroundColor(DashboardStyle.primaryText(isDark: isDark))
                     .lineLimit(1)
                 Image(systemName: severityIconName(for: "good"))
                     .font(.caption)
                     .foregroundColor(severityColor(for: "good"))
                 Text("Areas: Face, neck")
                     .font(.caption2)
-                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.7))
+                    .foregroundColor(DashboardStyle.secondaryTextLight(isDark: isDark))
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: 0)
@@ -698,14 +1186,14 @@ struct ProgressOverviewCard: View {
                 Text("Hydration Needs")
                     .font(.caption)
                     .fontWeight(.medium)
-                    .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                    .foregroundColor(DashboardStyle.primaryText(isDark: isDark))
                     .lineLimit(1)
                 Image(systemName: severityIconName(for: "monitor"))
                     .font(.caption)
                     .foregroundColor(severityColor(for: "monitor"))
                 Text("Areas: T-zone, around eyes")
                     .font(.caption2)
-                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.7))
+                    .foregroundColor(DashboardStyle.secondaryTextLight(isDark: isDark))
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: 0)
@@ -715,9 +1203,12 @@ struct ProgressOverviewCard: View {
                 Text("Analysis Confidence")
                     .font(.caption)
                     .fontWeight(.medium)
-                    .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                    .foregroundColor(DashboardStyle.primaryText(isDark: isDark))
+                // Extract chart icon color to reduce complexity
+                let chartIconColor = isDark ? Color.blue.opacity(0.7) : Color.blue
+                
                 Image(systemName: "chart.line.uptrend.xyaxis")
-                    .foregroundColor(isDark ? Color.blue.opacity(0.7) : Color.blue)
+                    .foregroundColor(chartIconColor)
                     .font(.caption)
                 Text("95%")
                     .font(.caption)
@@ -734,7 +1225,7 @@ struct ProgressOverviewCard: View {
                 Text("Analysis Notes:")
                     .font(.subheadline)
                     .fontWeight(.medium)
-                    .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                    .foregroundColor(DashboardStyle.primaryText(isDark: isDark))
                 Spacer()
                 // Inline share button on the same row as the title
                 HStack(spacing: 6) {
@@ -806,12 +1297,12 @@ struct ProgressOverviewCard: View {
 
     var body: some View {
         ZStack {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 16) {
                 // Header with title and subtitle
                 headerSection
                 
                 // 4-Rectangle Layout: Top Row = Score + CTA, Bottom Row = Analysis Notes (spans full width)
-                VStack(spacing: 16) {
+                VStack(spacing: 12) {
                     // Top Row: Rectangle 1 (Score) + Rectangle 2 (CTA)
                     HStack(alignment: .top, spacing: 16) {
                         // Rectangle 1: Score Progress View (Top Left)
@@ -827,7 +1318,8 @@ struct ProgressOverviewCard: View {
                 }
             }
         }
-        .padding()
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .background(
             backgroundLayer
         )
@@ -901,7 +1393,7 @@ struct CurrentRoutineCard: View {
                         
                         Text(step.description)
                             .font(.caption)
-                            .foregroundColor(isDark ? Color.white.opacity(0.82) : Color.primary.opacity(0.75))
+                            .foregroundColor(DashboardStyle.whiteText(isDark: isDark))
                     }
                     
                     Spacer()
@@ -968,10 +1460,18 @@ struct UpcomingTasksCard: View {
     var onReloadTasks: (() -> Void)? = nil
     var routines: [[String]] = [["Sample routine"]]
     var isReloading: Bool = false
+    var reloadElapsedTime: TimeInterval = 0
+    var reloadCountdownTime: TimeInterval = 0
     var lastUpdated: Date? = nil
     @State private var showToast: Bool = false
     private let weekInterval: TimeInterval = 7 * 24 * 60 * 60
     @State private var maskPop: Bool = false
+    
+    // Simple timer for UI updates
+    @State private var timerTick = 0
+    private let uiTimer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
+    
+
     @State private var taskPopIndex: Int? = nil
     @State private var expandedTaskIndex: Int? = nil
     @State private var checkedStates: [Bool] = [false, false, false] // For demo, up to 3 tasks
@@ -989,8 +1489,27 @@ struct UpcomingTasksCard: View {
             if canReloadTasks, let onReloadTasks = onReloadTasks {
                 HStack(spacing: 6) {
                     if isReloading {
-                        ProgressView()
-                            .scaleEffect(0.8)
+                        HStack(spacing: 4) {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                                .progressViewStyle(CircularProgressViewStyle(tint: .secondary))
+                            
+                            let countdown = max(0, 15.0 - (Double(timerTick) * 0.1))
+                            let roundedCountdown = ceil(countdown * 10) / 10
+                            if countdown > 0 {
+                                Text(formatCountdownTime(roundedCountdown))
+                                    .font(.caption2)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.secondary)
+                                    .monospacedDigit()
+                            } else {
+                                Text("Please wait...")
+                                    .font(.caption2)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
                     }
                     Button(action: {
                         onReloadTasks()
@@ -1002,9 +1521,11 @@ struct UpcomingTasksCard: View {
                                 .font(.caption2)
                                 .fontWeight(.medium)
                         }
+                        // Extract purple colors to reduce complexity
                         .foregroundColor(isDark ? Color.purple.opacity(0.8) : Color.purple)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
+                        // Extract purple background colors to reduce complexity
                         .background(
                             RoundedRectangle(cornerRadius: 6)
                                 .fill(isDark ? Color.purple.opacity(0.1) : Color.purple.opacity(0.05))
@@ -1071,7 +1592,7 @@ struct UpcomingTasksCard: View {
                             Image(systemName: checkedStates[idx] ? "checkmark.circle.fill" : "circle")
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
-                                .foregroundColor(checkedStates[idx] ? Color(red: 0.11, green: 0.60, blue: 0.36) : (isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75)))
+                                .foregroundColor(checkedStates[idx] ? Color(red: 0.11, green: 0.60, blue: 0.36) : DashboardStyle.secondaryText(isDark: isDark))
                                 .frame(width: 20, height: 20)
                                 .scaleEffect(taskPopIndex == idx ? 1.2 : 1.0)
                                 .animation(.spring(response: 0.25, dampingFraction: 0.5), value: taskPopIndex == idx)
@@ -1085,7 +1606,7 @@ struct UpcomingTasksCard: View {
                                 ForEach(bulletItems(from: task.description), id: \.self) { item in
                                     Text("• \(item)")
                                         .font(.caption2)
-                                        .foregroundColor(isDark ? Color.white.opacity(0.82) : Color.primary.opacity(0.75))
+                                        .foregroundColor(DashboardStyle.whiteText(isDark: isDark))
                                 }
                             }
                             if checkedStates[idx], let time = timeRemainingForTask[idx], !canCompleteTask[idx] {
@@ -1146,7 +1667,7 @@ struct UpcomingTasksCard: View {
                                 Image(systemName: "circle")
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
-                                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
+                                    .foregroundColor(DashboardStyle.secondaryText(isDark: isDark))
                             }
                         }
                         .frame(width: 20, height: 20)
@@ -1162,7 +1683,7 @@ struct UpcomingTasksCard: View {
                             ForEach(bulletItems(from: weeklyMaskTask.description), id: \.self) { item in
                                 Text("• \(item)")
                                     .font(.caption2)
-                                    .foregroundColor(isDark ? Color.white.opacity(0.82) : Color.primary.opacity(0.75))
+                                    .foregroundColor(DashboardStyle.whiteText(isDark: isDark))
                             }
                         }
                         if !canComplete, let time = timeRemaining {
@@ -1191,6 +1712,19 @@ struct UpcomingTasksCard: View {
                 withAnimation { showToast = true }
             }
         }
+        .onReceive(uiTimer) { _ in
+            // Update UI every 0.1 seconds when reloading
+            if isReloading {
+                timerTick += 1
+            }
+        }
+        .onChange(of: isReloading) { oldValue, newValue in
+            // Reset timer when reloading starts
+            if newValue == true {
+                timerTick = 0
+            }
+        }
+
         .padding()
         .background(
             ZStack {
@@ -1266,6 +1800,32 @@ struct UpcomingTasksCard: View {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
     }
+    
+    private func formatElapsedTime(_ timeInterval: TimeInterval) -> String {
+        let seconds = Int(timeInterval)
+        let milliseconds = Int((timeInterval.truncatingRemainder(dividingBy: 1)) * 100)
+        
+        if seconds < 60 {
+            return String(format: "%d.%02ds", seconds, milliseconds)
+        } else {
+            let minutes = seconds / 60
+            let remainingSeconds = seconds % 60
+            return String(format: "%dm %02ds", minutes, remainingSeconds)
+        }
+    }
+    
+    private func formatCountdownTime(_ timeInterval: TimeInterval) -> String {
+        let seconds = Int(timeInterval)
+        let tenths = Int((timeInterval.truncatingRemainder(dividingBy: 1)) * 10)
+        
+        if seconds < 60 {
+            return String(format: "%d.%ds", seconds, tenths)
+        } else {
+            let minutes = seconds / 60
+            let remainingSeconds = seconds % 60
+            return String(format: "%dm %ds", minutes, remainingSeconds)
+        }
+    }
 }
 
 struct InsightsCard: View {
@@ -1297,7 +1857,7 @@ struct InsightsCard: View {
                         
                         Text(insight.description)
                             .font(.caption)
-                            .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.primary.opacity(0.75))
+                            .foregroundColor(DashboardStyle.secondaryText(isDark: isDark))
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     Spacer()
@@ -1542,9 +2102,214 @@ struct ProBadgeView: View {
     }
 }
 
+// MARK: - Streak Card
+
+struct StreakCard: View {
+    let currentStreak: Int
+    let longestStreak: Int
+    let nextMilestoneDays: Int?
+    let daysToNextMilestone: Int?
+    let pendingReward: StreakManager.StreakReward?
+    let onClaimReward: () -> Void
+    var isDark: Bool
+    var showAnalyzeCTA: Bool = false
+    var onAnalyze: (() -> Void)? = nil
+
+    @State private var ringRotationDegrees: Double = 0
+    @State private var pulse: Bool = false
+    @State private var startBreathing: Bool = false
+    @State private var sparkleOpacity: Double = 0
+    @State private var showCardGlow: Bool = false
+    @State private var animatedNextProgress: Double = 0
+    @State private var animatedBestProgress: Double = 0
+    @State private var showStreakInfo: Bool = false
+    @State private var showDismissOverlay: Bool = false
+
+    private var progressToNext: Double {
+        guard let next = nextMilestoneDays, next > 0 else { return 1.0 }
+        let value = Double(currentStreak) / Double(next)
+        return max(0.0, min(1.0, value))
+    }
+
+    private var subtitleText: String {
+        if currentStreak <= 0 { return "Start your streak today!" }
+        if let left = daysToNextMilestone, left > 0 {
+            if left <= 2 { return "Day \(currentStreak) • Almost there!" }
+            return "Day \(currentStreak) • \(left) more to go!"
+        }
+        return "Day \(currentStreak) • Building momentum!"
+    }
+
+    private var displayedNext: Int {
+        let target = max(0, nextMilestoneDays ?? 0)
+        return min(target, Int(round(animatedNextProgress * Double(target))))
+    }
+
+    private var displayedBest: Int {
+        let target = max(0, longestStreak)
+        return min(target, Int(round(animatedBestProgress * Double(target))))
+    }
+
+    private var cardBackground: some View {
+        Group {
+            if isDark {
+                NuraColors.cardDark
+            } else {
+                // Extract gradient colors to reduce complexity
+                let gradientStartColor = Color(red: 1.0, green: 0.93, blue: 0.86)
+                let gradientEndColor = Color.white
+                let gradientColors = [gradientStartColor, gradientEndColor]
+                
+                LinearGradient(
+                    gradient: Gradient(colors: gradientColors),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            streakHeader
+            streakMiddleRow
+            analyzeOrProgressRow
+            rewardBannerRow
+        }
+        .padding()
+        .background(
+            ZStack {
+                cardBackground
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isDark ? Color.orange.opacity(0.25) : Color.orange.opacity(0.25), lineWidth: 1)
+            }
+        )
+        .cornerRadius(12)
+        .shadow(color: .black.opacity(0.08), radius: 5, x: 0, y: 2)
+        .shadow(color: Color.orange.opacity(showCardGlow ? 0.15 : 0.0), radius: 18, x: 0, y: 6)
+        .animation(.easeOut(duration: 1.2), value: showCardGlow)
+        .onAppear {
+            // One-time premium interactions
+            ringRotationDegrees = 360
+            startBreathing = true
+            withAnimation(.easeOut(duration: 0.9)) { sparkleOpacity = 1 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                withAnimation(.easeOut(duration: 0.6)) { sparkleOpacity = 0 }
+            }
+            // Card glow pulse once
+            showCardGlow = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { showCardGlow = false }
+            // Count-up numbers
+            withAnimation(.easeOut(duration: 0.8)) { animatedNextProgress = 1 }
+            withAnimation(.easeOut(duration: 0.8).delay(0.05)) { animatedBestProgress = 1 }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Daily streak card. Current: \(currentStreak) days. Longest: \(longestStreak) days.")
+        .overlay(
+            // Dismiss overlay - covers the entire screen to detect taps
+            Group {
+                if showStreakInfo {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                showStreakInfo = false
+                            }
+                        }
+                }
+            }
+        )
+        .overlay(
+            // WhatsApp-style message bubble overlay
+            Group {
+                if showStreakInfo {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            // Message bubble
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "star.fill")
+                                        .foregroundColor(.yellow)
+                                        .font(.caption)
+                                    Text("Why streaks matter")
+                                        .font(.headline)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(.black)
+                                }
+                                
+                                Text("Daily check-ins build consistent habits which lead to clearer, healthier skin. Hit milestones to unlock rewards.")
+                                    .font(.subheadline)
+                                    .foregroundColor(.black.opacity(0.85))
+                                    .multilineTextAlignment(.leading)
+                                
+                                HStack(spacing: 4) {
+                                    Image(systemName: "lightbulb.fill")
+                                        .foregroundColor(.orange)
+                                        .font(.caption)
+                                    Text("Tip: Even a quick analysis counts toward your streak.")
+                                        .font(.caption)
+                                        .foregroundColor(.black.opacity(0.75))
+                                }
+                            }
+                            .padding(16)
+                            .background(
+                                // Washed blue gradient background from top-left to bottom-right
+                                LinearGradient(
+                                    gradient: Gradient(colors: [
+                                        Color(red: 0.7, green: 0.85, blue: 0.95), // Light washed blue
+                                        Color(red: 0.5, green: 0.7, blue: 0.85)  // Darker washed blue
+                                    ]),
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .overlay(
+                                // White border
+                                RoundedRectangle(cornerRadius: 20)
+                                    .stroke(Color.white, lineWidth: 2)
+                            )
+                            .cornerRadius(20)
+                            .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
+                            .overlay(
+                                // Message tail with matching gradient
+                                Path { path in
+                                    path.move(to: CGPoint(x: 0, y: 20))
+                                    path.addLine(to: CGPoint(x: -8, y: 25))
+                                    path.addLine(to: CGPoint(x: 0, y: 30))
+                                }
+                                .fill(
+                                    LinearGradient(
+                                        gradient: Gradient(colors: [
+                                            Color(red: 0.7, green: 0.85, blue: 0.95),
+                                            Color(red: 0.5, green: 0.7, blue: 0.85)
+                                        ]),
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .offset(x: -8, y: 0)
+                            )
+                            .transition(.asymmetric(
+                                insertion: .scale(scale: 0.8).combined(with: .opacity).combined(with: .move(edge: .bottom)),
+                                removal: .scale(scale: 0.9).combined(with: .opacity).combined(with: .move(edge: .bottom))
+                            ))
+                            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showStreakInfo)
+                            
+                            Spacer()
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 20)
+                    }
+                }
+            }
+        )
+    }
+}
+
 #Preview {
     DashboardView()
         .environmentObject(SkinAnalysisManager(userTierManager: UserTierManager(authManager: AuthenticationManager.shared)))
         .environmentObject(ShareManager())
-        .environmentObject(UserTierManager(authManager: AuthenticationManager.shared))
 } 

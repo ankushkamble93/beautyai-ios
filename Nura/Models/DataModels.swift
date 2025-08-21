@@ -96,6 +96,27 @@ struct ChatGPTUsage: Codable {
     }
 }
 
+// MARK: - Product Models
+struct ProductSearchResult: Identifiable, Codable {
+    let id: UUID
+    let name: String
+    let brand: String?
+    let priceText: String?
+    let benefits: [String]
+    let imageURL: String?
+    let destinationURL: String?
+
+    init(id: UUID = UUID(), name: String, brand: String?, priceText: String?, benefits: [String], imageURL: String?, destinationURL: String?) {
+        self.id = id
+        self.name = name
+        self.brand = brand
+        self.priceText = priceText
+        self.benefits = benefits
+        self.imageURL = imageURL
+        self.destinationURL = destinationURL
+    }
+}
+
 // MARK: - Chat Memory Models
 struct ChatMemory: Codable {
     var morningRoutine: [String]

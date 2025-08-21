@@ -1405,5 +1405,4 @@ struct PhotoValidationResult {
 
 #Preview {
     SkinAnalysisView()
-        .environmentObject(SkinAnalysisManager(userTierManager: UserTierManager(authManager: AuthenticationManager.shared)))
 } 

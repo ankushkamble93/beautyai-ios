@@ -1,4 +1,5 @@
 import Foundation
+import Supabase
 
 class ChatManager: ObservableObject {
     @Published var messages: [ChatMessage] = []
@@ -79,9 +80,7 @@ class ChatManager: ObservableObject {
     }
     
     private func requestChatCompletion(userPrompt: String) async throws -> String {
-        guard APIConfig.openAIAPIKey != "YOUR_OPENAI_API_KEY" else {
-            throw NSError(domain: "ChatManager", code: -1, userInfo: [NSLocalizedDescriptionKey: APIConfig.apiKeyMissingError])
-        }
+        // No need to check API key - Supabase proxy handles authentication
         
         // Build system prompt with current memory
         let memoryText = """
@@ -116,23 +115,44 @@ class ChatManager: ObservableObject {
         history.insert(systemMessage, at: 0)
         history.append(ChatGPTMessage(role: "user", content: [ChatGPTContent(type: "text", text: userPrompt, imageURL: nil)]))
         
-        let request = ChatGPTVisionRequest(
+        // Convert to the format expected by Supabase proxy
+        let messagesDict: [[String: Any]] = history.map { message in
+            let contentAny: Any
+            if message.content.count == 1 && message.content.first?.type == "text" {
+                contentAny = message.content.first?.text ?? ""
+            } else {
+                contentAny = message.content.map { contentItem -> [String: Any] in
+                    if contentItem.type == "text" {
+                        return ["type": "text", "text": contentItem.text ?? ""]
+                    } else if contentItem.type == "image_url" {
+                        return ["type": "image_url", "image_url": ["url": contentItem.imageURL?.url ?? ""]]
+                    } else {
+                        return ["type": "text", "text": ""]
+                    }
+                }
+            }
+            
+            return [
+                "role": message.role as Any,
+                "content": contentAny
+            ]
+        }
+        
+        // Use Supabase proxy instead of direct OpenAI call
+        let responseString: String = try await SupabaseProxyManager.shared.makeOpenAIRequest(
             model: APIConfig.fastTextModel,
-            messages: history,
+            messages: messagesDict,
             maxTokens: APIConfig.maxTokensPerRequest,
             temperature: 0.3
         )
         
-        var urlRequest = URLRequest(url: URL(string: APIConfig.chatCompletionsEndpoint)!)
-        urlRequest.httpMethod = "POST"
-        urlRequest.setValue("Bearer \(APIConfig.openAIAPIKey)", forHTTPHeaderField: "Authorization")
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.timeoutInterval = APIConfig.requestTimeout
-        urlRequest.httpBody = try JSONEncoder().encode(request)
+        // Parse the response from Supabase proxy
+        guard let data = responseString.data(using: .utf8) else {
+            throw NSError(domain: "ChatManager", code: -2, userInfo: [NSLocalizedDescriptionKey: "Failed to parse response"])
+        }
         
-        let (data, _) = try await URLSession.shared.data(for: urlRequest)
-        let response = try JSONDecoder().decode(ChatGPTVisionResponse.self, from: data)
-        guard let content = response.choices.first?.message.content else {
+        let openAIResponse = try JSONDecoder().decode(ChatGPTVisionResponse.self, from: data)
+        guard let content = openAIResponse.choices.first?.message.content else {
             throw NSError(domain: "ChatManager", code: -2, userInfo: [NSLocalizedDescriptionKey: "Empty response"])
         }
         return content
