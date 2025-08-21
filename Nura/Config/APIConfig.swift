@@ -1,32 +1,22 @@
 import Foundation
 
 struct APIConfig {
-    // MARK: - ChatGPT Configuration
+    // MARK: - Supabase Proxy Configuration
+    static let supabaseURL = "https://zmstyicgzplmuaehtloe.supabase.co"
+    static let supabaseEdgeFunctionURL = "\(supabaseURL)/functions/v1/openai-proxy"
+    
+    // MARK: - Legacy OpenAI Configuration (for reference only)
     static let openAIBaseURL = "https://api.openai.com/v1"
     
     // MARK: - API Key Management
-    // For development: Set your API key here temporarily
-    // For production: Use a secure key management service or backend
-    private static let developmentAPIKey = "your api key" // ⚠️ REMOVE BEFORE MERGING TO MAIN
-    
+    // API keys are now managed securely in Supabase backend
+    // No more client-side API keys needed
     static let openAIAPIKey: String = {
         print("🔍 APIConfig: openAIAPIKey getter called!")
-        print("🔍 APIConfig: developmentAPIKey = \(developmentAPIKey)")
+        print("🔍 APIConfig: Using Supabase proxy - no client-side API key needed")
         
-        // First try to get from UserDefaults (if user has set it in app)
-        if let userKey = UserDefaults.standard.string(forKey: "OPENAI_API_KEY"), !userKey.isEmpty {
-            print("🔍 APIConfig: Using UserDefaults API key: \(userKey.prefix(10))...")
-            return userKey
-        }
-        
-        // Fallback to development key (remove this in production)
-        #if DEBUG
-        print("🔍 APIConfig: Using development API key: \(developmentAPIKey.prefix(10))...")
-        return developmentAPIKey
-        #else
-        // In production, you might want to fetch from a secure backend
-        fatalError("OpenAI API key not configured. Please set it in UserDefaults or use a secure key management service.")
-        #endif
+        // This is now deprecated - all calls go through Supabase
+        return "supabase-proxy"
     }()
     
     // MARK: - Runtime API Key Configuration
@@ -40,8 +30,9 @@ struct APIConfig {
     }
     
     // MARK: - API Endpoints
-    static let chatGPTVisionEndpoint = "\(openAIBaseURL)/chat/completions" // legacy path for vision usage
-    static let chatCompletionsEndpoint = "\(openAIBaseURL)/chat/completions" // text-only chat completion
+    // All OpenAI calls now go through Supabase proxy for security and rate limiting
+    static let chatGPTVisionEndpoint = supabaseEdgeFunctionURL
+    static let chatCompletionsEndpoint = supabaseEdgeFunctionURL
     
     // MARK: - Model Configuration
     static let gpt35VisionModel = "gpt-4o-mini" // Vision-capable model
