@@ -28,6 +28,7 @@ public enum BillingCycle: String, CaseIterable {
 extension Notification.Name {
     static let nuraAnalysisCompleted = Notification.Name("nura.analysis.completed")
     static let nuraRecommendationsUpdated = Notification.Name("nura.recommendations.updated")
+    static let nuraSwitchTab = Notification.Name("nura.switch.tab")
 }
 
 // MARK: - API Usage Models
