@@ -173,12 +173,12 @@ class ChatGPTServiceManager: ObservableObject {
         let messages = [systemMessage, userMessage]
         
         // Convert to the format expected by Supabase proxy
-        let messagesDict = messages.map { message in
-            var content: Any
+        let messagesDict: [[String: Any]] = messages.map { message in
+            let contentAny: Any
             if message.content.count == 1 && message.content.first?.type == "text" {
-                content = message.content.first?.text ?? ""
+                contentAny = message.content.first?.text ?? ""
             } else {
-                content = message.content.map { contentItem in
+                contentAny = message.content.map { contentItem -> [String: Any] in
                     if contentItem.type == "text" {
                         return ["type": "text", "text": contentItem.text ?? ""]
                     } else if contentItem.type == "image_url" {
@@ -190,8 +190,8 @@ class ChatGPTServiceManager: ObservableObject {
             }
             
             return [
-                "role": message.role,
-                "content": content
+                "role": message.role as Any,
+                "content": contentAny
             ]
         }
         
@@ -200,7 +200,7 @@ class ChatGPTServiceManager: ObservableObject {
         print("🔍 ChatGPTServiceManager: Messages count: \(messagesDict.count)")
         
         // Use Supabase proxy instead of direct OpenAI call
-        let response = try await SupabaseProxyManager.shared.makeOpenAIRequest(
+        let responseString: String = try await SupabaseProxyManager.shared.makeOpenAIRequest(
             model: model,
             messages: messagesDict,
             maxTokens: APIConfig.maxTokensPerRequest,
@@ -214,7 +214,7 @@ class ChatGPTServiceManager: ObservableObject {
         print("🔍 ChatGPTServiceManager: Supabase proxy response received, parsing...")
         
         // Parse the response from Supabase proxy
-        guard let data = response.data(using: .utf8) else {
+        guard let data = responseString.data(using: .utf8) else {
             print("❌ ChatGPTServiceManager: Failed to convert response to data")
             throw ChatGPTError.invalidResponse
         }
