@@ -2,6 +2,7 @@ import SwiftUI
 
 struct NuraProView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject var userTierManager: UserTierManager
     @State private var expandedPro: Bool = true
     @State private var expandedProUnlimited: Bool = false
     @State private var expandedFree: Bool = false
@@ -9,8 +10,8 @@ struct NuraProView: View {
     @State private var showAllPro: Bool = false
     @Namespace private var toggleNS
     @State private var yearlyPulse: Bool = false
-    @State private var selectedPlan: ComparePlan = .proUnlimited
-    @State private var currentIndex: Int = 0
+    @State private var selectedPlan: ComparePlan = .free
+    @State private var currentIndex: Int = 2 // Start with free tier (index 2)
     @State private var navigateToPayment: Bool = false
 
     
@@ -54,6 +55,20 @@ struct NuraProView: View {
                 LinearGradient(gradient: Gradient(colors: [Color.purple.opacity(0.10), Color.white]), startPoint: .topLeading, endPoint: .bottomTrailing)
             }
             .ignoresSafeArea()
+            .onAppear {
+                // Set selected plan based on user's current tier
+                switch userTierManager.tier {
+                case .free:
+                    selectedPlan = .free
+                    currentIndex = 2
+                case .pro:
+                    selectedPlan = .pro
+                    currentIndex = 1
+                case .proUnlimited:
+                    selectedPlan = .proUnlimited
+                    currentIndex = 0
+                }
+            }
             VStack(spacing: 0) {
                 // Ensure header sits above content
                 Color.clear.frame(height: 0).zIndex(30)

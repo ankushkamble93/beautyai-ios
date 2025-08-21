@@ -28,4 +28,34 @@ public enum BillingCycle: String, CaseIterable {
 extension Notification.Name {
     static let nuraAnalysisCompleted = Notification.Name("nura.analysis.completed")
     static let nuraRecommendationsUpdated = Notification.Name("nura.recommendations.updated")
+}
+
+// MARK: - API Usage Models
+struct UsageStats {
+    let totalRequestsToday: Int
+    let totalTokensToday: Int
+    let totalCostToday: Double
+    let requestsThisMinute: Int
+    let tier: String
+    let maxRequestsPerMinute: Int
+    let remainingRequestsThisMinute: Int
+    
+    var costFormatted: String {
+        return String(format: "$%.4f", totalCostToday)
+    }
+    
+    var isNearLimit: Bool {
+        return remainingRequestsThisMinute <= 2
+    }
+    
+    var isAtLimit: Bool {
+        return remainingRequestsThisMinute <= 0
+    }
+}
+
+struct DailyUsage {
+    let date: Date
+    let requests: Int
+    let tokens: Int
+    let cost: Double
 } 

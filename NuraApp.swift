@@ -3,7 +3,8 @@ import SwiftUI
 @main
 struct NuraApp: App {
     @StateObject var authManager = AuthenticationManager.shared
-    @StateObject var skinAnalysisManager = SkinAnalysisManager()
+    @StateObject var userTierManager = UserTierManager(authManager: AuthenticationManager.shared)
+    @StateObject var skinAnalysisManager = SkinAnalysisManager(userTierManager: userTierManager)
     @StateObject var appearanceManager = AppearanceManager()
     
     var body: some Scene {
@@ -11,11 +12,13 @@ struct NuraApp: App {
             RootFlowView(
                 authManager: authManager,
                 skinAnalysisManager: skinAnalysisManager,
-                appearanceManager: appearanceManager
+                appearanceManager: appearanceManager,
+                userTierManager: userTierManager
             )
             .environmentObject(authManager)
             .environmentObject(skinAnalysisManager)
             .environmentObject(appearanceManager)
+            .environmentObject(userTierManager)
             .onOpenURL { url in
                 // Handle the deep link asynchronously
                 Task {
@@ -30,13 +33,15 @@ struct RootFlowView: View {
     @ObservedObject var authManager: AuthenticationManager
     @ObservedObject var skinAnalysisManager: SkinAnalysisManager
     @ObservedObject var appearanceManager: AppearanceManager
+    @ObservedObject var userTierManager: UserTierManager
     @StateObject private var shareManager = ShareManager()
     @State private var refreshTrigger = 0
     
-    init(authManager: AuthenticationManager, skinAnalysisManager: SkinAnalysisManager, appearanceManager: AppearanceManager) {
+    init(authManager: AuthenticationManager, skinAnalysisManager: SkinAnalysisManager, appearanceManager: AppearanceManager, userTierManager: UserTierManager) {
         self.authManager = authManager
         self.skinAnalysisManager = skinAnalysisManager
         self.appearanceManager = appearanceManager
+        self.userTierManager = userTierManager
         print("🔍 RootFlowView: Initialized with all managers")
     }
     
@@ -77,6 +82,7 @@ struct RootFlowView: View {
                             .environmentObject(skinAnalysisManager)
                             .environmentObject(appearanceManager)
                             .environmentObject(shareManager)
+                            .environmentObject(userTierManager)
                             .onAppear {
                                 print("🔍 DashboardView: Actually appeared!")
                             }

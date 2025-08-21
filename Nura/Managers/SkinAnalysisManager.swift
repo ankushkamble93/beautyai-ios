@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import Supabase
 
 struct LocalUserProfile: Codable {
     let age: Int
@@ -19,6 +20,7 @@ class SkinAnalysisManager: ObservableObject {
     @Published var uploadedImages: [UIImage] = []
     @Published var recommendations: SkincareRecommendations?
     @Published var isReloading: Bool = false
+    @Published var reloadStartTime: Date? // Track when regeneration starts
     @Published var recommendationsUpdatedAt: Date?
     @Published var recommendationsChangeLog: [String] = []
     @Published var errorMessage: String?
@@ -28,6 +30,21 @@ class SkinAnalysisManager: ObservableObject {
     private let chatGPTService = ChatGPTServiceManager()
     private let userTierManager: UserTierManager
     private var analysisTimer: Timer?
+    
+    // MARK: - Timer Computed Properties
+    
+    /// Calculate elapsed time since regeneration started
+    var reloadElapsedTime: TimeInterval {
+        guard let startTime = reloadStartTime else { return 0 }
+        return Date().timeIntervalSince(startTime)
+    }
+    
+    /// Calculate countdown time (starts from 15 seconds)
+    var reloadCountdownTime: TimeInterval {
+        let elapsed = reloadElapsedTime
+        let countdown = 15.0 - elapsed
+        return max(0, countdown)
+    }
     
     init(userTierManager: UserTierManager) {
         self.userTierManager = userTierManager
@@ -282,6 +299,7 @@ class SkinAnalysisManager: ObservableObject {
         
         do {
             isReloading = true
+            reloadStartTime = Date() // Set start time for timer
             let oldRecs = self.recommendations
             let startTs = Date()
             // Build a lightweight pseudo-prompt by serializing current results
@@ -625,32 +643,36 @@ class SkinAnalysisManager: ObservableObject {
         }
         struct TextResp: Codable { struct Choice: Codable { struct Msg: Codable { let content: String }; let message: Msg }; let choices: [Choice] }
         
-        guard APIConfig.openAIAPIKey != "YOUR_OPENAI_API_KEY" else { throw ChatGPTError.apiKeyNotConfigured }
+        // No need to check API key - Supabase proxy handles authentication
         let system = TextMessage(role: "system", content: "You are a skincare expert that returns strict JSON only.")
         let user = TextMessage(role: "user", content: prompt)
-        let req = TextReq(
+        
+        // Convert to the format expected by Supabase proxy
+        let messagesDict = [
+            [
+                "role": system.role,
+                "content": system.content
+            ],
+            [
+                "role": user.role,
+                "content": user.content
+            ]
+        ]
+        
+        // Use Supabase proxy instead of direct OpenAI call
+        let response = try await SupabaseProxyManager.shared.makeOpenAIRequest(
             model: model,
-            messages: [system, user],
-            temperature: 0.0,
-            top_p: 1.0,
-            max_tokens: APIConfig.maxTokensPerRequest,
-            seed: APIConfig.jsonSeed,
-            response_format: APIConfig.preferJSONMode ? ResponseFormat(type: "json_object") : nil
+            messages: messagesDict,
+            maxTokens: APIConfig.maxTokensPerRequest,
+            temperature: 0.0
         )
-        var urlRequest = URLRequest(url: URL(string: APIConfig.chatCompletionsEndpoint)!)
-        urlRequest.httpMethod = "POST"
-        urlRequest.setValue("Bearer \(APIConfig.openAIAPIKey)", forHTTPHeaderField: "Authorization")
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.httpBody = try JSONEncoder().encode(req)
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = APIConfig.requestTimeout
-        config.timeoutIntervalForResource = APIConfig.resourceTimeout
-        config.waitsForConnectivity = true
-        let session = URLSession(configuration: config)
-        let (data, response) = try await session.data(for: urlRequest)
-        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-        let bodyPreview = String(data: data, encoding: .utf8)?.prefix(300) ?? "<non-utf8-body>"
-        print("📡 OpenAI response status=\(status) body(first 300)=\(bodyPreview)…")
+        
+        // Parse the response from Supabase proxy
+        guard let data = response.data(using: .utf8) else {
+            throw ChatGPTError.invalidResponse
+        }
+        
+        print("📡 Supabase proxy response received")
         do {
             let decoded = try JSONDecoder().decode(TextResp.self, from: data)
             return decoded.choices.first?.message.content ?? "{}"

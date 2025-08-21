@@ -2312,5 +2312,4 @@ struct StreakCard: View {
     DashboardView()
         .environmentObject(SkinAnalysisManager(userTierManager: UserTierManager(authManager: AuthenticationManager.shared)))
         .environmentObject(ShareManager())
-        .environmentObject(UserTierManager(authManager: AuthenticationManager.shared))
 } 

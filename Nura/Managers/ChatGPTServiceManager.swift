@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import Supabase
 
 @MainActor
 class ChatGPTServiceManager: ObservableObject {
@@ -132,10 +133,7 @@ class ChatGPTServiceManager: ObservableObject {
         print("🔍 ChatGPTServiceManager: Model: \(model)")
         print("🔍 ChatGPTServiceManager: Images count: \(images.count)")
         
-        guard APIConfig.openAIAPIKey != "YOUR_OPENAI_API_KEY" else {
-            print("❌ ChatGPTServiceManager: API key not configured")
-            throw ChatGPTError.apiKeyNotConfigured
-        }
+        // No need to check API key - Supabase proxy handles authentication
         
         let imageContents = images.map { base64Image in
             let imageUrl = "data:image/jpeg;base64,\(base64Image)"
@@ -174,57 +172,54 @@ class ChatGPTServiceManager: ObservableObject {
         
         let messages = [systemMessage, userMessage]
         
-        let request = ChatGPTVisionRequest(
+        // Convert to the format expected by Supabase proxy
+        let messagesDict = messages.map { message in
+            var content: Any
+            if message.content.count == 1 && message.content.first?.type == "text" {
+                content = message.content.first?.text ?? ""
+            } else {
+                content = message.content.map { contentItem in
+                    if contentItem.type == "text" {
+                        return ["type": "text", "text": contentItem.text ?? ""]
+                    } else if contentItem.type == "image_url" {
+                        return ["type": "image_url", "image_url": ["url": contentItem.imageURL?.url ?? ""]]
+                    } else {
+                        return ["type": "text", "text": ""]
+                    }
+                }
+            }
+            
+            return [
+                "role": message.role,
+                "content": content
+            ]
+        }
+        
+        print("🔍 ChatGPTServiceManager: Request payload created for Supabase proxy")
+        print("🔍 ChatGPTServiceManager: Max tokens: \(APIConfig.maxTokensPerRequest)")
+        print("🔍 ChatGPTServiceManager: Messages count: \(messagesDict.count)")
+        
+        // Use Supabase proxy instead of direct OpenAI call
+        let response = try await SupabaseProxyManager.shared.makeOpenAIRequest(
             model: model,
-            messages: messages,
+            messages: messagesDict,
             maxTokens: APIConfig.maxTokensPerRequest,
             temperature: 0.3
         )
-        
-        print("🔍 ChatGPTServiceManager: Request payload created")
-        print("🔍 ChatGPTServiceManager: Max tokens: \(APIConfig.maxTokensPerRequest)")
-        print("🔍 ChatGPTServiceManager: Messages count: \(messages.count)")
-        print("🔍 ChatGPTServiceManager: System message: \(systemMessage.content.first?.text ?? "none")")
-        print("🔍 ChatGPTServiceManager: User message content count: \(userMessage.content.count)")
-        print("🔍 ChatGPTServiceManager: Images in request: \(imageContents.count)")
-        
-        var urlRequest = URLRequest(url: URL(string: APIConfig.chatGPTVisionEndpoint)!)
-        urlRequest.httpMethod = "POST"
-        urlRequest.setValue("Bearer \(APIConfig.openAIAPIKey)", forHTTPHeaderField: "Authorization")
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        print("🔍 ChatGPTServiceManager: URL request configured")
-        
-        do {
-            urlRequest.httpBody = try JSONEncoder().encode(request)
-            print("🔍 ChatGPTServiceManager: Request body encoded successfully")
-        } catch {
-            print("❌ ChatGPTServiceManager: Failed to encode request: \(error)")
-            throw ChatGPTError.encodingFailed
-        }
         
         // Update rate limiting
         updateRateLimit()
         print("🔍 ChatGPTServiceManager: Rate limit updated")
         
-        print("🔍 ChatGPTServiceManager: Sending HTTP request...")
-        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+        print("🔍 ChatGPTServiceManager: Supabase proxy response received, parsing...")
         
-        guard let httpResponse = response as? HTTPURLResponse else {
-            print("❌ ChatGPTServiceManager: Invalid response type")
+        // Parse the response from Supabase proxy
+        guard let data = response.data(using: .utf8) else {
+            print("❌ ChatGPTServiceManager: Failed to convert response to data")
             throw ChatGPTError.invalidResponse
         }
         
-        print("🔍 ChatGPTServiceManager: HTTP response received - Status: \(httpResponse.statusCode)")
-        // Headers available but not printing full dictionary to avoid log duplication/noise
-        
-        if let responseString = String(data: data, encoding: .utf8) {
-            print("🔍 ChatGPTServiceManager: Response body: \(responseString)")
-        }
-        
-        switch httpResponse.statusCode {
-        case 200:
-            print("🔍 ChatGPTServiceManager: Success response (200), decoding...")
+        print("🔍 ChatGPTServiceManager: Success response from Supabase proxy, decoding...")
             do {
                 let result = try JSONDecoder().decode(ChatGPTVisionResponse.self, from: data)
                 print("🔍 ChatGPTServiceManager: Response decoded successfully")
@@ -233,22 +228,7 @@ class ChatGPTServiceManager: ObservableObject {
                 print("❌ ChatGPTServiceManager: Failed to decode response: \(error)")
                 throw ChatGPTError.decodingFailed
             }
-        case 429:
-            print("❌ ChatGPTServiceManager: Rate limit exceeded (429)")
-            throw ChatGPTError.rateLimitExceeded
-        case 401:
-            print("❌ ChatGPTServiceManager: Unauthorized (401) - Check API key")
-            throw ChatGPTError.unauthorized
-        case 400:
-            print("❌ ChatGPTServiceManager: Bad request (400)")
-            throw ChatGPTError.badRequest
-        case 404:
-            print("❌ ChatGPTServiceManager: Not found (404) - Check endpoint URL")
-            throw ChatGPTError.serverError(statusCode: httpResponse.statusCode)
-        default:
-            print("❌ ChatGPTServiceManager: Server error (\(httpResponse.statusCode))")
-            throw ChatGPTError.serverError(statusCode: httpResponse.statusCode)
-        }
+        // Error handling is now done by SupabaseProxyManager
     }
     
     private func parseAnalysisResponse(_ response: ChatGPTVisionResponse, _ imageCount: Int, _ model: String) throws -> SkinAnalysisResult {

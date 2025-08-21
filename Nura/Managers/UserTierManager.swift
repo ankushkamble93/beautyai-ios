@@ -94,6 +94,20 @@ class UserTierManager: ObservableObject {
     /// Check if user has access to advanced tracking features
     func hasAdvancedTrackingAccess() -> Bool { return tier != .free }
     
+    // MARK: - Rate Limiting
+    
+    /// Get maximum requests per minute for user's tier
+    func getMaxRequestsForTier(_ tier: Tier) -> Int {
+        switch tier {
+        case .free:
+            return 5 // 5 requests per minute for free users
+        case .pro:
+            return 20 // 20 requests per minute for pro users
+        case .proUnlimited:
+            return 100 // 100 requests per minute for unlimited users
+        }
+    }
+    
     // MARK: - Daily Analysis Limits
     
     private let userDefaults = UserDefaults.standard
