@@ -116,12 +116,12 @@ class ChatManager: ObservableObject {
         history.append(ChatGPTMessage(role: "user", content: [ChatGPTContent(type: "text", text: userPrompt, imageURL: nil)]))
         
         // Convert to the format expected by Supabase proxy
-        let messagesDict = history.map { message in
-            var content: Any
+        let messagesDict: [[String: Any]] = history.map { message in
+            let contentAny: Any
             if message.content.count == 1 && message.content.first?.type == "text" {
-                content = message.content.first?.text ?? ""
+                contentAny = message.content.first?.text ?? ""
             } else {
-                content = message.content.map { contentItem in
+                contentAny = message.content.map { contentItem -> [String: Any] in
                     if contentItem.type == "text" {
                         return ["type": "text", "text": contentItem.text ?? ""]
                     } else if contentItem.type == "image_url" {
@@ -133,13 +133,13 @@ class ChatManager: ObservableObject {
             }
             
             return [
-                "role": message.role,
-                "content": content
+                "role": message.role as Any,
+                "content": contentAny
             ]
         }
         
         // Use Supabase proxy instead of direct OpenAI call
-        let response = try await SupabaseProxyManager.shared.makeOpenAIRequest(
+        let responseString: String = try await SupabaseProxyManager.shared.makeOpenAIRequest(
             model: APIConfig.fastTextModel,
             messages: messagesDict,
             maxTokens: APIConfig.maxTokensPerRequest,
@@ -147,7 +147,7 @@ class ChatManager: ObservableObject {
         )
         
         // Parse the response from Supabase proxy
-        guard let data = response.data(using: .utf8) else {
+        guard let data = responseString.data(using: .utf8) else {
             throw NSError(domain: "ChatManager", code: -2, userInfo: [NSLocalizedDescriptionKey: "Failed to parse response"])
         }
         
