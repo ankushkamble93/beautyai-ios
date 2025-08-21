@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ProductCardView: View {
     let product: ProductSearchResult
-    @StateObject private var loader = ImageLoader()
+    // Use AsyncImage for simplicity to avoid custom loader dependency
     @State private var isSaved = false
     @EnvironmentObject var userTierManager: UserTierManager
     
@@ -12,20 +12,25 @@ struct ProductCardView: View {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color(.secondarySystemBackground))
                     .frame(width: 80, height: 80)
-                if let image = loader.image {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 80, height: 80)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                } else {
-                    if loader.isLoading {
-                        ProgressView().frame(width: 80, height: 80)
-                    } else {
-                        Image(systemName: "photo")
-                            .font(.title2)
-                            .foregroundColor(.secondary)
+                if let urlStr = product.imageURL, let url = URL(string: urlStr) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image.resizable().scaledToFill()
+                        case .failure:
+                            Image(systemName: "photo").font(.title2).foregroundColor(.secondary)
+                        case .empty:
+                            ProgressView()
+                        @unknown default:
+                            ProgressView()
+                        }
                     }
+                    .frame(width: 80, height: 80)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                } else {
+                    Image(systemName: "photo")
+                        .font(.title2)
+                        .foregroundColor(.secondary)
                 }
             }
             VStack(alignment: .leading, spacing: 6) {
@@ -67,7 +72,7 @@ struct ProductCardView: View {
         .background(Color(.systemBackground))
         .cornerRadius(14)
         .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
-        .onAppear { Task { await loader.load(from: product.imageURL) } }
+        // No custom loader needed
     }
     
     private func saveToRoutine(_ product: ProductSearchResult) {

@@ -21,7 +21,7 @@ class SupabaseProxyManager: ObservableObject {
         messages: [[String: Any]],
         maxTokens: Int? = nil,
         temperature: Double? = nil
-    ) async throws -> [String: Any] {
+    ) async throws -> String {
         
         guard let session = AuthenticationManager.shared.session else {
             throw SupabaseProxyError.notAuthenticated
@@ -77,33 +77,31 @@ class SupabaseProxyManager: ObservableObject {
             // Handle different HTTP status codes
             switch httpResponse.statusCode {
             case 200:
-                // Success - parse OpenAI response
-                let responseDict = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-                guard let responseDict = responseDict else {
+                // Success - return raw response string
+                guard let responseString = String(data: data, encoding: .utf8) else {
                     throw SupabaseProxyError.invalidResponseData
                 }
-                
                 print("✅ SupabaseProxyManager: Request successful")
-                return responseDict
+                return responseString
                 
             case 401:
                 throw SupabaseProxyError.notAuthenticated
                 
             case 429:
                 // Rate limit exceeded
-                let errorData = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let errorData = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
                 let retryAfter = errorData?["retryAfter"] as? Int ?? 60
                 throw SupabaseProxyError.rateLimitExceeded(retryAfter: retryAfter)
                 
             case 400...499:
                 // Client error
-                let errorData = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let errorData = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
                 let errorMessage = errorData?["error"] as? String ?? "Client error"
                 throw SupabaseProxyError.clientError(message: errorMessage)
                 
             case 500...599:
                 // Server error
-                let errorData = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let errorData = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
                 let errorMessage = errorData?["error"] as? String ?? "Server error"
                 throw SupabaseProxyError.serverError(message: errorMessage)
                 
@@ -128,7 +126,7 @@ class SupabaseProxyManager: ObservableObject {
         messages: [[String: Any]],
         maxTokens: Int? = nil,
         temperature: Double? = nil
-    ) async throws -> [String: Any] {
+    ) async throws -> String {
         return try await makeOpenAIRequest(
             model: model,
             messages: messages,
@@ -141,7 +139,7 @@ class SupabaseProxyManager: ObservableObject {
         model: String,
         messages: [[String: Any]],
         maxTokens: Int? = nil
-    ) async throws -> [String: Any] {
+    ) async throws -> String {
         return try await makeOpenAIRequest(
             model: model,
             messages: messages,

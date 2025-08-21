@@ -53,9 +53,4 @@ struct UsageStats {
     }
 }
 
-struct DailyUsage {
-    let date: Date
-    let requests: Int
-    let tokens: Int
-    let cost: Double
-} 
+// DailyUsage lives in UsageAnalyticsManager to avoid duplication/ambiguity
