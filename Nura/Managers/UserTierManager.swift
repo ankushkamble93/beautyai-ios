@@ -31,6 +31,14 @@ class UserTierManager: ObservableObject {
     // MARK: - Premium Status Management
     
     func updatePremiumStatus() {
+        // Promo override: if a temporary promo is active, prefer it
+        if isPromoActive() {
+            self.tier = .pro
+            self.isPremium = true
+            self.currentUserProfile = authManager.userProfile
+            return
+        }
+        
         if let profile = authManager.userProfile {
             self.currentUserProfile = profile
             // Prefer premium_tier (enum in Supabase). Fallback to legacy plan or premium bool
@@ -121,6 +129,28 @@ class UserTierManager: ObservableObject {
     private var analysisDateKey: String {
         guard let userId = authManager.userProfile?.id else { return "daily_analysis_date_default" }
         return "daily_analysis_date_\(userId)"
+    }
+
+    // MARK: - Promo (temporary Pro) support
+    private var promoExpiryKey: String {
+        guard let userId = authManager.userProfile?.id else { return "promo_expiry_default" }
+        return "promo_expiry_\(userId)"
+    }
+    
+    /// Apply a temporary Pro promotion for the given number of days
+    func applyPromoPro(forDays days: Int) {
+        let expiry = Calendar.current.date(byAdding: .day, value: max(1, days), to: Date())
+        if let expiry { userDefaults.set(expiry, forKey: promoExpiryKey) }
+        self.tier = .pro
+        self.isPremium = true
+    }
+    
+    /// Check whether a promo is currently active; clears it if expired
+    private func isPromoActive() -> Bool {
+        guard let expiry = userDefaults.object(forKey: promoExpiryKey) as? Date else { return false }
+        if Date() <= expiry { return true }
+        userDefaults.removeObject(forKey: promoExpiryKey)
+        return false
     }
     
     /// Get the maximum daily analysis count for the user
