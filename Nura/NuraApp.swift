@@ -11,6 +11,7 @@ struct NuraApp: App {
     @StateObject private var appearanceManager = AppearanceManager()
     @StateObject private var urlHandler = URLHandler.shared
     @StateObject private var userTierManager: UserTierManager
+    @StateObject private var routineOverrideManager = RoutineOverrideManager()
     @AppStorage("colorSchemePreference") private var colorSchemePreference: String = "light"
     
     init() {
@@ -18,6 +19,8 @@ struct NuraApp: App {
         let authManager = AuthenticationManager.shared
         self._userTierManager = StateObject(wrappedValue: UserTierManager(authManager: authManager))
         self._skinAnalysisManager = StateObject(wrappedValue: SkinAnalysisManager(userTierManager: UserTierManager(authManager: authManager)))
+        // Setup Google CSE credentials for development
+        GoogleAPIConfig.setupDevelopmentCredentials()
     }
     
     var body: some Scene {
@@ -32,6 +35,7 @@ struct NuraApp: App {
                         .environmentObject(skinDiaryManager)
                         .environmentObject(appearanceManager)
                         .environmentObject(userTierManager)
+                        .environmentObject(routineOverrideManager)
                         .onAppear {
                             // On app open, let chat absorb any cached recommendations
                             chatManager.absorb(skinAnalysisManager.recommendations)
@@ -56,6 +60,7 @@ struct NuraApp: App {
                         .environmentObject(skinDiaryManager)
                         .environmentObject(appearanceManager)
                         .environmentObject(userTierManager)
+                        .environmentObject(routineOverrideManager)
                         .onAppear {
                             chatManager.absorb(skinAnalysisManager.recommendations)
                             chatManager.absorbAnalysisSummary(skinAnalysisManager.analysisResults)

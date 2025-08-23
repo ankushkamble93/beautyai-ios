@@ -5,6 +5,7 @@ struct ChatMessage: Identifiable, Codable {
     let content: String
     let isUser: Bool
     let timestamp: Date
+    var productResults: [ProductSearchResult]? = nil
 }
 
 struct ChatRequest: Codable {
@@ -114,6 +115,13 @@ struct ProductSearchResult: Identifiable, Codable {
         self.benefits = benefits
         self.imageURL = imageURL
         self.destinationURL = destinationURL
+    }
+}
+
+// Equatable by id so RoutineOverride can derive Equatable
+extension ProductSearchResult: Equatable {
+    static func == (lhs: ProductSearchResult, rhs: ProductSearchResult) -> Bool {
+        return lhs.id == rhs.id
     }
 }
 

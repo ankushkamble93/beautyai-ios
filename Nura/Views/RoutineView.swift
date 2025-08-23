@@ -3,6 +3,12 @@ import SwiftUI
 struct RoutineView: View {
     @Environment(\.presentationMode) var presentationMode
     @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject var skinAnalysisManager: SkinAnalysisManager
+    @EnvironmentObject var routineOverrideManager: RoutineOverrideManager
+    @State private var showSwapSheet: Bool = false
+    @State private var swapQuery: String = ""
+    @State private var swapResults: [ProductSearchResult] = []
+    @State private var swappingSlot: (time: SkincareStep.StepTime, category: SkincareStep.StepCategory)? = nil
     @State private var animate = false
     let bubbleWidth: CGFloat = 340
     private var cardBackground: Color {
@@ -46,11 +52,30 @@ struct RoutineView: View {
                         // Top row: Combined Routine (left) and Quick Stats (right)
                         HStack(alignment: .top, spacing: 18) {
                             // Combined Routine Floater (left)
-                            CombinedRoutineView(cardBackground: cardBackground)
+                            CombinedRoutineView(
+                                morning: displayedMorningSteps,
+                                evening: displayedEveningSteps,
+                                weekly: displayedWeeklySteps,
+                                cardBackground: cardBackground,
+                                onSwap: { time, category in
+                                    startSwap(time, category)
+                                }
+                            )
                                 .frame(width: bubbleWidth * 0.55)
                                 .opacity(animate ? 1 : 0)
                                 .offset(y: animate ? 0 : 30)
                                 .animation(.easeOut(duration: 0.7).delay(0.1), value: animate)
+                                .overlay(alignment: .topTrailing) {
+                                    Menu {
+                                        Button("Swap Morning Cleanser") { startSwap(.morning, .cleanser) }
+                                        Button("Swap Morning Serum") { startSwap(.morning, .serum) }
+                                        Button("Swap Evening Treatment") { startSwap(.evening, .treatment) }
+                                    } label: {
+                                        Image(systemName: "arrow.triangle.2.circlepath")
+                                            .foregroundColor(.blue)
+                                            .padding(6)
+                                    }
+                                }
                             // Quick Stats Floater (right)
                             VStack(spacing: 16) {
                                 StatBubbleView(
@@ -125,12 +150,75 @@ struct RoutineView: View {
                 }
             }
         }
+        .sheet(isPresented: $showSwapSheet) {
+            NavigationView {
+                VStack(spacing: 12) {
+                    HStack {
+                        TextField("Search products…", text: $swapQuery)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                        Button("Search") { Task { await performSwapSearch() } }
+                    }
+                    .padding()
+                    ScrollView {
+                        VStack(spacing: 10) {
+                            ForEach(swapResults) { p in
+                                Button(action: { selectSwapProduct(p) }) {
+                                    ProductCardView(product: p)
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+                .navigationTitle("Swap Step")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Done") { showSwapSheet = false } }
+                }
+            }
+        }
+    }
+
+    // MARK: - Derived routines from latest recommendations with overrides applied
+    private var displayedMorningSteps: [SkincareStep] {
+        guard let recs = skinAnalysisManager.recommendations else { return sampleMorning }
+        let overridden = routineOverrideManager.applyOverrides(to: recs)
+        return overridden.morningRoutine
+    }
+    private var displayedEveningSteps: [SkincareStep] {
+        guard let recs = skinAnalysisManager.recommendations else { return sampleEvening }
+        let overridden = routineOverrideManager.applyOverrides(to: recs)
+        return overridden.eveningRoutine
+    }
+    private var displayedWeeklySteps: [SkincareStep] {
+        guard let recs = skinAnalysisManager.recommendations else { return [] }
+        let overridden = routineOverrideManager.applyOverrides(to: recs)
+        return overridden.weeklyTreatments
+    }
+    private var sampleMorning: [SkincareStep] {
+        [
+            SkincareStep(name: "Cleanser", description: "", category: .cleanser, duration: 60, frequency: .daily, stepTime: .morning, tips: []),
+            SkincareStep(name: "Vitamin C Serum", description: "", category: .serum, duration: 60, frequency: .daily, stepTime: .morning, tips: []),
+            SkincareStep(name: "Moisturizer", description: "", category: .moisturizer, duration: 60, frequency: .daily, stepTime: .morning, tips: []),
+            SkincareStep(name: "SPF 50", description: "", category: .sunscreen, duration: 60, frequency: .daily, stepTime: .morning, tips: [])
+        ]
+    }
+    private var sampleEvening: [SkincareStep] {
+        [
+            SkincareStep(name: "Cleanser", description: "", category: .cleanser, duration: 60, frequency: .daily, stepTime: .evening, tips: []),
+            SkincareStep(name: "Retinol Serum", description: "", category: .treatment, duration: 60, frequency: .nightly, stepTime: .evening, tips: []),
+            SkincareStep(name: "Moisturizer", description: "", category: .moisturizer, duration: 60, frequency: .nightly, stepTime: .evening, tips: [])
+        ]
     }
 }
 
 // Combined Routine Floater (for easy ChatGPT integration)
 struct CombinedRoutineView: View {
+    let morning: [SkincareStep]
+    let evening: [SkincareStep]
+    let weekly: [SkincareStep]
     let cardBackground: Color
+    var onSwap: ((SkincareStep.StepTime, SkincareStep.StepCategory) -> Void)? = nil
+    @State private var animateOnce: Bool = false
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
@@ -138,11 +226,8 @@ struct CombinedRoutineView: View {
                 Text("Morning Routine")
                     .font(.headline).fontWeight(.semibold)
             }
-            ForEach(["Cleanser", "Vitamin C Serum", "Moisturizer", "SPF 50"], id: \.self) { step in
-                HStack {
-                    Image(systemName: "checkmark.circle.fill").foregroundColor(.blue.opacity(0.7)).font(.system(size: 18))
-                    Text(step).font(.body)
-                }
+            ForEach(morning) { step in
+                routineRow(step)
             }
             Divider().padding(.vertical, 4)
             HStack(spacing: 8) {
@@ -150,10 +235,17 @@ struct CombinedRoutineView: View {
                 Text("Night Routine")
                     .font(.headline).fontWeight(.semibold)
             }
-            ForEach(["Cleanser", "Retinol Serum", "Moisturizer", "Eye Cream"], id: \.self) { step in
-                HStack {
-                    Image(systemName: "checkmark.circle.fill").foregroundColor(.purple.opacity(0.7)).font(.system(size: 18))
-                    Text(step).font(.body)
+            ForEach(evening) { step in
+                routineRow(step)
+            }
+            if !weekly.isEmpty {
+                Divider().padding(.vertical, 4)
+                HStack(spacing: 8) {
+                    Image(systemName: "calendar").foregroundColor(.orange)
+                    Text("Weekly Treatments").font(.headline).fontWeight(.semibold)
+                }
+                ForEach(weekly) { step in
+                    routineRow(step)
                 }
             }
         }
@@ -161,6 +253,70 @@ struct CombinedRoutineView: View {
         .background(cardBackground)
         .cornerRadius(18)
         .shadow(color: Color.blue.opacity(0.08), radius: 10, x: 0, y: 4)
+        .onAppear {
+            // trigger one-time spin animation for swap glyphs
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                animateOnce = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { animateOnce = false }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func routineRow(_ step: SkincareStep) -> some View {
+        HStack {
+            ZStack {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(colorFor(step.category))
+                    .font(.system(size: 18))
+                // White border swap symbol centered; rotate once
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white)
+                    .rotationEffect(.degrees(animateOnce ? 360 : 0))
+                    .animation(.easeOut(duration: 0.9), value: animateOnce)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onSwap?(step.stepTime, step.category)
+            }
+            Text(step.name).font(.body)
+        }
+    }
+
+    private func colorFor(_ category: SkincareStep.StepCategory) -> Color {
+        switch category {
+        case .cleanser: return Color.blue.opacity(0.7)
+        case .toner: return Color.cyan.opacity(0.7)
+        case .serum: return Color.purple.opacity(0.7)
+        case .moisturizer: return Color.green.opacity(0.7)
+        case .sunscreen: return Color.yellow.opacity(0.8)
+        case .treatment: return Color.orange.opacity(0.8)
+        case .mask: return Color.orange.opacity(0.8)
+        }
+    }
+}
+
+// MARK: - Swap helpers
+extension RoutineView {
+    private func startSwap(_ time: SkincareStep.StepTime, _ category: SkincareStep.StepCategory) {
+        swappingSlot = (time: time, category: category)
+        showSwapSheet = true
+    }
+    private func performSwapSearch() async {
+        let q = swapQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return }
+        let query = ProductSearchManager.ProductQuery(rawText: q, normalizedQuery: q, categoryHint: nil)
+        let results = await ProductSearchManager.shared.searchProducts(query: query)
+        swapResults = results
+    }
+    private func selectSwapProduct(_ p: ProductSearchResult) {
+        guard let slot = swappingSlot else { return }
+        routineOverrideManager.save(product: p, category: slot.category, stepTime: slot.time)
+        // Reflect immediately by closing and clearing results
+        swapResults = []
+        swapQuery = ""
+        showSwapSheet = false
     }
 }
 

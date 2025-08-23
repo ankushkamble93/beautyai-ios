@@ -5,6 +5,7 @@ struct ProductCardView: View {
     // Use AsyncImage for simplicity to avoid custom loader dependency
     @State private var isSaved = false
     @EnvironmentObject var userTierManager: UserTierManager
+    @EnvironmentObject var routineOverrideManager: RoutineOverrideManager
     
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -76,12 +77,13 @@ struct ProductCardView: View {
     }
     
     private func saveToRoutine(_ product: ProductSearchResult) {
-        var saved = UserDefaults.standard.array(forKey: "nura.saved.products") as? [Data] ?? []
-        if let data = try? JSONEncoder().encode(product) {
-            saved.append(data)
-            UserDefaults.standard.set(saved, forKey: "nura.saved.products")
-            isSaved = true
+        guard userTierManager.tier != .free else {
+            userTierManager.navigateToUpgrade()
+            return
         }
+        // Infer from product name whether morning/evening and category
+        routineOverrideManager.save(product: product, inferredFrom: product.name)
+        isSaved = true
     }
 }
 

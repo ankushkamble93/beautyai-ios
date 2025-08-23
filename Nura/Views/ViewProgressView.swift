@@ -71,10 +71,11 @@ struct ViewProgressView: View {
     }
     
     var logsToUse: [SkinLog] {
-        // IMPORTANT: Graph is independent of diary. Do NOT switch to diary entries.
-        // Only switch to real data when skin analysis (Dashboard) produces a valid score.
-        // Use cached results to ensure consistency with DashboardView cache expiry
-        if let analysisResults = skinAnalysisManager.getCachedAnalysisResults() {
+        // Gate graph until the user has at least one analysis
+        guard let analysisResults = skinAnalysisManager.getCachedAnalysisResults() else {
+            return []
+        }
+        // When we do have analysis data, seed the latest point and add samples behind it
             // Prefer percent from recommendations.progressTracking.skinHealthScore if available
             let recommendedScore = skinAnalysisManager.recommendations?.progressTracking.skinHealthScore
             let percent = recommendedScore.map { Int($0 * 100) } ?? max(1, min(100, Int(analysisResults.confidence * 100)))
@@ -91,9 +92,7 @@ struct ViewProgressView: View {
             }
             combined.append(analysisLog)
             return combined
-        }
-        // Otherwise, always show sample data
-        return dummyLogsForRange
+        
     }
     var displayedLogs: [SkinLog] {
         // Since logsToUse already handles the filtering logic, just return it
@@ -196,7 +195,7 @@ struct ViewProgressView: View {
                             VStack(spacing: 0) {
                                 LineGraphView(logs: displayedLogs, colorScheme: colorScheme)
                                     .frame(height: 220)
-                                    .padding(.top, 8)
+                                    .padding(.top, 14)
                                     .padding(.horizontal, 8)
                                 // Range toggles
                                 HStack(spacing: 12) {
@@ -210,7 +209,7 @@ struct ViewProgressView: View {
                                 .padding(.leading, 8)
                             }
                             // Enhanced graph labels
-                            VStack(alignment: .leading, spacing: 2) {
+                            VStack(alignment: .leading, spacing: 0) {
                                 Text("Skin Clarity %")
                                     .font(.caption)
                                     .fontWeight(.medium)
@@ -221,7 +220,7 @@ struct ViewProgressView: View {
                                     .foregroundColor(.secondary.opacity(0.8))
                             }
                             .padding(.leading, 8)
-                            .padding(.top, 2)
+                            .padding(.top, -6)
                             .background(Color.clear)
                         }
                         .padding(.bottom, 8)
@@ -443,20 +442,16 @@ struct LineGraphView: View {
                             .fill(Color.secondary.opacity(0.13))
                             .frame(width: 1, height: height - 20)
                         ZStack {
-                            // Shadow
+                            // Sharp polyline through each point (no smoothing)
                             if points.count > 1 {
                                 Path { path in
                                     path.move(to: points[0])
                                     for i in 1..<points.count {
-                                        let prev = points[i-1]
-                                        let curr = points[i]
-                                        let mid = CGPoint(x: (prev.x + curr.x)/2, y: (prev.y + curr.y)/2)
-                                        path.addQuadCurve(to: mid, control: prev)
+                                        path.addLine(to: points[i])
                                     }
-                                    path.addLine(to: points.last!)
                                 }
-                                .stroke(Color.green.opacity(0.7), lineWidth: 2)
-                                .shadow(color: Color.green.opacity(0.13), radius: 2, x: 0, y: 1)
+                                .stroke(Color.green.opacity(0.78), lineWidth: 2.2)
+                                .shadow(color: Color.green.opacity(0.12), radius: 1, x: 0, y: 1)
                             }
                             // Points (not tappable)
                             ForEach(Array(logs.enumerated()), id: \.offset) { idx, log in

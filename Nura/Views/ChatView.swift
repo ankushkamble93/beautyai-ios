@@ -52,6 +52,10 @@ struct ChatView: View {
                                     ForEach(chatManager.messages) { message in
                                         MessageBubble(message: message)
                                             .id(message.id)
+                                        if let results = message.productResults, !results.isEmpty {
+                                            ProductCardList(products: results)
+                                                .padding(.horizontal)
+                                        }
                                     }
                                 }
                                 if chatManager.isLoading {
@@ -245,6 +249,7 @@ struct MessageBubble: View {
                         .padding(.vertical, 10)
                         .background(isDark ? NuraColors.cardDark : Color(red: 0.976, green: 0.965, blue: 0.949)) // #F9F6F2
                         .foregroundColor(isDark ? NuraColors.textPrimaryDark : .black)
+                        .font(.callout)
                         .cornerRadius(20)
                         .cornerRadius(4, corners: [.topLeft, .topRight, .bottomLeft])
                         .contextMenu {
@@ -263,12 +268,13 @@ struct MessageBubble: View {
                             .font(.caption)
                             .padding(.top, 2)
                         
-                        // 5. Make the AI response bubble use a blue iMessage color
-                        Text(message.content)
+                        // 5. Make the AI response bubble use a blue iMessage color with light markdown rendering
+                        MarkdownText(text: message.content)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
                             .background(isDark ? NuraColors.primaryDark : Color(red: 0.29, green: 0.56, blue: 0.89))
                             .foregroundColor(isDark ? NuraColors.textPrimaryDark : .white)
+                            .font(.callout)
                             .cornerRadius(20)
                             .cornerRadius(4, corners: [.topLeft, .topRight, .bottomRight])
                             .contextMenu {
@@ -313,6 +319,40 @@ struct RoundedCorner: Shape {
             cornerRadii: CGSize(width: radius, height: radius)
         )
         return Path(path.cgPath)
+    }
+}
+
+// Lightweight Markdown renderer: supports **bold** and bullet points only
+struct MarkdownText: View {
+    let text: String
+    
+    var body: some View {
+        let attributed = MarkdownText.parse(text)
+        Text(attributed)
+    }
+    
+    static func parse(_ input: String) -> AttributedString {
+        var working = input
+        // Replace markdown bullets "- " with a dot prefix
+        working = working.replacingOccurrences(of: "\n- ", with: "\n• ")
+        
+        var attributed = AttributedString(working)
+        
+        // Parse **bold** - find and replace all instances
+        while let startRange = attributed.range(of: "**") {
+            if let endRange = attributed[startRange.upperBound...].range(of: "**") {
+                let boldRange = startRange.upperBound..<endRange.lowerBound
+                attributed[boldRange].inlinePresentationIntent = .stronglyEmphasized
+                
+                // Remove the ** markers
+                attributed.removeSubrange(endRange)
+                attributed.removeSubrange(startRange)
+            } else {
+                break
+            }
+        }
+        
+        return attributed
     }
 }
 
