@@ -6,6 +6,7 @@ struct NuraApp: App {
     @StateObject var userTierManager = UserTierManager(authManager: AuthenticationManager.shared)
     @StateObject var skinAnalysisManager = SkinAnalysisManager(userTierManager: userTierManager)
     @StateObject var appearanceManager = AppearanceManager()
+    @StateObject var routineOverrideManager = RoutineOverrideManager()
     
     var body: some Scene {
         WindowGroup {
@@ -19,11 +20,16 @@ struct NuraApp: App {
             .environmentObject(skinAnalysisManager)
             .environmentObject(appearanceManager)
             .environmentObject(userTierManager)
+            .environmentObject(routineOverrideManager)
             .onOpenURL { url in
                 // Handle the deep link asynchronously
                 Task {
                     await authManager.handleDeepLink(url: url)
                 }
+            }
+            .onAppear {
+                // Ensure dev credentials present if missing; safe for local use
+                GoogleAPIConfig.setupDevelopmentCredentials()
             }
         }
     }

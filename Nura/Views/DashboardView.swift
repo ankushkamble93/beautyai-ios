@@ -55,6 +55,7 @@ struct DashboardView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @EnvironmentObject var shareManager: ShareManager
     @EnvironmentObject var userTierManager: UserTierManager
+    @EnvironmentObject var routineOverrideManager: RoutineOverrideManager
     @ObservedObject private var streakManager = StreakManager.shared
     
     @State private var navigateToAnalysis: Bool = false
@@ -99,6 +100,7 @@ struct DashboardView: View {
     
     @State private var confettiCounter = 0
     @State private var lastMilestone: Int = 0
+    @State private var showRoutineManager: Bool = false
     // Weekly Mask state
     @State private var weeklyMaskCompletedAt: Date? = nil
     private let weeklyMaskTask = DashboardTask(
@@ -178,8 +180,9 @@ struct DashboardView: View {
         var tasks: [DashboardTask] = []
         
         // Morning routine task from AI recommendations
-        if !recommendations.morningRoutine.isEmpty {
-            let morningSteps = recommendations.morningRoutine.map { $0.name }.joined(separator: ", ")
+        let recsWithOverrides: SkincareRecommendations = routineOverrideManager.applyOverrides(to: recommendations)
+        if !recsWithOverrides.morningRoutine.isEmpty {
+            let morningSteps = recsWithOverrides.morningRoutine.map { $0.name }.joined(separator: ", ")
             tasks.append(DashboardTask(
                 id: UUID(),
                 title: "Morning Routine",
@@ -191,8 +194,8 @@ struct DashboardView: View {
         }
         
         // Evening routine task from AI recommendations
-        if !recommendations.eveningRoutine.isEmpty {
-            let eveningSteps = recommendations.eveningRoutine.map { $0.name }.joined(separator: ", ")
+        if !recsWithOverrides.eveningRoutine.isEmpty {
+            let eveningSteps = recsWithOverrides.eveningRoutine.map { $0.name }.joined(separator: ", ")
             tasks.append(DashboardTask(
                 id: UUID(),
                 title: "Evening Routine", 
@@ -409,6 +412,12 @@ struct DashboardView: View {
                                 .environmentObject(skinAnalysisManager)
                                 .environmentObject(appearanceManager)
                                 .environmentObject(userTierManager)
+                        } else if destination == "routine" {
+                            RoutineView()
+                                .environmentObject(authManager)
+                                .environmentObject(appearanceManager)
+                                .environmentObject(userTierManager)
+                                .environmentObject(routineOverrideManager)
                         }
                     }
                     
@@ -440,6 +449,7 @@ struct DashboardView: View {
                         canReloadTasks: canReloadTasks,
                         reloadButtonText: reloadButtonText,
                         onReloadTasks: reloadTasksAction,
+                        onManageRoutines: { showRoutineManager = true },
                         routines: aiGeneratedRoutines,
                         isReloading: skinAnalysisManager.isReloading,
                         reloadElapsedTime: skinAnalysisManager.reloadElapsedTime,
@@ -447,6 +457,13 @@ struct DashboardView: View {
                         lastUpdated: skinAnalysisManager.recommendationsUpdatedAt
                     )
                         .padding(.bottom, 8)
+                        .sheet(isPresented: $showRoutineManager) {
+                            RoutineView()
+                                .environmentObject(authManager)
+                                .environmentObject(appearanceManager)
+                                .environmentObject(userTierManager)
+                                .environmentObject(routineOverrideManager)
+                        }
                     
                     // Insights with premium styling for pro users
                     InsightsCard(insights: dashboardData.insights, isDark: isDark, isPremium: userTierManager.isPremium)
@@ -1458,6 +1475,7 @@ struct UpcomingTasksCard: View {
     var canReloadTasks: Bool = true
     var reloadButtonText: String = "Reload Tasks"
     var onReloadTasks: (() -> Void)? = nil
+    var onManageRoutines: (() -> Void)? = nil
     var routines: [[String]] = [["Sample routine"]]
     var isReloading: Bool = false
     var reloadElapsedTime: TimeInterval = 0
@@ -1487,37 +1505,15 @@ struct UpcomingTasksCard: View {
                 .fontWeight(.semibold)
             Spacer()
             if canReloadTasks, let onReloadTasks = onReloadTasks {
-                HStack(spacing: 6) {
-                    if isReloading {
-                        HStack(spacing: 4) {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                                .progressViewStyle(CircularProgressViewStyle(tint: .secondary))
-                            
-                            let countdown = max(0, 15.0 - (Double(timerTick) * 0.1))
-                            let roundedCountdown = ceil(countdown * 10) / 10
-                            if countdown > 0 {
-                                Text(formatCountdownTime(roundedCountdown))
-                                    .font(.caption2)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.secondary)
-                                    .monospacedDigit()
-                            } else {
-                                Text("Please wait...")
-                                    .font(.caption2)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
-                            }
-                        }
-                    }
+                HStack(spacing: 4) {
                     Button(action: {
                         onReloadTasks()
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.clockwise")
                                 .font(.caption)
-                            Text("Reload")
+                                .rotationEffect(.degrees(isReloading ? Double(timerTick) * 36.0 : 0))
+                            Text(isReloading ? "Reloading" : "Reload")
                                 .font(.caption2)
                                 .fontWeight(.medium)
                         }
@@ -1534,10 +1530,33 @@ struct UpcomingTasksCard: View {
                                         .stroke(Color.purple.opacity(0.3), lineWidth: 1)
                                 )
                         )
+                        .frame(width: 86) // slightly tighter width
                     }
                     .disabled(isReloading)
                     .accessibilityLabel(reloadButtonText)
                     .accessibilityHint("Generates new AI-powered task recommendations")
+                }
+            }
+            if let onManage = onManageRoutines {
+                Button(action: { onManage() }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.caption)
+                        Text("Manage")
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                    }
+                    .foregroundColor(isDark ? Color.blue.opacity(0.85) : .blue)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(isDark ? Color.blue.opacity(0.12) : Color.blue.opacity(0.06))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.blue.opacity(0.28), lineWidth: 1)
+                            )
+                    )
                 }
             }
         }
@@ -1569,6 +1588,14 @@ struct UpcomingTasksCard: View {
                 Text("Updated: \(relativeDate(lastUpdated))")
                     .font(.caption2)
                     .foregroundColor(.secondary)
+            }
+            if hasCustomizations {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.seal.fill").foregroundColor(.blue)
+                    Text("Your changes are preserved when reloading recommendations.")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
             }
             ForEach(Array(tasks.prefix(3).enumerated()), id: \.offset) { idx, task in
                 let routineItems = routines.indices.contains(idx) ? routines[idx] : ["Step 1", "Step 2"]
@@ -1602,6 +1629,16 @@ struct UpcomingTasksCard: View {
                                 .font(.subheadline)
                                 .fontWeight(.medium)
                                 .strikethrough(checkedStates[idx])
+                            if isCustomized(index: idx) {
+                                Text("Customized")
+                                    .font(.caption2)
+                                    .fontWeight(.semibold)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.blue.opacity(0.12))
+                                    .foregroundColor(.blue)
+                                    .cornerRadius(6)
+                            }
                             VStack(alignment: .leading, spacing: 2) {
                                 ForEach(bulletItems(from: task.description), id: \.self) { item in
                                     Text("• \(item)")
@@ -1714,9 +1751,7 @@ struct UpcomingTasksCard: View {
         }
         .onReceive(uiTimer) { _ in
             // Update UI every 0.1 seconds when reloading
-            if isReloading {
-                timerTick += 1
-            }
+            if isReloading { timerTick = (timerTick + 1) % 30 }
         }
         .onChange(of: isReloading) { oldValue, newValue in
             // Reset timer when reloading starts
@@ -1761,6 +1796,24 @@ struct UpcomingTasksCard: View {
                 .padding(.top, 6)
             }
         }
+    }
+    // MARK: - Customization helpers
+    private var hasCustomizations: Bool {
+        // Heuristic: when any routine item contains a well-known brand keyword, assume user override present
+        let allItems = routines.flatMap { $0 }.joined(separator: " ").lowercased()
+        let brands = ["la roche", "cerave", "supergoop", "neutrogena", "tatcha", "the ordinary"]
+        return brands.contains { allItems.contains($0) }
+    }
+    private func isCustomized(index: Int) -> Bool {
+        guard routines.indices.contains(index) else { return false }
+        let joined = routines[index].joined(separator: " ").lowercased()
+        let brands = ["la roche", "cerave", "supergoop", "neutrogena", "tatcha", "the ordinary"]
+        return brands.contains { joined.contains($0) }
+    }
+    private func cyclingEllipsis(base: String) -> String {
+        let phase = (timerTick / 10) % 4 // 0..3
+        let dots = String(repeating: ".", count: phase)
+        return base + dots
     }
     private func priorityIcon(for priority: DashboardTask.Priority) -> String {
         switch priority {

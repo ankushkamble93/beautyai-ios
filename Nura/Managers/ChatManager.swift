@@ -55,18 +55,82 @@ class ChatManager: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             do {
+                // Skin type intent: if the user asks about their skin type, answer instantly using diary trends
+                if Self.isSkinTypeQuery(trimmed) {
+                    let response = self.composeSkinTypeAnswer()
+                    await MainActor.run {
+                        self.isLoading = false
+                        self.messages.append(ChatMessage(id: UUID(), content: response, isUser: false, timestamp: Date()))
+                        self.persistMessages()
+                    }
+                    return
+                }
                 // Opportunistically sync memory from disk-cached recommendations before sending
                 self.syncMemoryFromRecommendationsIfAvailable()
                 let reply = try await self.requestChatCompletion(userPrompt: trimmed)
                 await MainActor.run {
                     self.isLoading = false
                     let visible = self.extractAndApplyMemory(from: reply)
-                    let aiMessage = ChatMessage(
+                    var aiMessage = ChatMessage(
                         id: UUID(),
                         content: visible,
                         isUser: false,
                         timestamp: Date()
                     )
+                    // 1) Only attach product cards when the user explicitly asked for products this turn
+                    let userWantsProducts = ProductSearchManager.shared.detectProductQuery(trimmed) != nil
+                    let explicitNames = userWantsProducts ? ProductSearchManager.shared.extractProductNames(from: visible) : []
+                    if userWantsProducts && !explicitNames.isEmpty {
+                        print("🔎 Explicit product mentions detected: \(explicitNames)")
+                        aiMessage.productResults = []
+                        self.messages.append(aiMessage)
+                        self.persistMessages()
+                        let targetIndex = self.messages.count - 1
+                        Task {
+                            let results = await ProductSearchManager.shared.searchProducts(forNames: explicitNames)
+                            await MainActor.run {
+                                if self.messages.indices.contains(targetIndex) {
+                                    if results.isEmpty {
+                                        // Fallback: run category search off the user's prompt
+                                        if let query = ProductSearchManager.shared.detectProductQuery(trimmed) {
+                                            Task { @MainActor in
+                                                let catResults = await ProductSearchManager.shared.searchProducts(query: query)
+                                                if self.messages.indices.contains(targetIndex) {
+                                                    self.messages[targetIndex].productResults = catResults
+                                                    print("🧩 Fallback attached \(catResults.count) category results to AI message")
+                                                    self.persistMessages()
+                                                }
+                                            }
+                                        } else {
+                                            print("⚠️ No explicit-name results and no category intent; leaving text only")
+                                        }
+                                    } else {
+                                        self.messages[targetIndex].productResults = results
+                                        print("🧩 Attached \(results.count) explicit-name product results to AI message")
+                                        self.persistMessages()
+                                    }
+                                }
+                            }
+                        }
+                        return
+                    }
+                    // 2) Otherwise, detect product intent from the user's message and run a category search
+                    if let query = ProductSearchManager.shared.detectProductQuery(trimmed) {
+                        print("🔎 Product intent detected for query=\(query.normalizedQuery) cat=\(query.categoryHint ?? "-")")
+                        aiMessage.productResults = [] // placeholder; will be filled async for UI stability
+                        self.messages.append(aiMessage)
+                        self.persistMessages()
+                        Task { @MainActor in
+                            let results = await ProductSearchManager.shared.searchProducts(query: query)
+                            if let lastIndex = self.messages.indices.last {
+                                self.messages[lastIndex].productResults = results
+                                print("🧩 Attached \(results.count) product results to last AI message")
+                                self.persistMessages()
+                            }
+                        }
+                        return
+                    }
+                    // 3) No product search – append plain AI message
                     self.messages.append(aiMessage)
                     self.persistMessages()
                 }
@@ -79,6 +143,45 @@ class ChatManager: ObservableObject {
         }
     }
     
+    // MARK: - Skin Type Handling
+    private static func isSkinTypeQuery(_ text: String) -> Bool {
+        let l = text.lowercased()
+        let phrases = [
+            "what's my skin type", "what is my skin type", "do i have", "my skin type", "am i oily", "am i dry", "combination skin", "sensitive skin type"
+        ]
+        return phrases.contains { l.contains($0) }
+    }
+    
+    private func composeSkinTypeAnswer() -> String {
+        // Pull recent diary trends from SkinDiaryManager via NotificationCenter cache or UserDefaults
+        // We read SkinDiaryManager entries from its stored UserDefaults to avoid tight coupling
+        let ud = UserDefaults.standard
+        if let data = ud.data(forKey: "skin_diary_entries"),
+           let entries = try? JSONDecoder().decode([SkinDiaryEntry].self, from: data),
+           !entries.isEmpty {
+            // Analyze last 14 days
+            let lastTwoWeeks = entries.filter { Date().timeIntervalSince($0.date) <= 14*24*3600 }
+            let sample = lastTwoWeeks.isEmpty ? Array(entries.prefix(14)) : lastTwoWeeks
+            let counts = sample.reduce(into: [String: Int]()) { acc, e in
+                let mood = e.primaryMood
+                acc[mood, default: 0] += 1
+            }
+            // Determine dominant mood
+            let sorted = counts.sorted { $0.value > $1.value }
+            let top = sorted.first?.key ?? "Clear"
+            var hint = ""
+            switch top.lowercased() {
+            case "oily": hint = "Your recent logs trend oily. Focus on gentle foaming cleansers and non-comedogenic moisturizers."
+            case "dry": hint = "Recent logs skew dry. Prioritize hydrating cleansers and ceramide-rich moisturizers."
+            case "sensitive": hint = "Logs show sensitivity. Choose fragrance-free, minimal-ingredient formulas."
+            default: hint = "You're trending clear most days. Maintain balance with a gentle cleanser and SPF."
+            }
+            return "Here's what I'm seeing from your Recent Skin Diary: you most often logged ‘\(top)’. \(hint)\n\nKeep using the ‘Recent Skin Diary’ nightly (6 PM–midnight). The more you log, the smarter and more personalized your answers get."
+        } else {
+            return "I don’t have enough of your diary data yet to infer your skin type. Start using the ‘Recent Skin Diary’ each evening (6 PM–midnight). With consistent logs, I’ll detect your trend (oily, dry, combination, sensitive) and tailor product picks and routines for you."
+        }
+    }
+
     private func requestChatCompletion(userPrompt: String) async throws -> String {
         // No need to check API key - Supabase proxy handles authentication
         

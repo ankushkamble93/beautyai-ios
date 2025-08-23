@@ -5,6 +5,7 @@ struct ContentView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @EnvironmentObject var skinAnalysisManager: SkinAnalysisManager
     @EnvironmentObject var appearanceManager: AppearanceManager
+    @EnvironmentObject var routineOverrideManager: RoutineOverrideManager
     @StateObject private var streakManager = StreakManager.shared
     @State private var selectedTab = 0
     @State private var isTabBarVisible = true
@@ -26,6 +27,7 @@ struct ContentView: View {
                             .environmentObject(skinAnalysisManager)
                             .environmentObject(appearanceManager)
                             .environmentObject(streakManager)
+                            .environmentObject(routineOverrideManager)
                             .tag(0)
                         SkinAnalysisView()
                             .environmentObject(authManager)
@@ -33,6 +35,7 @@ struct ContentView: View {
                             .tag(1)
                         ChatView()
                             .environmentObject(authManager)
+                            .environmentObject(routineOverrideManager)
                             .tag(2)
                         ProfileView()
                             .environmentObject(authManager)
@@ -58,6 +61,14 @@ struct ContentView: View {
                     )
                     .onChange(of: selectedTab) { _, _ in
                         showTabBarWithFadeOut()
+                    }
+                    // Listen for programmatic tab switches (e.g., from Dashboard Analyze button)
+                    .onReceive(NotificationCenter.default.publisher(for: .nuraSwitchTab)) { notification in
+                        if let targetIndex = notification.object as? Int {
+                            withAnimation(.easeInOut(duration: 0.35)) {
+                                selectedTab = targetIndex
+                            }
+                        }
                     }
                 }
             } else {

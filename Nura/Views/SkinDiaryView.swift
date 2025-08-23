@@ -180,20 +180,19 @@ struct SkinDiaryView: View {
                         .padding(.horizontal, 32)
                         .padding(.bottom, 24)
                         
-                        // Time restriction warning
+                        // Once per day message
                         if !skinDiaryManager.canLogToday {
                             VStack(spacing: 8) {
                                 HStack(spacing: 8) {
-                                    Image(systemName: "clock.fill")
-                                        .foregroundColor(.orange)
-                                    Text("Diary logging is only available from 6 PM to midnight")
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                    Text("You’ve already logged today. Come back tomorrow!")
                                         .font(.subheadline)
                                         .fontWeight(.medium)
-                                        .foregroundColor(.orange)
+                                        .foregroundColor(.green)
                                 }
-                                
                                 if skinDiaryManager.timeUntilNextLog > 0 {
-                                    Text("Next available in \(skinDiaryManager.formatTimeUntilNextLog())")
+                                    Text("Resets at midnight • \(skinDiaryManager.formatTimeUntilNextLog()) left")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
@@ -201,8 +200,8 @@ struct SkinDiaryView: View {
                             .padding()
                             .background(
                                 RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color.orange.opacity(0.1))
-                                    .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                                    .fill(Color.green.opacity(0.1))
+                                    .stroke(Color.green.opacity(0.3), lineWidth: 1)
                             )
                             .padding(.horizontal, 32)
                             .padding(.bottom, 18)

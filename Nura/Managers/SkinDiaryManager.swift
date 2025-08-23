@@ -48,35 +48,16 @@ class SkinDiaryManager: ObservableObject {
     private func updateLogStatus() {
         let now = Date()
         let calendar = Calendar.current
-        
-            // Check if user already logged today
-    let hasLoggedToday = diaryEntries.contains { entry in
-        calendar.isDate(entry.date, inSameDayAs: now)
-    }
-        
-        if hasLoggedToday {
-            canLogToday = false
-            // Calculate time until next available log (6 PM tomorrow)
-            let tomorrow = calendar.date(byAdding: .day, value: 1, to: now)!
-            let tomorrowSixPM = calendar.date(bySettingHour: 18, minute: 0, second: 0, of: tomorrow)!
-            timeUntilNextLog = tomorrowSixPM.timeIntervalSince(now)
+        // Once-per-day rule: user can log once per calendar day
+        let hasLoggedToday = diaryEntries.contains { entry in
+            calendar.isDate(entry.date, inSameDayAs: now)
+        }
+        canLogToday = !hasLoggedToday
+        // Time until midnight for informative UI
+        if let midnight = calendar.nextDate(after: now, matching: DateComponents(hour: 0, minute: 0, second: 0), matchingPolicy: .nextTimePreservingSmallerComponents) {
+            timeUntilNextLog = midnight.timeIntervalSince(now)
         } else {
-            // Check if it's between 6 PM and midnight
-            let hour = calendar.component(.hour, from: now)
-            canLogToday = hour >= 18 // 6 PM to midnight (before next day starts)
-            
-            if !canLogToday {
-                // Calculate time until 6 PM today or tomorrow
-                if hour < 18 {
-                    // Before 6 PM today
-                    let todaySixPM = calendar.date(bySettingHour: 18, minute: 0, second: 0, of: now)!
-                    timeUntilNextLog = todaySixPM.timeIntervalSince(now)
-                } else {
-                    // After midnight, wait until 6 PM today
-                    let todaySixPM = calendar.date(bySettingHour: 18, minute: 0, second: 0, of: now)!
-                    timeUntilNextLog = todaySixPM.timeIntervalSince(now)
-                }
-            }
+            timeUntilNextLog = 0
         }
     }
     
