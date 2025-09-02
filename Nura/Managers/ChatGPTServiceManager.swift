@@ -36,20 +36,20 @@ class ChatGPTServiceManager: ObservableObject {
         
         defer { isProcessing = false }
         
+        // Convert images to base64
+        print("🔍 ChatGPTServiceManager: Converting \(images.count) images to base64...")
+        let base64Images = try images.map { try convertImageToBase64($0) }
+        print("🔍 ChatGPTServiceManager: All images converted successfully")
+        
+        // Select model based on user tier
+        let model = selectModelForTier(userTier)
+        print("🔍 ChatGPTServiceManager: Selected model: \(model)")
+        
+        // Create analysis prompt
+        let prompt = createSkinAnalysisPrompt(images.count)
+        print("🔍 ChatGPTServiceManager: Created prompt (length: \(prompt.count) characters)")
+        
         do {
-            // Convert images to base64
-            print("🔍 ChatGPTServiceManager: Converting \(images.count) images to base64...")
-            let base64Images = try images.map { try convertImageToBase64($0) }
-            print("🔍 ChatGPTServiceManager: All images converted successfully")
-            
-            // Select model based on user tier
-            let model = selectModelForTier(userTier)
-            print("🔍 ChatGPTServiceManager: Selected model: \(model)")
-            
-            // Create analysis prompt
-            let prompt = createSkinAnalysisPrompt(images.count)
-            print("🔍 ChatGPTServiceManager: Created prompt (length: \(prompt.count) characters)")
-            
             // Make API request
             print("🔍 ChatGPTServiceManager: Making API request to OpenAI...")
             let response = try await makeChatGPTVisionRequest(
@@ -57,18 +57,83 @@ class ChatGPTServiceManager: ObservableObject {
                 prompt: prompt,
                 images: base64Images
             )
-            print("🔍 ChatGPTServiceManager: API request successful, parsing response...")
+            print("🔍 ChatGPTServiceManager: API request successful, extracting JSON...")
+
+            // Extract JSON content from response (handles markdown formatting)
+            guard let content = response.choices.first?.message.content else {
+                print("❌ ChatGPTServiceManager: No content in response")
+                throw ChatGPTError.invalidResponse
+            }
+
+            let extractedJSON = extractJSONFromResponse(content)
+            let responseLength = content.count
+            print("🔍 ChatGPTServiceManager: Raw response content length: \(responseLength)")
+            print("🔍 ChatGPTServiceManager: JSON extracted, validating...")
             
-            // Parse response and create result
-            let result = try parseAnalysisResponse(response, images.count, model)
+            // Check for response truncation
+            if responseLength < 200 {
+                print("⚠️ ChatGPTServiceManager: Response too short (\(responseLength) chars), likely truncated")
+                throw ChatGPTError.invalidResponse
+            }
+
+            // Validate extracted JSON format
+            guard validateExtractedJSON(extractedJSON) else {
+                print("❌ ChatGPTServiceManager: Extracted JSON validation failed")
+                throw ChatGPTError.invalidResponse
+            }
+
+            print("🔍 ChatGPTServiceManager: JSON validation passed, parsing...")
+
+            // Parse response and create result with extracted JSON
+            let result = try parseAnalysisResponse(extractedJSON, images.count, model)
             print("🔍 ChatGPTServiceManager: Response parsed successfully")
             print("🔍 ChatGPTServiceManager: Analysis complete - Score: \(result.skinHealthScore), Conditions: \(result.conditions.count)")
+            
+            // Log skin age information
+            if let skinAge = result.skinAgeYears {
+                print("✅ ChatGPTServiceManager: Skin age detected: \(skinAge) years")
+            } else {
+                print("⚠️ ChatGPTServiceManager: No skin age detected in response")
+            }
+            
+            // Check if this is a fallback result
+            if result.conditions.contains(where: { $0.name.lowercased().contains("analysis failed") }) {
+                print("⚠️ ChatGPTServiceManager: Analysis completed with fallback result - parsing may have failed")
+            }
             
             return result
             
         } catch {
             print("❌ ChatGPTServiceManager: Error during analysis: \(error)")
             errorMessage = error.localizedDescription
+            
+            // If it's a parsing error or invalid response, try once more with a shorter prompt
+            if let chatGPTError = error as? ChatGPTError, chatGPTError == .invalidResponse {
+                print("🔄 ChatGPTServiceManager: Attempting retry with shorter prompt...")
+                do {
+                    let shorterPrompt = createShortSkinAnalysisPrompt(images.count)
+                    let retryResponse = try await makeChatGPTVisionRequest(model: model, prompt: shorterPrompt, images: base64Images)
+                    
+                    guard let retryContent = retryResponse.choices.first?.message.content else {
+                        print("❌ ChatGPTServiceManager: Retry failed - no content")
+                        throw error
+                    }
+                    
+                    let retryJSON = extractJSONFromResponse(retryContent)
+                    print("🔍 ChatGPTServiceManager: Retry JSON extracted, length: \(retryJSON.count)")
+                    
+                    if validateExtractedJSON(retryJSON) {
+                        let result = try parseAnalysisResponse(retryJSON, images.count, model)
+                        print("✅ ChatGPTServiceManager: Retry successful with shorter prompt")
+                        return result
+                    }
+                } catch {
+                    print("❌ ChatGPTServiceManager: Retry also failed: \(error)")
+                }
+            }
+            
+            // If it's a parsing error, we can't make another API call, so just throw the error
+            // The fallback will be handled at a higher level if needed
             throw error
         }
     }
@@ -86,32 +151,73 @@ class ChatGPTServiceManager: ObservableObject {
     
     private func createSkinAnalysisPrompt(_ imageCount: Int) -> String {
         return """
-        Analyze these \(imageCount) skin selfie images and provide a comprehensive skin health assessment.
+        Analyze \(imageCount) skin images. Return ONLY valid JSON.
         
-        Please provide your analysis in the following JSON format:
+        CRITICAL: Keep response under 1000 characters to avoid truncation.
+        
+        JSON format:
         {
-            "skinHealthScore": <0-100 score>,
+            "skinHealthScore": <0-100>,
             "conditions": [
                 {
-                    "name": "<condition name>",
+                    "name": "<condition>",
                     "severity": "<mild|moderate|severe>",
                     "confidence": <0.0-1.0>,
-                    "description": "<detailed description>",
+                    "description": "<brief description>",
                     "affectedAreas": ["<area1>", "<area2>"]
                 }
             ],
-            "overallAssessment": "<overall skin health assessment>",
-            "recommendations": ["<recommendation1>", "<recommendation2>"],
-            "confidence": <0.0-1.0>
+            "overallAssessment": "<brief assessment>",
+            "recommendations": ["<rec1>", "<rec2>"],
+            "confidence": <0.0-1.0>,
+            "skinAgeYears": <18-65>
         }
         
-        Focus on:
-        - Skin texture and tone
-        - Visible conditions (acne, dark spots, redness, etc.)
-        - Overall skin health and appearance
-        - Specific areas of concern
+        CRITICAL RULES:
+        - skinAgeYears is REQUIRED (estimate based on wrinkles, texture, tone)
+        - Use SHORT descriptions (2-3 words max)
+        - MAX 2 conditions to stay under character limit
+        - MAX 2 recommendations
+        - Keep overallAssessment under 20 words
+        - Use simple string IDs like "step-1", "step-2" (NOT UUIDs)
+        - Use only these frequency values: "daily", "twice_daily", "nightly", "weekly", "as_needed"
         
-        Be thorough but concise. The skinHealthScore should reflect overall skin health where 0 is very poor and 100 is excellent.
+        Remember: ONLY JSON, no other text.
+        """
+    }
+    
+    private func createShortSkinAnalysisPrompt(_ imageCount: Int) -> String {
+        return """
+        Analyze \(imageCount) skin images. Return ONLY JSON.
+        
+        CRITICAL: Keep response under 500 characters.
+        
+        {
+            "skinHealthScore": <0-100>,
+            "conditions": [
+                {
+                    "name": "<condition>",
+                    "severity": "<mild|moderate|severe>",
+                    "confidence": <0.0-1.0>,
+                    "description": "<2 words>",
+                    "affectedAreas": ["<area>"]
+                }
+            ],
+            "overallAssessment": "<5 words>",
+            "recommendations": ["<rec>"],
+            "confidence": <0.0-1.0>,
+            "skinAgeYears": <18-65>
+        }
+        
+        RULES:
+        - skinAgeYears REQUIRED
+        - MAX 1 condition
+        - MAX 1 recommendation
+        - SHORT descriptions only
+        - Use simple string IDs like "step-1" (NOT UUIDs)
+        - Use only these frequency values: "daily", "twice_daily", "nightly", "weekly", "as_needed"
+        
+        ONLY JSON, no other text.
         """
     }
     
@@ -159,7 +265,7 @@ class ChatGPTServiceManager: ObservableObject {
             content: [
                 ChatGPTContent(
                     type: "text",
-                    text: "You are a professional dermatologist and skin analysis expert. You MUST analyze the provided images and provide detailed skin health assessments. Always respond with the exact JSON format requested. Do not say you cannot analyze images - you are specifically designed to do this.",
+                    text: "You are a professional dermatologist and skin analysis expert. You MUST analyze the provided images and provide detailed skin health assessments. CRITICAL: You MUST respond with ONLY valid JSON in the exact format requested. No markdown, no explanations, no additional text. The response must be a single JSON object starting with { and ending with }. MOST IMPORTANT: The skinAgeYears field is REQUIRED and must be a realistic estimate based on visible skin aging signs. If you cannot analyze the images for any reason, still respond with valid JSON using placeholder values.",
                     imageURL: nil
                 )
             ]
@@ -231,25 +337,35 @@ class ChatGPTServiceManager: ObservableObject {
         // Error handling is now done by SupabaseProxyManager
     }
     
-    private func parseAnalysisResponse(_ response: ChatGPTVisionResponse, _ imageCount: Int, _ model: String) throws -> SkinAnalysisResult {
+    private func parseAnalysisResponse(_ jsonString: String, _ imageCount: Int, _ model: String) throws -> SkinAnalysisResult {
         print("🔍 ChatGPTServiceManager: Parsing analysis response...")
-        
-        guard let content = response.choices.first?.message.content else {
-            print("❌ ChatGPTServiceManager: No content in response choices")
-            throw ChatGPTError.invalidResponse
-        }
-        
-        // Keep logs concise to avoid duplication
-        let jsonString = extractJSONFromResponse(content)
-        print("🔍 ChatGPTServiceManager: Extracted JSON (length: \(jsonString.count))")
-        
+        print("🔍 ChatGPTServiceManager: JSON content (length: \(jsonString.count))")
+        print("🔍 ChatGPTServiceManager: JSON preview: \(String(jsonString.prefix(300)))")
+
         do {
             let data = jsonString.data(using: .utf8)!
             let parsedResponse = try JSONDecoder().decode(ChatGPTParsedResponse.self, from: data)
             print("🔍 ChatGPTServiceManager: JSON decoded successfully")
             print("🔍 ChatGPTServiceManager: Parsed skin health score: \(parsedResponse.skinHealthScore)")
-            print("🔍 ChatGPTServiceManager: Parsed conditions: \(parsedResponse.conditions)")
+            print("🔍 ChatGPTServiceManager: Parsed conditions count: \(parsedResponse.conditions.count)")
             print("🔍 ChatGPTServiceManager: Parsed recommendations count: \(parsedResponse.recommendations.count)")
+            print("🔍 ChatGPTServiceManager: Parsed confidence: \(parsedResponse.confidence)")
+            
+            // Validate the parsed data
+            guard parsedResponse.skinHealthScore >= 0 && parsedResponse.skinHealthScore <= 100 else {
+                print("❌ ChatGPTServiceManager: Invalid skin health score: \(parsedResponse.skinHealthScore)")
+                throw ChatGPTError.invalidResponse
+            }
+            
+            guard !parsedResponse.conditions.isEmpty else {
+                print("❌ ChatGPTServiceManager: No conditions found in response")
+                throw ChatGPTError.invalidResponse
+            }
+            
+            guard parsedResponse.confidence >= 0.0 && parsedResponse.confidence <= 1.0 else {
+                print("❌ ChatGPTServiceManager: Invalid confidence value: \(parsedResponse.confidence)")
+                throw ChatGPTError.invalidResponse
+            }
             
             let result = SkinAnalysisResult(
                 conditions: parsedResponse.conditions,
@@ -260,53 +376,182 @@ class ChatGPTServiceManager: ObservableObject {
                 analysisVersion: "1.0",
                 routineGenerationTimestamp: nil,
                 analysisProvider: model == APIConfig.gpt35VisionModel ? .chatGPT35 : .chatGPT4,
-                imageCount: imageCount
+                imageCount: imageCount,
+                skinAgeYears: extractSkinAge(from: jsonString)
             )
             
             print("🔍 ChatGPTServiceManager: SkinAnalysisResult created successfully")
             return result
             
+        } catch let decodingError as DecodingError {
+            print("❌ ChatGPTServiceManager: JSON decoding failed with error: \(decodingError)")
+            
+            // Provide detailed error information
+            switch decodingError {
+            case .keyNotFound(let key, let context):
+                print("❌ ChatGPTServiceManager: Missing key '\(key)' at path: \(context.codingPath)")
+            case .typeMismatch(let type, let context):
+                print("❌ ChatGPTServiceManager: Type mismatch for '\(type)' at path: \(context.codingPath)")
+            case .valueNotFound(let type, let context):
+                print("❌ ChatGPTServiceManager: Value not found for '\(type)' at path: \(context.codingPath)")
+            case .dataCorrupted(let context):
+                print("❌ ChatGPTServiceManager: Data corrupted at path: \(context.codingPath)")
+            @unknown default:
+                print("❌ ChatGPTServiceManager: Unknown decoding error")
+            }
+            
+            // Create fallback result instead of throwing error
+            print("🔍 ChatGPTServiceManager: Creating fallback result due to parsing failure")
+            return createFallbackResult(jsonString, imageCount, model)
         } catch {
-            print("❌ ChatGPTServiceManager: Failed to parse response: \(error)")
-            print("🔍 ChatGPTServiceManager: Using fallback result...")
-            // Fallback parsing if JSON extraction fails
-            return createFallbackResult(content, imageCount, model)
+            print("❌ ChatGPTServiceManager: Unexpected error during parsing: \(error)")
+            // Create fallback result instead of throwing error
+            print("🔍 ChatGPTServiceManager: Creating fallback result due to unexpected error")
+            return createFallbackResult(jsonString, imageCount, model)
         }
+    }
+
+    private func extractSkinAge(from json: String) -> Int? {
+        // naive scan for "skinAgeYears": number
+        let pattern = #"\"skinAgeYears\"\s*:\s*(\d+)"#
+        if let regex = try? NSRegularExpression(pattern: pattern),
+           let match = regex.firstMatch(in: json, range: NSRange(location: 0, length: (json as NSString).length)),
+           match.numberOfRanges > 1 {
+            let ns = json as NSString
+            let value = ns.substring(with: match.range(at: 1))
+            return Int(value)
+        }
+        return nil
     }
     
     private func extractJSONFromResponse(_ content: String) -> String {
-        // Look for JSON content between curly braces
+        print("🔍 ChatGPTServiceManager: Raw response content length: \(content.count)")
+        print("🔍 ChatGPTServiceManager: Raw response preview: \(String(content.prefix(200)))")
+        
+        // First, try to find JSON between curly braces
         if let startIndex = content.firstIndex(of: "{"),
            let endIndex = content.lastIndex(of: "}") {
-            return String(content[startIndex...endIndex])
+            let extracted = String(content[startIndex...endIndex])
+            print("🔍 ChatGPTServiceManager: Found JSON between braces, length: \(extracted.count)")
+            
+            // Validate that it looks like JSON
+            if extracted.contains("\"skinHealthScore\"") && extracted.contains("\"conditions\"") {
+                print("🔍 ChatGPTServiceManager: JSON validation passed")
+                return extracted
+            } else {
+                print("⚠️ ChatGPTServiceManager: Extracted content doesn't contain expected JSON keys")
+            }
         }
+        
+        // Try to find JSON after common prefixes
+        let commonPrefixes = [
+            "```json",
+            "```",
+            "Here's the analysis:",
+            "Analysis result:",
+            "The analysis shows:"
+        ]
+        
+        for prefix in commonPrefixes {
+            if let range = content.range(of: prefix) {
+                let afterPrefix = String(content[range.upperBound...])
+                if let startIndex = afterPrefix.firstIndex(of: "{"),
+                   let endIndex = afterPrefix.lastIndex(of: "}") {
+                    let extracted = String(afterPrefix[startIndex...endIndex])
+                    print("🔍 ChatGPTServiceManager: Found JSON after prefix '\(prefix)', length: \(extracted.count)")
+                    
+                    if extracted.contains("\"skinHealthScore\"") && extracted.contains("\"conditions\"") {
+                        print("🔍 ChatGPTServiceManager: JSON validation passed after prefix")
+                        return extracted
+                    }
+                }
+            }
+        }
+        
+        // Try to find any valid JSON structure
+        let jsonPattern = #"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}"#
+        if let regex = try? NSRegularExpression(pattern: jsonPattern),
+           let match = regex.firstMatch(in: content, range: NSRange(location: 0, length: content.count)) {
+            let ns = content as NSString
+            let extracted = ns.substring(with: match.range)
+            print("🔍 ChatGPTServiceManager: Found JSON using regex pattern, length: \(extracted.count)")
+            
+            if extracted.contains("\"skinHealthScore\"") && extracted.contains("\"conditions\"") {
+                print("🔍 ChatGPTServiceManager: JSON validation passed using regex")
+                return extracted
+            }
+        }
+        
+        print("⚠️ ChatGPTServiceManager: Could not extract valid JSON, returning original content")
         return content
     }
     
     private func createFallbackResult(_ content: String, _ imageCount: Int, _ model: String) -> SkinAnalysisResult {
-        // Create a basic result when parsing fails
+        print("⚠️ ChatGPTServiceManager: Creating fallback result due to parsing failure")
+        print("⚠️ ChatGPTServiceManager: Original content length: \(content.count)")
+        print("⚠️ ChatGPTServiceManager: Content preview: \(String(content.prefix(200)))")
+        
+        // Create a more informative fallback result
         let conditions = [
             SkinCondition(
                 id: UUID(),
-                name: "Analysis Completed",
-                severity: .mild,
-                confidence: 0.7,
-                description: "Skin analysis completed successfully. Please review the detailed response.",
-                affectedAreas: ["General"]
+                name: "Analysis Failed - Review Required",
+                severity: .moderate,
+                confidence: 0.3,
+                description: "The AI analysis could not be parsed properly. Please review the raw response or try again. This may indicate an issue with the ChatGPT response format.",
+                affectedAreas: ["Analysis System"]
             )
         ]
         
         return SkinAnalysisResult(
             conditions: conditions,
-            confidence: 0.7,
+            confidence: 0.3,
             analysisDate: Date(),
-            recommendations: ["Review analysis results", "Consult with skincare professional if needed"],
-            skinHealthScore: Int.random(in: 60...85), // Random score when parsing fails
+            recommendations: [
+                "Review the analysis response format",
+                "Check ChatGPT API configuration",
+                "Verify the prompt is generating valid JSON",
+                "Consider adjusting the analysis prompt"
+            ],
+            skinHealthScore: 50, // Neutral score to indicate analysis failure
             analysisVersion: "1.0",
             routineGenerationTimestamp: nil,
             analysisProvider: model == APIConfig.gpt35VisionModel ? .chatGPT35 : .chatGPT4,
-            imageCount: imageCount
+            imageCount: imageCount,
+            skinAgeYears: 28 // Default fallback age when analysis fails
         )
+    }
+    
+    // MARK: - Error Handling and Fallback
+    
+    private func handleParsingFailure(_ content: String, _ imageCount: Int, _ model: String, _ error: Error) -> SkinAnalysisResult {
+        print("❌ ChatGPTServiceManager: Parsing failed, creating fallback result")
+        print("❌ ChatGPTServiceManager: Error: \(error)")
+        print("❌ ChatGPTServiceManager: Content length: \(content.count)")
+        
+        // Log the problematic content for debugging
+        if content.count > 1000 {
+            print("❌ ChatGPTServiceManager: Content (first 500 chars): \(String(content.prefix(500)))")
+            print("❌ ChatGPTServiceManager: Content (last 500 chars): \(String(content.suffix(500)))")
+        } else {
+            print("❌ ChatGPTServiceManager: Full content: \(content)")
+        }
+        
+        // Create fallback result
+        let fallbackResult = createFallbackResult(content, imageCount, model)
+        
+        // Post notification for debugging
+        NotificationCenter.default.post(
+            name: .init("ChatGPTParsingFailed"),
+            object: nil,
+            userInfo: [
+                "error": error,
+                "content": content,
+                "model": model
+            ]
+        )
+        
+        return fallbackResult
     }
     
     private func checkRateLimit() throws {
@@ -334,6 +579,71 @@ class ChatGPTServiceManager: ObservableObject {
             lastRequestTime = now
         }
     }
+    
+    // MARK: - Response Validation
+
+    private func validateExtractedJSON(_ jsonString: String) -> Bool {
+        let trimmedContent = jsonString.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Check if response starts and ends with curly braces
+        guard trimmedContent.hasPrefix("{") && trimmedContent.hasSuffix("}") else {
+            print("❌ ChatGPTServiceManager: Extracted JSON doesn't start/end with curly braces")
+            print("❌ ChatGPTServiceManager: Content preview: \(String(trimmedContent.prefix(100)))")
+            return false
+        }
+
+        // Check if response contains required JSON keys
+        let requiredKeys = ["skinHealthScore", "conditions", "overallAssessment", "recommendations", "confidence", "skinAgeYears"]
+        for key in requiredKeys {
+            guard trimmedContent.contains("\"\(key)\"") else {
+                print("❌ ChatGPTServiceManager: Missing required key in extracted JSON: \(key)")
+                return false
+            }
+        }
+
+        // Check if response looks like valid JSON
+        guard trimmedContent.contains("[") && trimmedContent.contains("]") else {
+            print("❌ ChatGPTServiceManager: Extracted JSON doesn't contain array brackets")
+            return false
+        }
+
+        print("✅ ChatGPTServiceManager: Extracted JSON validation passed")
+        return true
+    }
+
+    private func validateChatGPTResponse(_ response: ChatGPTVisionResponse) -> Bool {
+        guard let content = response.choices.first?.message.content else {
+            print("❌ ChatGPTServiceManager: No content in response")
+            return false
+        }
+        
+        let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Check if response starts and ends with curly braces
+        guard trimmedContent.hasPrefix("{") && trimmedContent.hasSuffix("}") else {
+            print("❌ ChatGPTServiceManager: Response doesn't start/end with curly braces")
+            print("❌ ChatGPTServiceManager: Content preview: \(String(trimmedContent.prefix(100)))")
+            return false
+        }
+        
+        // Check if response contains required JSON keys
+        let requiredKeys = ["skinHealthScore", "conditions", "overallAssessment", "recommendations", "confidence", "skinAgeYears"]
+        for key in requiredKeys {
+            guard trimmedContent.contains("\"\(key)\"") else {
+                print("❌ ChatGPTServiceManager: Missing required key: \(key)")
+                return false
+            }
+        }
+        
+        // Check if response looks like valid JSON
+        guard trimmedContent.contains("[") && trimmedContent.contains("]") else {
+            print("❌ ChatGPTServiceManager: Response doesn't contain array brackets")
+            return false
+        }
+        
+        print("✅ ChatGPTServiceManager: Response validation passed")
+        return true
+    }
 }
 
 // MARK: - Supporting Types
@@ -346,7 +656,7 @@ struct ChatGPTParsedResponse: Codable {
     let confidence: Double
 }
 
-enum ChatGPTError: LocalizedError {
+enum ChatGPTError: LocalizedError, Equatable {
     case noImagesProvided
     case tooManyImages
     case imageConversionFailed
@@ -386,6 +696,28 @@ enum ChatGPTError: LocalizedError {
             return "Bad request. Please check your input data."
         case .serverError(let statusCode):
             return "Server error occurred (Status: \(statusCode))"
+        }
+    }
+    
+    // Implement Equatable for cases with associated values
+    static func == (lhs: ChatGPTError, rhs: ChatGPTError) -> Bool {
+        switch (lhs, rhs) {
+        case (.noImagesProvided, .noImagesProvided),
+             (.tooManyImages, .tooManyImages),
+             (.imageConversionFailed, .imageConversionFailed),
+             (.imageTooLarge, .imageTooLarge),
+             (.apiKeyNotConfigured, .apiKeyNotConfigured),
+             (.encodingFailed, .encodingFailed),
+             (.invalidResponse, .invalidResponse),
+             (.decodingFailed, .decodingFailed),
+             (.rateLimitExceeded, .rateLimitExceeded),
+             (.unauthorized, .unauthorized),
+             (.badRequest, .badRequest):
+            return true
+        case (.serverError(let lhsCode), .serverError(let rhsCode)):
+            return lhsCode == rhsCode
+        default:
+            return false
         }
     }
 } 

@@ -106,8 +106,12 @@ struct ProductSearchResult: Identifiable, Codable {
     let benefits: [String]
     let imageURL: String?
     let destinationURL: String?
+    // Optional ingredients list when available (e.g., from SkincareAPI)
+    let ingredients: [String]?
+    // Optional product type classification (e.g., cleanser, serum, moisturizer, sunscreen)
+    let productType: String?
 
-    init(id: UUID = UUID(), name: String, brand: String?, priceText: String?, benefits: [String], imageURL: String?, destinationURL: String?) {
+    init(id: UUID = UUID(), name: String, brand: String?, priceText: String?, benefits: [String], imageURL: String?, destinationURL: String?, ingredients: [String]? = nil, productType: String? = nil) {
         self.id = id
         self.name = name
         self.brand = brand
@@ -115,6 +119,8 @@ struct ProductSearchResult: Identifiable, Codable {
         self.benefits = benefits
         self.imageURL = imageURL
         self.destinationURL = destinationURL
+        self.ingredients = ingredients
+        self.productType = productType
     }
 }
 
@@ -152,6 +158,7 @@ struct SkinAnalysisResult: Codable {
     let routineGenerationTimestamp: Date? // When routine was generated
     let analysisProvider: AnalysisProvider // Which AI service was used
     let imageCount: Int // Number of images analyzed
+    let skinAgeYears: Int? // Estimated facial skin age from the photos
     
     enum AnalysisProvider: String, Codable {
         case chatGPT35 = "gpt-3.5-turbo"
@@ -261,8 +268,23 @@ struct SkincareStep: Codable, Identifiable {
         // ID: accept UUID, string, or generate fallback
         if let uuid = try? c.decode(UUID.self, forKey: .id) {
             self.id = uuid
-        } else if let idString = try? c.decode(String.self, forKey: .id), let parsed = UUID(uuidString: idString) {
-            self.id = parsed
+        } else if let idString = try? c.decode(String.self, forKey: .id) {
+            // Handle string IDs like "step-1", "step-2", etc.
+            if let parsed = UUID(uuidString: idString) {
+                self.id = parsed
+            } else if idString.hasPrefix("step-") || idString.hasPrefix("prod-") {
+                // Create a deterministic UUID from string ID
+                let hash = idString.hash
+                let uuidString = String(format: "%08x-0000-0000-0000-%012x", abs(hash), abs(hash))
+                self.id = UUID(uuidString: uuidString) ?? UUID()
+                print("✅ SkincareStep: String ID '\(idString)' converted to deterministic UUID")
+            } else {
+                // Fallback for other string IDs
+                let hash = idString.hash
+                let uuidString = String(format: "%08x-0000-0000-0000-%012x", abs(hash), abs(hash))
+                self.id = UUID(uuidString: uuidString) ?? UUID()
+                print("⚠️ SkincareStep: String ID '\(idString)' converted to fallback UUID")
+            }
         } else if let intId = try? c.decode(Int.self, forKey: .id) {
             // Create a deterministic UUID namespace using the integer
             self.id = UUID(uuidString: "00000000-0000-0000-0000-\(String(format: "%012d", intId))") ?? UUID()
@@ -325,6 +347,10 @@ struct SkincareStep: Codable, Identifiable {
         case sunscreen = "sunscreen"
         case treatment = "treatment"
         case mask = "mask"
+        case exfoliant = "exfoliant"
+        case bha = "bha"
+        case aha = "aha"
+        case clay = "clay"
     }
     
     enum Frequency: String, Codable, CaseIterable {

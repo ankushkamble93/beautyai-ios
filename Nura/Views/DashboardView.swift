@@ -125,19 +125,43 @@ struct DashboardView: View {
         return 0.78 // Appealing sample score of 78% - shows room for improvement but positive
     }
     
+    // Computed property to detect if we're showing fallback data
+    private var isShowingFallbackData: Bool {
+        if let analysisResults = skinAnalysisManager.getCachedAnalysisResults() {
+            return analysisResults.conditions.contains { condition in
+                let lowercasedName = condition.name.lowercased()
+                return lowercasedName.contains("analysis failed") || 
+                       lowercasedName.contains("review required") ||
+                       lowercasedName.contains("analysis completed")
+            }
+        }
+        return false
+    }
+    
     // Computed property for real skin conditions with affected areas
     private var realSkinConditions: [(name: String, areas: [String], severity: String)] {
         if let analysisResults = skinAnalysisManager.getCachedAnalysisResults() {
-            return analysisResults.conditions.compactMap { condition -> (name: String, areas: [String], severity: String)? in
+            let validConditions = analysisResults.conditions.compactMap { condition -> (name: String, areas: [String], severity: String)? in
                 // Filter out invalid or empty conditions
                 guard !condition.name.isEmpty, !condition.affectedAreas.isEmpty else { return nil }
                 
-                let cleanName = condition.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                // Filter out fallback/error conditions
+                let lowercasedName = condition.name.lowercased()
+                if lowercasedName.contains("analysis failed") || 
+                   lowercasedName.contains("review required") ||
+                   lowercasedName.contains("analysis completed") {
+                    return nil
+                }
+                
+                let cleanName = condition.name.trimmingCharacters(in: .whitespacesAndNewlines).capitalized
                 let cleanAreas = condition.affectedAreas.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 let severity = condition.severity.rawValue.capitalized
                 
                 return (name: cleanName, areas: cleanAreas, severity: severity)
             }
+            
+            print("🔍 DashboardView: Found \(validConditions.count) valid conditions out of \(analysisResults.conditions.count) total")
+            return validConditions
         }
         return [] // Return empty array if no analysis results
     }
@@ -148,6 +172,11 @@ struct DashboardView: View {
             return analysisResults.confidence
         }
         return 0.85 // Default confidence
+    }
+
+    // Computed property for analysis date
+    private var analysisDate: Date? {
+        return skinAnalysisManager.getCachedAnalysisResults()?.analysisDate
     }
     
     // MARK: - Replace in-body color vars with centralized helpers (see DashboardStyle)
@@ -198,7 +227,7 @@ struct DashboardView: View {
             let eveningSteps = recsWithOverrides.eveningRoutine.map { $0.name }.joined(separator: ", ")
             tasks.append(DashboardTask(
                 id: UUID(),
-                title: "Evening Routine", 
+                title: "Evening Routine",
                 description: "\(eveningSteps)",
                 dueDate: Calendar.current.nextDate(after: Date(), matching: DateComponents(hour: 19, minute: 0), matchingPolicy: .nextTimePreservingSmallerComponents) ?? Date(),
                 priority: .high,
@@ -206,7 +235,10 @@ struct DashboardView: View {
             ))
         }
         
-        return tasks
+        // Note: Weekly tasks are handled separately by aiGeneratedWeeklyTask
+        // to avoid duplication with the weekly routine section
+        
+        return tasks.isEmpty ? dashboardData.upcomingTasks : tasks
     }
     
     // Computed property for AI-generated weekly tasks
@@ -251,6 +283,28 @@ struct DashboardView: View {
         }
     }
     
+    // Debug information for development
+    private var debugInfo: String {
+        if let analysisResults = skinAnalysisManager.getCachedAnalysisResults() {
+            let totalConditions = analysisResults.conditions.count
+            let validConditions = realSkinConditions.count
+            let isFallback = isShowingFallbackData
+            let confidence = analysisResults.confidence
+            let score = analysisResults.skinHealthScore
+            
+            return """
+            Analysis Debug:
+            - Total conditions: \(totalConditions)
+            - Valid conditions: \(validConditions)
+            - Is fallback: \(isFallback)
+            - Confidence: \(confidence)
+            - Score: \(score)
+            - Date: \(analysisResults.analysisDate)
+            """
+        }
+        return "No analysis results available"
+    }
+
     // Computed property for reload button text
     private var reloadButtonText: String {
         switch userTierManager.tier {
@@ -261,6 +315,13 @@ struct DashboardView: View {
         case .proUnlimited:
             return "Reload Tasks"
         }
+    }
+
+    // Helper function for formatting dates
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        return formatter.string(from: date)
     }
 
     // MARK: - Insights
@@ -339,135 +400,14 @@ struct DashboardView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 12) {
-                    // Custom large, centered title with PRO badge for premium users
-                    HStack(alignment: .top, spacing: 8) {
-                        Spacer()
-                        HStack(alignment: .top, spacing: 6) {
-                            Text("Dashboard")
-                                .font(.largeTitle).fontWeight(.bold)
-                                .padding(.top, 8)
-                                .foregroundColor(DashboardStyle.primaryText(isDark: isDark))
-                            
-                            // Pro badge positioned right after title
-                            if userTierManager.isPremium {
-                                WaxStampBadge()
-                                    .rotationEffect(.degrees(15)) // Slight exponential growth angle
-                                    .offset(x: 4, y: 2)
-                            }
-                        }
-                        Spacer()
-                    }
-                    // Welcome section with premium styling for pro users
-                    if showWelcomeCard {
-                        WelcomeSection(
-                            isDark: isDark, 
-                            isPremium: userTierManager.isPremium,
-                            onDismiss: {
-                                dismissWelcomeCard()
-                            }
-                        )
-                        .padding(.bottom, 8)
-                        .offset(y: welcomeCardOffset)
-                        .opacity(welcomeCardOpacity)
-                        .scaleEffect(welcomeCardOpacity == 1 ? 1.0 : 0.95)
-                        .animation(.easeInOut(duration: 0.8), value: welcomeCardOffset)
-                        .animation(.easeInOut(duration: 0.6), value: welcomeCardOpacity)
-                        .animation(.easeOut(duration: 0.4), value: welcomeCardOpacity == 1)
-                    }
-
-                    // Streak Card
-                    StreakCard(
-                        currentStreak: streakManager.currentStreak,
-                        longestStreak: streakManager.longestStreak,
-                        nextMilestoneDays: streakManager.nextMilestone(),
-                        daysToNextMilestone: streakManager.daysToNextMilestone(),
-                        pendingReward: streakManager.pendingReward,
-                        onClaimReward: {
-                            streakManager.redeemFreeProMonth(using: userTierManager)
-                        },
-                        isDark: isDark,
-                        showAnalyzeCTA: {
-                            if let res = skinAnalysisManager.getCachedAnalysisResults() {
-                                return !Calendar.current.isDate(res.analysisDate, inSameDayAs: Date())
-                            }
-                            return true
-                        }(),
-                        onAnalyze: {
-                            navigateToAnalysis = true
-                        }
-                    )
-                    .onAppear {
-                        if let res = skinAnalysisManager.getCachedAnalysisResults() {
-                            showAnalyzeBanner = !Calendar.current.isDate(res.analysisDate, inSameDayAs: Date())
-                        } else { showAnalyzeBanner = true }
-                    }
-                    .padding(.bottom, 4)
-                    // Hidden navigation trigger to analysis - using modern NavigationLink
-                    NavigationLink(value: "analysis") {
-                        EmptyView()
-                    }
-                    .navigationDestination(for: String.self) { destination in
-                        if destination == "analysis" {
-                            SkinAnalysisView()
-                                .environmentObject(skinAnalysisManager)
-                                .environmentObject(appearanceManager)
-                                .environmentObject(userTierManager)
-                        } else if destination == "routine" {
-                            RoutineView()
-                                .environmentObject(authManager)
-                                .environmentObject(appearanceManager)
-                                .environmentObject(userTierManager)
-                                .environmentObject(routineOverrideManager)
-                        }
-                    }
-                    
-                    // Progress overview with premium styling for pro users
-                    ProgressOverviewCard(
-                        progress: dashboardData.progress,
-                        confettiCounter: $confettiCounter,
-                        isDark: isDark,
-                        isPremium: userTierManager.isPremium,
-                        realSkinHealthScore: realSkinHealthScore,
-                        realSkinConditions: realSkinConditions,
-                        averageConfidence: averageConfidence,
-                        analysisDate: skinAnalysisManager.getCachedAnalysisResults()?.analysisDate
-                    )
-                        .padding(.bottom, 8)
-                    
-                    // Current routine
-                    if !dashboardData.currentRoutine.isEmpty {
-                        CurrentRoutineCard(routine: dashboardData.currentRoutine, isDark: isDark)
-                            .padding(.bottom, 8)
-                    }
-                    
-                    // Upcoming tasks (AI-powered, including weekly treatment)
-                    UpcomingTasksCard(
-                        tasks: aiGeneratedTasks,
-                        weeklyMaskCompletedAt: $weeklyMaskCompletedAt,
-                        weeklyMaskTask: aiGeneratedWeeklyTask,
-                        isDark: isDark,
-                        canReloadTasks: canReloadTasks,
-                        reloadButtonText: reloadButtonText,
-                        onReloadTasks: reloadTasksAction,
-                        onManageRoutines: { showRoutineManager = true },
-                        routines: aiGeneratedRoutines,
-                        isReloading: skinAnalysisManager.isReloading,
-                        reloadElapsedTime: skinAnalysisManager.reloadElapsedTime,
-                        reloadCountdownTime: skinAnalysisManager.reloadCountdownTime,
-                        lastUpdated: skinAnalysisManager.recommendationsUpdatedAt
-                    )
-                        .padding(.bottom, 8)
-                        .sheet(isPresented: $showRoutineManager) {
-                            RoutineView()
-                                .environmentObject(authManager)
-                                .environmentObject(appearanceManager)
-                                .environmentObject(userTierManager)
-                                .environmentObject(routineOverrideManager)
-                        }
-                    
-                    // Insights with premium styling for pro users
-                    InsightsCard(insights: dashboardData.insights, isDark: isDark, isPremium: userTierManager.isPremium)
-                    
+                    dashboardHeaderSection
+                    welcomeSection
+                    streakSection
+                    navigationSection
+                    progressSection
+                    currentRoutineSection
+                    upcomingTasksSection
+                    insightsSection
                     Spacer()
                 }
                 .padding(.horizontal, 20)
@@ -483,7 +423,6 @@ struct DashboardView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationTitle("")
             .refreshable {
-                // Refresh dashboard data
                 await refreshDashboard()
             }
         }
@@ -491,25 +430,9 @@ struct DashboardView: View {
         .onAppear {
             print("🔍 DashboardView: Appeared")
             print("🔍 DashboardView: User profile - onboarding_complete = \(authManager.userProfile?.onboarding_complete ?? false)")
-            // Load cached AI recommendations once per app launch
             skinAnalysisManager.loadCachedRecommendations()
             updateInsights()
-            
-            // Welcome card auto-dismiss logic
-            if showWelcomeCard {
-                // Start the dismissal timer
-                DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
-                    withAnimation(.easeInOut(duration: 0.8)) {
-                        welcomeCardOffset = -200 // Swipe up animation
-                        welcomeCardOpacity = 0
-                    }
-                    
-                    // Hide the card completely after animation
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                        showWelcomeCard = false
-                    }
-                }
-            }
+            setupWelcomeCardTimer()
         }
         .onReceive(skinAnalysisManager.$recommendations) { _ in
             updateInsights()
@@ -519,12 +442,174 @@ struct DashboardView: View {
             if case .celebration = reward { confettiCounter += 1 }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-            // Reset welcome card when app becomes active
             resetWelcomeCard()
         }
-                       .onAppear {
-                   // Dashboard loaded
-               }
+    }
+    
+    // MARK: - Extracted View Sections for Type-Checker Performance
+    
+    @ViewBuilder private var dashboardHeaderSection: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Spacer()
+            HStack(alignment: .top, spacing: 6) {
+                Text("Dashboard")
+                    .font(.largeTitle).fontWeight(.bold)
+                    .padding(.top, 8)
+                    .foregroundColor(DashboardStyle.primaryText(isDark: isDark))
+                
+                if userTierManager.isPremium {
+                    WaxStampBadge()
+                        .rotationEffect(.degrees(15))
+                        .offset(x: 4, y: 2)
+                }
+            }
+            Spacer()
+        }
+    }
+    
+    @ViewBuilder private var welcomeSection: some View {
+        if showWelcomeCard {
+            WelcomeSection(
+                isDark: isDark, 
+                isPremium: userTierManager.isPremium,
+                onDismiss: {
+                    dismissWelcomeCard()
+                }
+            )
+            .padding(.bottom, 8)
+            .offset(y: welcomeCardOffset)
+            .opacity(welcomeCardOpacity)
+            .scaleEffect(welcomeCardOpacity == 1 ? 1.0 : 0.95)
+            .animation(.easeInOut(duration: 0.8), value: welcomeCardOffset)
+            .animation(.easeInOut(duration: 0.6), value: welcomeCardOpacity)
+            .animation(.easeOut(duration: 0.4), value: welcomeCardOpacity == 1)
+        }
+    }
+    
+    @ViewBuilder private var streakSection: some View {
+        StreakCard(
+            currentStreak: streakManager.currentStreak,
+            longestStreak: streakManager.longestStreak,
+            nextMilestoneDays: streakManager.nextMilestone(),
+            daysToNextMilestone: streakManager.daysToNextMilestone(),
+            pendingReward: streakManager.pendingReward,
+            onClaimReward: {
+                streakManager.redeemFreeProMonth(using: userTierManager)
+            },
+            isDark: isDark,
+            showAnalyzeCTA: {
+                if let res = skinAnalysisManager.getCachedAnalysisResults() {
+                    return !Calendar.current.isDate(res.analysisDate, inSameDayAs: Date())
+                }
+                return true
+            }(),
+            onAnalyze: {
+                navigateToAnalysis = true
+            }
+        )
+        .onAppear {
+            if let res = skinAnalysisManager.getCachedAnalysisResults() {
+                showAnalyzeBanner = !Calendar.current.isDate(res.analysisDate, inSameDayAs: Date())
+            } else { 
+                showAnalyzeBanner = true 
+            }
+        }
+        .padding(.bottom, 4)
+    }
+    
+    @ViewBuilder private var navigationSection: some View {
+        NavigationLink(value: "analysis") {
+            EmptyView()
+        }
+        .navigationDestination(for: String.self) { destination in
+            if destination == "analysis" {
+                SkinAnalysisView()
+                    .environmentObject(skinAnalysisManager)
+                    .environmentObject(appearanceManager)
+                    .environmentObject(userTierManager)
+            } else if destination == "routine" {
+                RoutineView()
+                    .environmentObject(authManager)
+                    .environmentObject(appearanceManager)
+                    .environmentObject(userTierManager)
+                    .environmentObject(routineOverrideManager)
+            }
+        }
+    }
+    
+    @ViewBuilder private var progressSection: some View {
+        ProgressOverviewCard(
+            progress: dashboardData.progress,
+            confettiCounter: $confettiCounter,
+            isDark: isDark,
+            isPremium: userTierManager.isPremium,
+            realSkinHealthScore: realSkinHealthScore,
+            realSkinConditions: realSkinConditions,
+            averageConfidence: averageConfidence,
+            analysisDate: analysisDate,
+            skinAgeYears: skinAnalysisManager.getCachedAnalysisResults()?.skinAgeYears,
+            isShowingFallbackData: isShowingFallbackData,
+            formatDate: { date in formatDate(date) },
+            debugInfo: debugInfo
+        )
+        .padding(.bottom, 8)
+    }
+    
+    @ViewBuilder private var currentRoutineSection: some View {
+        if !dashboardData.currentRoutine.isEmpty {
+            CurrentRoutineCard(routine: dashboardData.currentRoutine, isDark: isDark)
+                .padding(.bottom, 8)
+        }
+    }
+    
+    @ViewBuilder private var insightsSection: some View {
+        InsightsCard(insights: dashboardData.insights, isDark: isDark, isPremium: userTierManager.isPremium)
+    }
+    
+    // Extracted for type-checker performance
+    @ViewBuilder private var upcomingTasksSection: some View {
+        UpcomingTasksCard(
+            tasks: aiGeneratedTasks,
+            weeklyMaskCompletedAt: $weeklyMaskCompletedAt,
+            weeklyMaskTask: aiGeneratedWeeklyTask,
+            isDark: isDark,
+            canReloadTasks: canReloadTasks,
+            reloadButtonText: reloadButtonText,
+            onReloadTasks: reloadTasksAction,
+            onManageRoutines: { showRoutineManager = true },
+            routines: aiGeneratedRoutines,
+            isReloading: skinAnalysisManager.isReloading,
+            reloadElapsedTime: skinAnalysisManager.reloadElapsedTime,
+            reloadCountdownTime: skinAnalysisManager.reloadCountdownTime,
+            lastUpdated: skinAnalysisManager.recommendationsUpdatedAt,
+            isPremium: userTierManager.isPremium,
+            onResetOverrides: { routineOverrideManager.clearAll() }
+        )
+        .padding(.bottom, 8)
+        .sheet(isPresented: $showRoutineManager) {
+            RoutineView()
+                .environmentObject(authManager)
+                .environmentObject(appearanceManager)
+                .environmentObject(userTierManager)
+                .environmentObject(routineOverrideManager)
+        }
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func setupWelcomeCardTimer() {
+        if showWelcomeCard {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                withAnimation(.easeInOut(duration: 0.8)) {
+                    welcomeCardOffset = -200
+                    welcomeCardOpacity = 0
+                }
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    showWelcomeCard = false
+                }
+            }
+        }
     }
     
     private func refreshDashboard() async {
@@ -559,6 +644,8 @@ struct DashboardView: View {
             showWelcomeCard = false
         }
     }
+
+
 }
 
 // MARK: - Body sections extracted for compiler performance
@@ -939,6 +1026,10 @@ struct ProgressOverviewCard: View {
     let realSkinConditions: [(name: String, areas: [String], severity: String)]
     let averageConfidence: Double
     let analysisDate: Date?
+    let skinAgeYears: Int?
+    let isShowingFallbackData: Bool
+    let formatDate: (Date) -> String
+    let debugInfo: String
 
     private func ringColor(for score: Double) -> Color {
         let percent = score * 100
@@ -992,26 +1083,123 @@ struct ProgressOverviewCard: View {
         let formatter = DateFormatter()
         formatter.dateStyle = .short
         return formatter.string(from: date)
-    }
-    
-    // Computed properties to break up complex expressions
+        }
+
+    // Computed properties for CTA styling
     private var ctaBackgroundFill: Color {
         isDark ? Color.purple.opacity(0.08) : Color.purple.opacity(0.05)
     }
-    
+
     private var ctaGradientColors: [Color] {
         [
             isDark ? Color.purple.opacity(0.25) : Color.purple.opacity(0.2),
             isDark ? Color.blue.opacity(0.2) : Color.blue.opacity(0.15)
         ]
     }
-    
+
     private var ctaGradient: LinearGradient {
         LinearGradient(
             gradient: Gradient(colors: ctaGradientColors),
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
+    }
+
+    // Computed property for CTA or Summary view
+    @ViewBuilder private var ctaOrSummary: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if realSkinConditions.isEmpty {
+                if isShowingFallbackData {
+                    // Show fallback data message
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(alignment: .center, spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(.orange)
+                            Text("Analysis Issue Detected")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(DashboardStyle.primaryText(isDark: isDark))
+                        }
+                        Text("The AI analysis encountered a formatting issue. Please try again or contact support if the problem persists.")
+                            .font(.caption2)
+                            .foregroundColor(DashboardStyle.secondaryTextLight(isDark: isDark))
+                            .lineLimit(3)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .padding(.vertical, 14)
+                    .padding(.horizontal, 14)
+                    .frame(minWidth: 190, minHeight: 110)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.orange.opacity(0.1))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                            )
+                    )
+                } else {
+                    // Show upload prompt
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(alignment: .center, spacing: 8) {
+                            // Extract camera icon color to reduce complexity
+                            let cameraIconColor = isDark ? Color.purple.opacity(0.8) : Color.purple
+
+                            Image(systemName: "camera.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(cameraIconColor)
+                            Text("Ready for Your Analysis?")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(DashboardStyle.primaryText(isDark: isDark))
+                        }
+                        Text("Upload photos to unlock personalized insights!")
+                            .font(.caption2)
+                            .foregroundColor(DashboardStyle.secondaryTextLight(isDark: isDark))
+                            .lineLimit(3)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .padding(.vertical, 14)
+                    .padding(.horizontal, 14)
+                    .frame(minWidth: 190, minHeight: 110)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(ctaBackgroundFill)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(ctaGradient, lineWidth: 1)
+                            )
+                    )
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Upload photos to get your personalized skin analysis")
+                    .accessibilityHint("Tap the camera tab to start your skin analysis")
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("\(realSkinConditions.count) conditions detected")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(DashboardStyle.secondaryTextLight(isDark: isDark))
+                    if let analysisDate = analysisDate {
+                        Text("Analysis Date: \(formatDate(analysisDate))")
+                            .font(.caption2)
+                            .foregroundColor(DashboardStyle.secondaryTextLighter(isDark: isDark))
+                    }
+                }
+                .padding(.vertical, 14)
+                .padding(.horizontal, 14)
+                .frame(minWidth: 190, minHeight: 110)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(DashboardStyle.greenBackground(isDark: isDark))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(DashboardStyle.greenStroke(), lineWidth: 1)
+                        )
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Split subviews to help type-checker
@@ -1057,70 +1245,6 @@ struct ProgressOverviewCard: View {
         .confettiCannon(trigger: $confettiCounter, num: 40, colors: [.green, .blue, .purple])
     }
 
-    @ViewBuilder private var ctaOrSummary: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if realSkinConditions.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .center, spacing: 8) {
-                        // Extract camera icon color to reduce complexity
-                        let cameraIconColor = isDark ? Color.purple.opacity(0.8) : Color.purple
-                        
-                        Image(systemName: "camera.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundColor(cameraIconColor)
-                        Text("Ready for Your Analysis?")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundColor(DashboardStyle.primaryText(isDark: isDark))
-                    }
-                    Text("Upload photos to unlock personalized insights!")
-                        .font(.caption2)
-                        .foregroundColor(DashboardStyle.secondaryTextLight(isDark: isDark))
-                        .lineLimit(3)
-                        .multilineTextAlignment(.leading)
-                }
-                .padding(.vertical, 14)
-                .padding(.horizontal, 14)
-                .frame(minWidth: 190, minHeight: 110)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(ctaBackgroundFill)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(ctaGradient, lineWidth: 1)
-                        )
-                )
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("Upload photos to get your personalized skin analysis")
-                .accessibilityHint("Tap the camera tab to start your skin analysis")
-            } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("\(realSkinConditions.count) conditions detected")
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundColor(DashboardStyle.secondaryTextLight(isDark: isDark))
-                    if let analysisDate = analysisDate {
-                        Text("Analysis Date: \(formatDate(analysisDate))")
-                            .font(.caption2)
-                            .foregroundColor(DashboardStyle.secondaryTextLighter(isDark: isDark))
-                    }
-                }
-                .padding(.vertical, 14)
-                .padding(.horizontal, 14)
-                .frame(minWidth: 190, minHeight: 110)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(DashboardStyle.greenBackground(isDark: isDark))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(DashboardStyle.greenStroke(), lineWidth: 1)
-                        )
-                )
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
     @ViewBuilder private var realAnalysisNotes: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(realSkinConditions.enumerated()).filter { _, c in c.name.lowercased() != "analysis completed" }, id: \.offset) { index, condition in
@@ -1139,6 +1263,22 @@ struct ProgressOverviewCard: View {
                             .foregroundColor(DashboardStyle.secondaryTextLight(isDark: isDark))
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    Spacer(minLength: 0)
+                }
+            }
+            if let skinAge = skinAgeYears {
+                HStack(spacing: 6) {
+                    Text("Skin Age")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(DashboardStyle.primaryText(isDark: isDark))
+                    Image(systemName: "person.crop.circle.badge.clock")
+                        .foregroundColor(.purple)
+                        .font(.caption)
+                    Text("\(skinAge) yrs")
+                        .font(.caption)
+                        .fontWeight(.bold)
+                        .foregroundColor(.purple)
                     Spacer(minLength: 0)
                 }
             }
@@ -1214,6 +1354,23 @@ struct ProgressOverviewCard: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: 0)
+            }
+            // Skin Age line - only show when we have real data
+            if let skinAge = skinAgeYears {
+                HStack(spacing: 6) {
+                    Text("Skin Age")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(DashboardStyle.primaryText(isDark: isDark))
+                    Image(systemName: "person.crop.circle.badge.clock")
+                        .foregroundColor(.purple)
+                        .font(.caption)
+                    Text("\(skinAge) yrs")
+                        .font(.caption)
+                        .fontWeight(.bold)
+                        .foregroundColor(.purple)
+                    Spacer(minLength: 0)
+                }
             }
             // Confidence line
             HStack(spacing: 6) {
@@ -1463,8 +1620,13 @@ struct CurrentRoutineCard: View {
         case .sunscreen: return "sun.max.fill"
         case .treatment: return "cross.fill"
         case .mask: return "face.smiling"
+        case .exfoliant: return "scissors"
+        case .bha: return "scissors"
+        case .aha: return "scissors"
+        case .clay: return "face.smiling"
         }
     }
+
 }
 
 struct UpcomingTasksCard: View {
@@ -1481,7 +1643,10 @@ struct UpcomingTasksCard: View {
     var reloadElapsedTime: TimeInterval = 0
     var reloadCountdownTime: TimeInterval = 0
     var lastUpdated: Date? = nil
+    var isPremium: Bool = false
+    var onResetOverrides: (() -> Void)? = nil
     @State private var showToast: Bool = false
+    @State private var toastMessage: String = "Routines refreshed"
     private let weekInterval: TimeInterval = 7 * 24 * 60 * 60
     @State private var maskPop: Bool = false
     
@@ -1503,6 +1668,8 @@ struct UpcomingTasksCard: View {
             Text("Today's Tasks")
                 .font(.headline)
                 .fontWeight(.semibold)
+                .lineLimit(1)
+                .minimumScaleFactor(0.9)
             Spacer()
             if canReloadTasks, let onReloadTasks = onReloadTasks {
                 HStack(spacing: 4) {
@@ -1517,11 +1684,9 @@ struct UpcomingTasksCard: View {
                                 .font(.caption2)
                                 .fontWeight(.medium)
                         }
-                        // Extract purple colors to reduce complexity
                         .foregroundColor(isDark ? Color.purple.opacity(0.8) : Color.purple)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        // Extract purple background colors to reduce complexity
                         .background(
                             RoundedRectangle(cornerRadius: 6)
                                 .fill(isDark ? Color.purple.opacity(0.1) : Color.purple.opacity(0.05))
@@ -1530,14 +1695,14 @@ struct UpcomingTasksCard: View {
                                         .stroke(Color.purple.opacity(0.3), lineWidth: 1)
                                 )
                         )
-                        .frame(width: 86) // slightly tighter width
+                        .frame(width: 86)
                     }
                     .disabled(isReloading)
                     .accessibilityLabel(reloadButtonText)
                     .accessibilityHint("Generates new AI-powered task recommendations")
                 }
             }
-            if let onManage = onManageRoutines {
+            if isPremium, let onManage = onManageRoutines {
                 Button(action: { onManage() }) {
                     HStack(spacing: 6) {
                         Image(systemName: "slider.horizontal.3")
@@ -1558,6 +1723,28 @@ struct UpcomingTasksCard: View {
                             )
                     )
                 }
+            }
+            if isPremium, let onReset = onResetOverrides {
+                Button(action: {
+                    onReset()
+                    withAnimation { toastMessage = "Overrides reset"; showToast = true }
+                }) {
+                    Image(systemName: "trash")
+                        .font(.caption)
+                        .foregroundColor(.red)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill((isDark ? Color.red.opacity(0.12) : Color.red.opacity(0.06)))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.red.opacity(0.28), lineWidth: 1)
+                                )
+                        )
+                }
+                .accessibilityLabel("Reset to AI defaults")
+                .accessibilityHint("Clears your routine overrides to original recommendations")
             }
         }
     }
@@ -1783,7 +1970,7 @@ struct UpcomingTasksCard: View {
         .overlay(alignment: .top) {
             if showToast {
                 HStack { Spacer() 
-                    Text("Routines refreshed")
+                    Text(toastMessage)
                         .font(.caption)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
@@ -2059,7 +2246,8 @@ struct SkinScoreShareButton: View {
             analysisVersion: "1.0",
             routineGenerationTimestamp: nil,
             analysisProvider: .mock,
-            imageCount: 1
+            imageCount: 1,
+            skinAgeYears: 26
         )
     }
 }

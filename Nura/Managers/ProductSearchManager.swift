@@ -203,13 +203,17 @@ final class ProductSearchManager {
                 let thumbCandidate = item.image?.thumbnailLink ?? item.link
                 if thumbCandidate.isEmpty { continue }
                 let thumb = thumbCandidate
+                let derivedIngs = Self.deriveIngredients(fromTitle: title)
+                let derivedType = Self.classifyType(from: title)
                 let product = ProductSearchResult(
                     name: title,
                     brand: brand,
                     priceText: nil,
                     benefits: benefits,
                     imageURL: thumb,
-                    destinationURL: aff?.absoluteString ?? dest
+                    destinationURL: aff?.absoluteString ?? dest,
+                    ingredients: derivedIngs,
+                    productType: derivedType
                 )
                 aggregated.append(product)
             }
@@ -247,7 +251,8 @@ final class ProductSearchManager {
             let title = await resolveCanonicalFromSkincareAPI(initial) ?? initial
             
             // Parse ingredients for benefits (UX: users see relevant benefits immediately)
-            let benefits = parseBenefitsFromIngredients(item.ingredient_list ?? [])
+            let ingredientList = (item.ingredient_list ?? []).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            let benefits = parseBenefitsFromIngredients(ingredientList)
             
             // Try to get an image for this product (UX: visual appeal)
             let imageURL = await getProductImage(for: title)
@@ -258,7 +263,9 @@ final class ProductSearchManager {
                 priceText: nil, 
                 benefits: benefits, 
                 imageURL: imageURL, 
-                destinationURL: nil
+                destinationURL: nil,
+                ingredients: ingredientList,
+                productType: Self.classifyType(from: title)
             )
             mapped.append(product)
         }
@@ -334,7 +341,7 @@ final class ProductSearchManager {
         var benefits: [String] = []
         if lower.contains("spf") { benefits.append("SPF") }
         if lower.contains("retinol") || lower.contains("retinoid") { benefits.append("retinoid") }
-        if lower.contains("vitamin c") { benefits.append("vitamin c") }
+        if lower.contains("vitamin c") || lower.contains(" vit c") || lower.contains("vit-c") || lower.contains("ascorb") || lower.contains(" c+") { benefits.append("vitamin c") }
         if lower.contains("hyaluronic") { benefits.append("hydrating") }
         return benefits
     }
@@ -399,6 +406,48 @@ final class ProductSearchManager {
             }
         }
         return out
+    }
+
+    // Derive ingredient keywords from noisy titles when the dataset didn't include ingredients
+    private static func deriveIngredients(fromTitle title: String) -> [String] {
+        let t = title.lowercased()
+        let mapping: [(key: String, display: String)] = [
+            ("hyaluronic", "Hyaluronic Acid"),
+            ("niacinamide", "Niacinamide"),
+            ("retinol", "Retinol"),
+            ("retinoid", "Retinoid"),
+            ("ascorb", "Vitamin C"),
+            ("vitamin c", "Vitamin C"),
+            (" c+", "Vitamin C"),
+            ("salicylic", "Salicylic Acid"),
+            ("glycolic", "Glycolic Acid"),
+            ("lactic", "Lactic Acid"),
+            ("ceramide", "Ceramides"),
+            ("zinc", "Zinc"),
+            ("azelaic", "Azelaic Acid"),
+            ("spf", "SPF")
+        ]
+        var seen: Set<String> = []
+        var out: [String] = []
+        for m in mapping where t.contains(m.key) {
+            if seen.insert(m.display).inserted { out.append(m.display) }
+        }
+        return out
+    }
+
+    // Lightweight product type classifier using keywords
+    private static func classifyType(from title: String) -> String? {
+        let t = title.lowercased()
+        let mapping: [(String, String)] = [
+            ("cleanser", "cleanser"), ("wash", "cleanser"), ("gel", "cleanser"), ("foam", "cleanser"), ("balm", "cleanser"),
+            ("toner", "toner"), ("essence", "toner"),
+            ("serum", "serum"), ("vitamin c", "serum"), ("ascorb", "serum"),
+            ("moistur", "moisturizer"), ("cream", "moisturizer"), ("lotion", "moisturizer"),
+            ("spf", "sunscreen"), ("sunscreen", "sunscreen"), ("sun screen", "sunscreen"), ("uv", "sunscreen"),
+            ("mask", "mask"), ("peel", "treatment"), ("retinol", "treatment"), ("retinoid", "treatment"), ("exfol", "exfoliant")
+        ]
+        for (k, v) in mapping { if t.contains(k) { return v } }
+        return nil
     }
     
     // Affiliate: append basic tracking; direct brand mappings can be added here
@@ -492,6 +541,14 @@ final class ProductSearchManager {
     private func setSkincareAPICache(for query: String, results: [ProductSearchResult]) {
         skincareAPICache[query] = (results: results, timestamp: Date())
         print("💾 ProductSearch: Cached \(results.count) SkincareAPI results for query=\(query)")
+    }
+    
+    // Prefer Amazon search for product view links
+    static func amazonSearchURL(for title: String) -> URL? {
+        var components = URLComponents(string: "https://www.amazon.com/s")
+        var items: [URLQueryItem] = [URLQueryItem(name: "k", value: title)]
+        components?.queryItems = items
+        return components?.url
     }
 }
 

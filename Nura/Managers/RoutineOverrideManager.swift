@@ -111,6 +111,10 @@ final class RoutineOverrideManager: ObservableObject {
         if l.contains("serum") { return .serum }
         if l.contains("moistur") || l.contains("cream") || l.contains("lotion") { return .moisturizer }
         if l.contains("mask") { return .mask }
+        if l.contains("exfoliant") || l.contains("exfoli") { return .exfoliant }
+        if l.contains("bha") || l.contains("salicylic") { return .bha }
+        if l.contains("aha") || l.contains("glycolic") || l.contains("lactic") { return .aha }
+        if l.contains("clay") { return .clay }
         return nil
     }
 
