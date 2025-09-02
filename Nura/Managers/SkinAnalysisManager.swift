@@ -309,32 +309,87 @@ class SkinAnalysisManager: ObservableObject {
             let resultsJSON = String(data: resultsData, encoding: .utf8) ?? "{}"
             
             let prompt = """
-            You are a board-certified dermatologist. Generate skincare routines aligned with best practices. Return STRICT JSON only, no prose, matching this schema:
+            You are a board-certified dermatologist. Generate COMPLETE skincare routines. Return STRICT JSON only, no prose.
+            
+            CRITICAL: Keep responses under 4000 characters to avoid truncation.
+            
+            Schema:
             {
               "morningRoutine": [{
-                "id":"uuid-optional",
-                "name":"string",
-                "description":"short action sentence",
-                "category":"cleanser|toner|serum|moisturizer|sunscreen|treatment|mask",
+                "id":"step-1",
+                "name":"Gentle Cleanser",
+                "description":"Cleanse skin to remove impurities",
+                "category":"cleanser",
                 "duration":60,
-                "frequency":"daily|twice_daily|nightly|two_to_three_per_week|weekly|as_needed",
-                "stepTime":"morning|evening|anytime",
-                "conflictsWith":["retinoid","strong_exfoliant","benzoyl_peroxide", "vitamin_c"],
+                "frequency":"daily",
+                "stepTime":"morning",
+                "conflictsWith":[],
+                "requiresSPF":false,
+                "tips":["Use lukewarm water"]
+              }, {
+                "id":"step-2",
+                "name":"Hydrating Serum",
+                "description":"Apply serum for hydration",
+                "category":"serum",
+                "duration":30,
+                "frequency":"daily",
+                "stepTime":"morning",
+                "conflictsWith":[],
+                "requiresSPF":false,
+                "tips":["Apply to damp skin"]
+              }, {
+                "id":"step-3",
+                "name":"Moisturizer",
+                "description":"Lock in hydration",
+                "category":"moisturizer",
+                "duration":45,
+                "frequency":"daily",
+                "stepTime":"morning",
+                "conflictsWith":[],
+                "requiresSPF":false,
+                "tips":["Wait for serum to absorb"]
+              }, {
+                "id":"step-4",
+                "name":"Sunscreen",
+                "description":"Protect from UV damage",
+                "category":"sunscreen",
+                "duration":30,
+                "frequency":"daily",
+                "stepTime":"morning",
+                "conflictsWith":[],
                 "requiresSPF":true,
-                "tips":["short tip"]
+                "tips":["Apply generously"]
               }],
-              "eveningRoutine": [<same object as above>],
-              "weeklyTreatments": [<same object as above>],
-              "lifestyleTips": ["string"],
-              "productRecommendations": [],
-              "progressTracking": {"skinHealthScore": <0-1>, "improvementAreas": ["string"], "nextCheckIn": "ISODate", "goals": ["string"]}
+              "eveningRoutine": [<same structure with 3-4 steps>],
+              "weeklyTreatments": [<same structure with 1-2 steps>],
+              "lifestyleTips": ["Stay hydrated", "Get adequate sleep"],
+              "productRecommendations": [{
+                 "id":"prod-1",
+                 "name":"CeraVe Cleanser",
+                 "brand":"CeraVe",
+                 "category":"cleanser",
+                 "price":15,
+                 "rating":4.5,
+                 "description":"Gentle daily cleanser",
+                 "ingredients":["ceramides"],
+                 "benefits":["Hydrating"],
+                 "imageURL":null,
+                 "purchaseURL":null
+              }],
+              "progressTracking": {"skinHealthScore": 0.75, "improvementAreas": ["hydration"], "nextCheckIn": "2024-01-15", "goals": ["clear skin"]}
             }
-            Hard rules:
-            - Do NOT include sunscreen steps at night (stepTime == evening should never requireSPF).
-            - Avoid stacking conflicting actives in the same routine; set appropriate conflicts in conflictsWith.
-            - Cap strong actives (retinoids, strong exfoliants, clay masks) to weekly or two_to_three_per_week where appropriate.
-            - Use concise descriptions.
-            Reply with JSON only. Analysis JSON:
+            
+            Rules:
+            - Morning routine: 4 steps (cleanser, serum, moisturizer, sunscreen)
+            - Evening routine: 3-4 steps (cleanser, treatment, moisturizer, optional mask)
+            - Weekly treatments: 1-2 steps (exfoliant, mask, etc.)
+            - Use detailed descriptions (5-8 words)
+            - Include helpful tips for each step
+            - Avoid sunscreen at night
+            - Use simple string IDs like "step-1", "step-2" (NOT UUIDs)
+            - Use only these frequency values: "daily", "twice_daily", "nightly", "weekly", "as_needed"
+            
+            Analysis JSON:
             \(resultsJSON)
             """
             
@@ -404,6 +459,38 @@ class SkinAnalysisManager: ObservableObject {
                     return
                 } catch {
                     print("ℹ️ JSON decode failed: \(error)")
+                    
+                    // Enhanced truncation detection and recovery
+                    if let truncatedData = detectAndRecoverTruncatedJSON(jsonString) {
+                        print("🔧 Detected truncated JSON, attempting recovery...")
+                        if let recoveredData = truncatedData.data(using: .utf8),
+                           let recsTry = try? JSONDecoder().decode(SkincareRecommendations.self, from: recoveredData) {
+                            print("✅ Recovered truncated JSON successfully")
+                            var recs = recsTry
+                            recs = SkincareRecommendations(
+                                morningRoutine: Array(recs.morningRoutine.prefix(4)),
+                                eveningRoutine: Array(recs.eveningRoutine.prefix(4)),
+                                weeklyTreatments: Array(recs.weeklyTreatments.prefix(2)),
+                                lifestyleTips: recs.lifestyleTips,
+                                productRecommendations: recs.productRecommendations,
+                                progressTracking: recs.progressTracking
+                            )
+                            recs = applyLocalRules(to: recs)
+                            await MainActor.run {
+                                self.recommendations = recs
+                                self.recommendationsUpdatedAt = Date()
+                                self.recommendationsChangeLog = self.buildChangeLog(old: oldRecs, new: recs)
+                                self.saveRecommendationsToDisk(recs)
+                                print("✅ SkinAnalysisManager: Cached recommendations (disk) [recovered]")
+                                print("📋 Routines summary → morning: \(recs.morningRoutine.map{ $0.name }.joined(separator: ", ")), evening: \(recs.eveningRoutine.map{ $0.name }.joined(separator: ", ")), weekly: \(recs.weeklyTreatments.map{ $0.name }.joined(separator: ", ")) )")
+                                self.isReloading = false
+                                print("⏱️ Total regenerate latency: \(String(format: "%.2fs", Date().timeIntervalSince(startTs)))")
+                                NotificationCenter.default.post(name: .nuraRecommendationsUpdated, object: recs)
+                            }
+                            return
+                        }
+                    }
+                    
                     // Retry with sanitized JSON if truncated or unbalanced
                     let sanitized = sanitizePossiblyTruncatedJSON(jsonString)
                     if sanitized != jsonString, let sData = sanitized.data(using: .utf8), let recsTry = try? JSONDecoder().decode(SkincareRecommendations.self, from: sData) {
@@ -424,7 +511,7 @@ class SkinAnalysisManager: ObservableObject {
                             self.recommendationsChangeLog = self.buildChangeLog(old: oldRecs, new: recs)
                             self.saveRecommendationsToDisk(recs)
                             print("✅ SkinAnalysisManager: Cached recommendations (disk) [sanitized]")
-                            print("📋 Routines summary → morning: \(recs.morningRoutine.map{ $0.name }.joined(separator: ", ")), evening: \(recs.eveningRoutine.map{ $0.name }.joined(separator: ", ")), weekly: \(recs.weeklyTreatments.map{ $0.name }.joined(separator: ", "))) ")
+                            print("📋 Routines summary → morning: \(recs.morningRoutine.map{ $0.name }.joined(separator: ", ")), evening: \(recs.eveningRoutine.map{ $0.name }.joined(separator: ", ")), weekly: \(recs.weeklyTreatments.map{ $0.name }.joined(separator: ", ")) )")
                             self.isReloading = false
                             print("⏱️ Total regenerate latency: \(String(format: "%.2fs", Date().timeIntervalSince(startTs)))")
                             NotificationCenter.default.post(name: .nuraRecommendationsUpdated, object: recs)
@@ -492,53 +579,55 @@ class SkinAnalysisManager: ObservableObject {
                 print("ℹ️ Could not convert jsonString to UTF-8 data")
             }
             
-            // Fallback: extract a simple recommendations string array and convert to routines
-            var simpleRecs = extractStringArray(named: "recommendations", from: jsonString)
-            print("🔎 Fallback array under key 'recommendations' → count: \(simpleRecs.count)")
-            if simpleRecs.isEmpty, let data = jsonString.data(using: .utf8) {
+            // Fallback: extract routine names from the actual JSON structure
+            var simpleRecs: [String] = []
+            if let data = jsonString.data(using: .utf8) {
                 if let any = try? JSONSerialization.jsonObject(with: data, options: []),
                    let dict = any as? [String: Any] {
                     print("🔑 Top-level keys: \(Array(dict.keys))")
-                    if let rawArray = dict["recommendations"] as? [Any] {
+                    
+                    // Try to extract routine names from the actual structure
+                    if let morningRoutine = dict["morningRoutine"] as? [[String: Any]] {
+                        let morningNames = morningRoutine.compactMap { $0["name"] as? String }
+                        simpleRecs.append(contentsOf: morningNames)
+                        print("🔎 Extracted morning routine names: \(morningNames)")
+                    }
+                    
+                    if let eveningRoutine = dict["eveningRoutine"] as? [[String: Any]] {
+                        let eveningNames = eveningRoutine.compactMap { $0["name"] as? String }
+                        simpleRecs.append(contentsOf: eveningNames)
+                        print("🔎 Extracted evening routine names: \(eveningNames)")
+                    }
+                    
+                    if let weeklyTreatments = dict["weeklyTreatments"] as? [[String: Any]] {
+                        let weeklyNames = weeklyTreatments.compactMap { $0["name"] as? String }
+                        simpleRecs.append(contentsOf: weeklyNames)
+                        print("🔎 Extracted weekly treatment names: \(weeklyNames)")
+                    }
+                    
+                    // Legacy fallback for recommendations key
+                    if simpleRecs.isEmpty, let rawArray = dict["recommendations"] as? [Any] {
                         simpleRecs = rawArray.compactMap { $0 as? String }.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
                         print("🔎 JSONSerialization path produced \(simpleRecs.count) items: \(simpleRecs.prefix(10))")
-                    } else if let morning = dict["morningRoutine"] as? [String],
-                              let evening = dict["eveningRoutine"] as? [String] {
-                        let weekly = dict["weeklyTreatments"] as? [String] ?? []
-                        simpleRecs = morning + evening + weekly
-                        print("🔎 Parsed string arrays → morning: \(morning.count), evening: \(evening.count), weekly: \(weekly.count)")
                     }
                 } else {
                     print("ℹ️ JSONSerialization could not parse jsonString")
                 }
             }
             if simpleRecs.isEmpty {
-                // Last-ditch: scan for a bracketed array by key name, case-insensitive
-                if let range = jsonString.range(of: "\"recommendations\"", options: [.caseInsensitive]) {
-                    let tail = jsonString[range.upperBound...]
-                    if let start = tail.firstIndex(of: "["), let end = tail[start...].lastIndex(of: "]") {
-                        let slice = tail[start...end]
-                        let inner = slice.dropFirst().dropLast()
-                        let parts = inner.split(separator: ",")
-                        simpleRecs = parts.map { String($0).replacingOccurrences(of: "\"", with: "").trimmingCharacters(in: .whitespacesAndNewlines) }
-                        print("🔎 Bracket scan produced \(simpleRecs.count) items: \(simpleRecs.prefix(10))")
-                    } else {
-                        print("ℹ️ Bracket scan failed to find [ ... ] after key")
-                    }
-                } else {
-                    print("ℹ️ Could not find 'recommendations' key for bracket scan")
-                }
+                print("ℹ️ No routine names could be extracted from the JSON structure")
             }
             if !simpleRecs.isEmpty {
-                let recs = buildMinimalRecommendations(from: simpleRecs)
-                print("🧱 Building minimal recommendations from \(simpleRecs.count) lines…")
+                // Try to build more complete recommendations from the extracted data
+                let recs = buildEnhancedRecommendations(from: simpleRecs, originalJSON: jsonString)
+                print("🧱 Building enhanced recommendations from \(simpleRecs.count) lines…")
                 await MainActor.run {
                     self.recommendations = recs
                     self.recommendationsUpdatedAt = Date()
                     self.recommendationsChangeLog = self.buildChangeLog(old: oldRecs, new: recs)
                     self.saveRecommendationsToDisk(recs)
-                    print("✅ SkinAnalysisManager: Cached minimal recommendations (disk)")
-                    print("📋 Routines summary → morning: \(recs.morningRoutine.map{ $0.name }.joined(separator: ", ")), evening: \(recs.eveningRoutine.map{ $0.name }.joined(separator: ", ")), weekly: \(recs.weeklyTreatments.map{ $0.name }.joined(separator: ", "))) ")
+                    print("✅ SkinAnalysisManager: Cached enhanced recommendations (disk)")
+                    print("📋 Routines summary → morning: \(recs.morningRoutine.map{ $0.name }.joined(separator: ", ")), evening: \(recs.eveningRoutine.map{ $0.name }.joined(separator: ", ")), weekly: \(recs.weeklyTreatments.map{ $0.name }.joined(separator: ", ")) )")
                     self.isReloading = false
                 }
                 return
@@ -583,6 +672,86 @@ class SkinAnalysisManager: ObservableObject {
             self.errorMessage = error.localizedDescription
             self.isReloading = false
         }
+    }
+    
+    // MARK: - JSON Truncation Detection and Recovery
+    
+    private func detectAndRecoverTruncatedJSON(_ jsonString: String) -> String? {
+        print("🔍 Analyzing JSON for truncation patterns...")
+        
+        // Check if JSON appears to be truncated mid-object
+        let patterns = [
+            // Truncated in the middle of a string value
+            "\"[^\"]*$",
+            // Truncated in the middle of an array
+            "\\[[^\\]]*$",
+            // Truncated in the middle of an object
+            "\\{[^}]*$",
+            // Truncated after a comma
+            ",\\s*$",
+            // Truncated after a colon
+            ":\\s*$"
+        ]
+        
+        for pattern in patterns {
+            if let range = jsonString.range(of: pattern, options: .regularExpression) {
+                let truncatedPart = String(jsonString[range.lowerBound...])
+                print("🔍 Detected truncation pattern: \(pattern)")
+                print("🔍 Truncated content: \(truncatedPart)")
+                
+                // Try to find the last complete object/array and close it
+                if let recovered = attemptTruncationRecovery(jsonString) {
+                    print("✅ Successfully recovered truncated JSON")
+                    return recovered
+                }
+            }
+        }
+        
+        return nil
+    }
+    
+    private func attemptTruncationRecovery(_ jsonString: String) -> String? {
+        var recovered = jsonString
+        
+        // Count open braces and brackets
+        var braceCount = 0
+        var bracketCount = 0
+        var inString = false
+        var escape = false
+        
+        for char in jsonString {
+            if char == "\\" { escape.toggle(); continue }
+            if char == "\"" && !escape { inString.toggle() }
+            if !inString {
+                if char == "{" { braceCount += 1 }
+                else if char == "}" { braceCount -= 1 }
+                else if char == "[" { bracketCount += 1 }
+                else if char == "]" { bracketCount -= 1 }
+            }
+            if char != "\\" { escape = false }
+        }
+        
+        // Close any unclosed braces/brackets
+        while bracketCount > 0 {
+            recovered.append("]")
+            bracketCount -= 1
+        }
+        
+        while braceCount > 0 {
+            recovered.append("}")
+            braceCount -= 1
+        }
+        
+        // Remove trailing commas before closing braces/brackets
+        recovered = recovered.replacingOccurrences(of: ",\\s*([}\\]])", with: "$1", options: .regularExpression)
+        
+        // Validate the recovered JSON
+        if let data = recovered.data(using: .utf8),
+           let _ = try? JSONSerialization.jsonObject(with: data, options: []) {
+            return recovered
+        }
+        
+        return nil
     }
     
     // MARK: - JSON Sanitizer (balances braces/brackets and removes trailing commas)
@@ -736,6 +905,121 @@ class SkinAnalysisManager: ObservableObject {
         return SkincareRecommendations(morningRoutine: morning, eveningRoutine: evening, weeklyTreatments: weekly, lifestyleTips: [], productRecommendations: [], progressTracking: metrics)
     }
     
+    private func buildEnhancedRecommendations(from routineNames: [String], originalJSON: String) -> SkincareRecommendations {
+        // Try to extract more detailed information from the original JSON
+        var enhancedSteps: [SkincareStep] = []
+        
+        if let data = originalJSON.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+            
+            // Extract detailed step information from the original JSON
+            if let morningRoutine = json["morningRoutine"] as? [[String: Any]] {
+                for stepDict in morningRoutine {
+                    guard let name = stepDict["name"] as? String, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+                    
+                    let description = stepDict["description"] as? String ?? name
+                    let category = stepDict["category"] as? String ?? "treatment"
+                    let duration = stepDict["duration"] as? Int ?? 60
+                    let frequency = stepDict["frequency"] as? String ?? "daily"
+                    let stepTime = stepDict["stepTime"] as? String ?? "morning"
+                    let conflictsWith = stepDict["conflictsWith"] as? [String] ?? []
+                    let requiresSPF = stepDict["requiresSPF"] as? Bool ?? false
+                    let tips = stepDict["tips"] as? [String] ?? []
+                    
+                    let step = SkincareStep(
+                        id: UUID(),
+                        name: name,
+                        description: description,
+                        category: SkincareStep.StepCategory(rawValue: category.lowercased()) ?? .treatment,
+                        duration: duration,
+                        frequency: SkincareStep.Frequency(rawValue: frequency.lowercased()) ?? .daily,
+                        stepTime: SkincareStep.StepTime(rawValue: stepTime.lowercased()) ?? .morning,
+                        conflictsWith: conflictsWith,
+                        requiresSPF: requiresSPF,
+                        tips: tips
+                    )
+                    enhancedSteps.append(step)
+                }
+            }
+            
+            // Extract evening routine steps
+            if let eveningRoutine = json["eveningRoutine"] as? [[String: Any]] {
+                for stepDict in eveningRoutine {
+                    guard let name = stepDict["name"] as? String, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+                    
+                    let description = stepDict["description"] as? String ?? name
+                    let category = stepDict["category"] as? String ?? "treatment"
+                    let duration = stepDict["duration"] as? Int ?? 60
+                    let frequency = stepDict["frequency"] as? String ?? "daily"
+                    let stepTime = stepDict["stepTime"] as? String ?? "evening"
+                    let conflictsWith = stepDict["conflictsWith"] as? [String] ?? []
+                    let requiresSPF = stepDict["requiresSPF"] as? Bool ?? false
+                    let tips = stepDict["tips"] as? [String] ?? []
+                    
+                    let step = SkincareStep(
+                        id: UUID(),
+                        name: name,
+                        description: description,
+                        category: SkincareStep.StepCategory(rawValue: category.lowercased()) ?? .treatment,
+                        duration: duration,
+                        frequency: SkincareStep.Frequency(rawValue: frequency.lowercased()) ?? .daily,
+                        stepTime: SkincareStep.StepTime(rawValue: stepTime.lowercased()) ?? .evening,
+                        conflictsWith: conflictsWith,
+                        requiresSPF: requiresSPF,
+                        tips: tips
+                    )
+                    enhancedSteps.append(step)
+                }
+            }
+            
+            // Extract weekly treatment steps
+            if let weeklyTreatments = json["weeklyTreatments"] as? [[String: Any]] {
+                for stepDict in weeklyTreatments {
+                    guard let name = stepDict["name"] as? String, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+                    
+                    let description = stepDict["description"] as? String ?? name
+                    let category = stepDict["category"] as? String ?? "treatment"
+                    let duration = stepDict["duration"] as? Int ?? 60
+                    let frequency = stepDict["frequency"] as? String ?? "weekly"
+                    let stepTime = stepDict["stepTime"] as? String ?? "anytime"
+                    let conflictsWith = stepDict["conflictsWith"] as? [String] ?? []
+                    let requiresSPF = stepDict["requiresSPF"] as? Bool ?? false
+                    let tips = stepDict["tips"] as? [String] ?? []
+                    
+                    let step = SkincareStep(
+                        id: UUID(),
+                        name: name,
+                        description: description,
+                        category: SkincareStep.StepCategory(rawValue: category.lowercased()) ?? .treatment,
+                        duration: duration,
+                        frequency: SkincareStep.Frequency(rawValue: frequency.lowercased()) ?? .weekly,
+                        stepTime: SkincareStep.StepTime(rawValue: stepTime.lowercased()) ?? .anytime,
+                        conflictsWith: conflictsWith,
+                        requiresSPF: requiresSPF,
+                        tips: tips
+                    )
+                    enhancedSteps.append(step)
+                }
+            }
+        }
+        
+        // If we couldn't extract detailed steps, fall back to minimal
+        if enhancedSteps.isEmpty {
+            return buildMinimalRecommendations(from: routineNames)
+        }
+        
+        // Organize steps by their original structure
+        let morningCount = enhancedSteps.filter { $0.stepTime == .morning }.count
+        let eveningCount = enhancedSteps.filter { $0.stepTime == .evening }.count
+        
+        let morning = Array(enhancedSteps.prefix(morningCount))
+        let evening = Array(enhancedSteps.dropFirst(morningCount).prefix(eveningCount))
+        let weekly = Array(enhancedSteps.dropFirst(morningCount + eveningCount))
+        
+        let metrics = ProgressMetrics(skinHealthScore: 0.75, improvementAreas: [], nextCheckIn: Date().addingTimeInterval(7*24*3600), goals: [])
+        return SkincareRecommendations(morningRoutine: morning, eveningRoutine: evening, weeklyTreatments: weekly, lifestyleTips: [], productRecommendations: [], progressTracking: metrics)
+    }
+    
     private func startAnalysisProgress() {
         analysisTimer?.invalidate()
         analysisProgress = 0.02
@@ -768,7 +1052,7 @@ class SkinAnalysisManager: ObservableObject {
             // Remove conflicts: if two steps conflict, keep the first higher-priority category order
             // Priority order heuristic
             let priority: [SkincareStep.StepCategory: Int] = [
-                .cleanser: 0, .toner: 1, .serum: 2, .treatment: 3, .moisturizer: 4, .sunscreen: 5, .mask: 6
+                .cleanser: 0, .toner: 1, .serum: 2, .exfoliant: 3, .bha: 3, .aha: 3, .treatment: 4, .moisturizer: 5, .sunscreen: 6, .mask: 7, .clay: 7
             ]
             var result: [SkincareStep] = []
             var presentTags: Set<String> = []
@@ -785,6 +1069,29 @@ class SkinAnalysisManager: ObservableObject {
                 result.append(step)
             }
             print("🧪 RulesEngine: Output steps=\(result.count) (removed=\(kept.count - result.count))")
+            // Skin-age guidance: if estimated skin age suggests aging > chronological, bias to retinoid/antioxidant presence
+            if let skinAge = analysisResults?.skinAgeYears {
+                // Heuristic: if skinAge exceeds chronological by 5+, ensure an evening retinoid when safe
+                let onboardingAgeString = AuthenticationManager.shared.getOnboardingAnswers()?.age ?? ""
+                let assumedChrono = Int(onboardingAgeString.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 28
+                if skinAge - assumedChrono >= 5 {
+                    let hasRetinoid = result.contains { $0.name.lowercased().contains("retinol") || $0.name.lowercased().contains("retinoid") }
+                    if !hasRetinoid && isEvening {
+                        let retinoid = SkincareStep(
+                            name: "Retinoid Treatment",
+                            description: "Apply a pea-sized amount of retinoid to clean, dry skin.",
+                            category: .treatment,
+                            duration: 60,
+                            frequency: .nightly,
+                            stepTime: .evening,
+                            conflictsWith: ["strong_exfoliant", "vitamin_c"],
+                            requiresSPF: false,
+                            tips: ["Start 2-3x/week if sensitive and increase as tolerated"]
+                        )
+                        result.append(retinoid)
+                    }
+                }
+            }
             return result
         }
         let morning = filterAndAdjust(recs.morningRoutine, isEvening: false)

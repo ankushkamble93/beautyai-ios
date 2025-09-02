@@ -208,19 +208,18 @@ struct ViewProgressView: View {
                                 .padding(.top, 10)
                                 .padding(.leading, 8)
                             }
-                            // Enhanced graph labels
-                            VStack(alignment: .leading, spacing: 0) {
+                            // Enhanced graph labels (tighter, not clipped)
+                            VStack(alignment: .leading, spacing: -2) {
                                 Text("Skin Clarity %")
                                     .font(.caption)
                                     .fontWeight(.medium)
                                     .foregroundColor(.secondary)
-                                
                                 Text(graphDataDescription)
                                     .font(.caption2)
                                     .foregroundColor(.secondary.opacity(0.8))
                             }
                             .padding(.leading, 8)
-                            .padding(.top, -6)
+                            .padding(.top, 0)
                             .background(Color.clear)
                         }
                         .padding(.bottom, 8)

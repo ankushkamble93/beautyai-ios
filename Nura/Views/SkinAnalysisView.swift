@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import Vision
+import AVFoundation
 
 struct SkinAnalysisView: View {
     @EnvironmentObject var skinAnalysisManager: SkinAnalysisManager
@@ -8,9 +9,14 @@ struct SkinAnalysisView: View {
     @EnvironmentObject var userTierManager: UserTierManager
     @State private var selectedImages: [PhotosPickerItem] = []
     @State private var showingImagePicker = false
+    @State private var showingCamera = false
     @State private var showingResults = false
     @State private var showPremiumBanner = false
     @State private var showLimitReachedBanner = false
+    @State private var showLiveAnalysis = false
+    @State private var showLiveInfo = false
+    @State private var debugLiveEnabled = false
+    @State private var showDebugAlert = false
     // Progress is now driven by SkinAnalysisManager.analysisProgress
     @State private var photoStates: [UUID: Bool] = [:] // Track individual photo states
     @State private var photoValidationResults: [Int: PhotoValidationResult] = [:] // Cache validation results
@@ -36,6 +42,55 @@ struct SkinAnalysisView: View {
                         .font(.system(size: 60))
                         .foregroundColor(isDark ? NuraColors.primaryDark : NuraColors.primary)
                         .padding(.top, -6)
+                        .onLongPressGesture(minimumDuration: 0.8) {
+                            #if DEBUG
+                            debugLiveEnabled.toggle()
+                            showDebugAlert = true
+                            #endif
+                        }
+                        .alert("Debug Live Scan", isPresented: $showDebugAlert) {
+                            Button("OK", role: .cancel) {}
+                        } message: {
+                            Text(debugLiveEnabled ? "Enabled. Tap Live Scan to open the demo." : "Disabled.")
+                        }
+                    // Live scan entry (disabled by default; enable via debug long-press; hidden when 3 photos ready)
+                    if skinAnalysisManager.uploadedImages.count < 3 {
+                    HStack(spacing: 10) {
+                        Button(action: {
+                            #if DEBUG
+                            if debugLiveEnabled { showLiveAnalysis = true }
+                            #endif
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "camera.viewfinder")
+                                Text("Live Scan (Beta)")
+                                    .fontWeight(.semibold)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(debugLiveEnabled ? Color.blue.opacity(0.85) : Color.gray.opacity(0.35))
+                            .foregroundColor(.white)
+                            .clipShape(Capsule())
+                        }
+                        .disabled(!debugLiveEnabled)
+                        Button(action: { showLiveInfo = true }) {
+                            Image(systemName: "info.circle")
+                                .foregroundColor(isDark ? .white : .black)
+                        }
+                        .accessibilityLabel("About Live Scan")
+                        .alert("Live Scan (Beta)", isPresented: $showLiveInfo) {
+                            Button("OK", role: .cancel) {}
+                        } message: {
+                            Text("Live, on-device skin scan with face landmarks and guidance. Available on real devices; coming soon for release.")
+                        }
+                    }
+                    .padding(.top, 6)
+                    .sheet(isPresented: $showLiveAnalysis) {
+                        LiveSkinAnalysisView { images in
+                            skinAnalysisManager.uploadedImages = images
+                        }
+                    }
+                    }
                         
                     // Removed duplicate "Upload 3 selfies" text - only keeping the one in the upload section
                     
@@ -147,26 +202,51 @@ struct SkinAnalysisView: View {
                             return now < nextDay
                         }()
                         
-                        // Upload button
-                        PhotosPicker(selection: $selectedImages, maxSelectionCount: 3, matching: .images) {
-                            HStack {
-                                Image(systemName: "plus.circle.fill")
-                                Text("Select Photos")
+                        // Upload + Camera row: 5/6 select + 1/6 camera
+                        HStack(spacing: 8) {
+                            Button(action: { showingCamera = true }) {
+                                Image(systemName: "camera.fill")
+                                    .frame(width: 50, height: 50)
+                                    .foregroundColor(.white)
+                                    .background((isUploadLocked ? Color.gray.opacity(0.4) : NuraColors.primary).opacity(0.85))
+                                    .cornerRadius(12)
+                                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.black.opacity(0.75), lineWidth: 1))
                             }
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                            .background(isUploadLocked ? Color.gray.opacity(0.4) : NuraColors.primary)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
-                        }
-                        .disabled(isUploadLocked)
-                        .onChange(of: selectedImages) { oldValue, newValue in
-                            Task {
-                                await loadImages(from: newValue)
+                            .disabled(isUploadLocked)
+                            .sheet(isPresented: $showingCamera) {
+                                CameraCaptureView { image in
+                                    if let img = image {
+                                        skinAnalysisManager.uploadedImages.append(img)
+                                        Task {
+                                            let index = skinAnalysisManager.uploadedImages.count - 1
+                                            let validationResult = await validateSinglePhotoAsync(img)
+                                            await MainActor.run { photoValidationResults[index] = validationResult }
+                                        }
+                                    }
+                                }
+                            }
+                            .frame(width: 50)
+                            
+                            PhotosPicker(selection: $selectedImages, maxSelectionCount: 3, matching: .images) {
+                                HStack {
+                                    Image(systemName: "plus.circle.fill")
+                                    Text("Select Photos")
+                                }
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 50)
+                                .background(isUploadLocked ? Color.gray.opacity(0.4) : NuraColors.primary)
+                                .foregroundColor(.white)
+                                .cornerRadius(12)
+                            }
+                            .disabled(isUploadLocked)
+                            .onChange(of: selectedImages) { oldValue, newValue in
+                                Task { await loadImages(from: newValue) }
                             }
                         }
                     }
                     .padding(.horizontal)
+                    
+                    // Removed mid-page live analysis button (moved to top as disabled beta)
                     
                     // Analysis button with progress bar
                     if !skinAnalysisManager.uploadedImages.isEmpty {
@@ -1240,6 +1320,32 @@ struct AnalysisSummaryView: View {
         appearanceManager.colorSchemePreference == "dark" || 
         (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark) 
     }
+}
+
+// MARK: - Camera Capture
+struct CameraCaptureView: UIViewControllerRepresentable {
+    typealias UIViewControllerType = UIImagePickerController
+    var onCapture: (UIImage?) -> Void
+    class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        let parent: CameraCaptureView
+        init(_ parent: CameraCaptureView) { self.parent = parent }
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+            let image = info[.originalImage] as? UIImage
+            picker.dismiss(animated: true) { self.parent.onCapture(image) }
+        }
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            picker.dismiss(animated: true) { self.parent.onCapture(nil) }
+        }
+    }
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.delegate = context.coordinator
+        picker.sourceType = .camera
+        picker.cameraCaptureMode = .photo
+        return picker
+    }
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
 }
 
 // MARK: - Photo Quality Components

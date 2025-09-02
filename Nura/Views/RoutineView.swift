@@ -293,6 +293,10 @@ struct CombinedRoutineView: View {
         case .sunscreen: return Color.yellow.opacity(0.8)
         case .treatment: return Color.orange.opacity(0.8)
         case .mask: return Color.orange.opacity(0.8)
+        case .exfoliant: return Color.red.opacity(0.7)
+        case .bha: return Color.red.opacity(0.7)
+        case .aha: return Color.red.opacity(0.7)
+        case .clay: return Color.orange.opacity(0.8)
         }
     }
 }

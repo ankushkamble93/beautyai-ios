@@ -39,20 +39,29 @@ struct ProductCardView: View {
                     .font(.headline)
                     .foregroundColor(.primary)
                     .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+                    .truncationMode(.tail)
                 HStack(spacing: 8) {
                     if let brand = product.brand { Text(brand).font(.subheadline).foregroundColor(.secondary) }
                     if let price = product.priceText { Text(price).font(.subheadline).foregroundColor(.secondary) }
                 }
-                if !product.benefits.isEmpty {
-                    HStack(spacing: 6) {
-                        ForEach(product.benefits.prefix(3), id: \.self) { b in
-                            Text(b.capitalized)
-                                .font(.caption)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color(.tertiarySystemBackground))
-                                .cornerRadius(8)
-                        }
+                HStack(spacing: 6) {
+                    if let type = product.productType, !type.isEmpty {
+                        Text("Recommended \(type.capitalized)")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.blue.opacity(0.08))
+                            .cornerRadius(8)
+                    }
+                    ForEach(product.benefits.prefix(3), id: \.self) { b in
+                        Text(b.capitalized)
+                            .font(.caption)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color(.tertiarySystemBackground))
+                            .cornerRadius(8)
                     }
                 }
                 HStack(spacing: 12) {
