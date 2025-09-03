@@ -26,6 +26,7 @@ class SkinAnalysisManager: ObservableObject {
     @Published var errorMessage: String?
     @Published var analysisProgress: Double = 0.0
     @Published var lastRecommendationsResponse: String? // raw content from model (for spike/debug)
+    @Published var isExplicitRefresh: Bool = false // Track if this is an explicit refresh vs cache load
     
     private let chatGPTService = ChatGPTServiceManager()
     private let userTierManager: UserTierManager
@@ -274,6 +275,7 @@ class SkinAnalysisManager: ObservableObject {
     
     func loadCachedRecommendations() {
         if let recs = loadRecommendationsFromDisk() {
+            self.isExplicitRefresh = false // This is a cache load, not an explicit refresh
             self.recommendations = recs
             print("✅ SkinAnalysisManager: Loaded cached recommendations from disk")
             return
@@ -281,6 +283,7 @@ class SkinAnalysisManager: ObservableObject {
         // Backward-compatibility: try legacy UserDefaults cache once
         if let data = UserDefaults.standard.data(forKey: recommendationsCacheKey),
            let recs = try? JSONDecoder().decode(SkincareRecommendations.self, from: data) {
+            self.isExplicitRefresh = false // This is a cache load, not an explicit refresh
             self.recommendations = recs
             print("✅ SkinAnalysisManager: Loaded cached recommendations from UserDefaults (legacy)")
             // migrate to disk
@@ -299,6 +302,7 @@ class SkinAnalysisManager: ObservableObject {
         
         do {
             isReloading = true
+            isExplicitRefresh = true // This is an explicit refresh action
             reloadStartTime = Date() // Set start time for timer
             let oldRecs = self.recommendations
             let startTs = Date()

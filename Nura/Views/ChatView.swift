@@ -419,9 +419,9 @@ private struct RecommendedProductsView: View {
         }
         .onAppear(perform: loadWithoutProductSearch)
         .onReceive(skinAnalysisManager.$recommendations) { recommendations in
-            // Only trigger product search if we have actual recommendations
-            // This prevents premature API calls when recommendations are nil/empty
-            if recommendations != nil && !recommendations!.morningRoutine.isEmpty {
+            // Only trigger product search if we have actual recommendations AND it's an explicit refresh
+            // This prevents premature API calls when loading cached recommendations
+            if recommendations != nil && !recommendations!.morningRoutine.isEmpty && skinAnalysisManager.isExplicitRefresh {
                 load()
             }
         }
@@ -558,7 +558,8 @@ private struct RecommendedProductsView: View {
             await skinAnalysisManager.regenerateRecommendations()
             // Reset loading state after recommendations are regenerated
             isLoading = false
-            load() // This will trigger product search API calls
+            // The load() will be triggered automatically by the onReceive listener
+            // since regenerateRecommendations() sets isExplicitRefresh = true
         }
     }
     
