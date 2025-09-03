@@ -381,9 +381,20 @@ private struct RecommendedProductsView: View {
                                 Spacer()
                                 Button(action: refreshRecommendations) {
                                     HStack(spacing: 6) {
-                                        Image(systemName: isLoading ? "arrow.clockwise.circle.fill" : "arrow.clockwise")
-                                        let remaining = max(0, Int((skinAnalysisManager.reloadCountdownTime)))
-                                        Text(isLoading ? (remaining > 0 ? "Refreshing (\(remaining)s)" : "Refreshing") : "Refresh")
+                                        if isLoading {
+                                            let remaining = max(0, Int((skinAnalysisManager.reloadCountdownTime)))
+                                            if remaining > 0 {
+                                                Image(systemName: "arrow.clockwise.circle.fill")
+                                                Text("Refreshing (\(remaining)s)")
+                                            } else {
+                                                ProgressView()
+                                                    .scaleEffect(0.7)
+                                                Text("Refreshing")
+                                            }
+                                        } else {
+                                            Image(systemName: "arrow.clockwise")
+                                            Text("Refresh")
+                                        }
                                     }
                                     .font(.caption)
                                     .padding(.horizontal, 10)
@@ -391,7 +402,7 @@ private struct RecommendedProductsView: View {
                                     .background(isDark ? Color.blue.opacity(0.12) : Color.blue.opacity(0.08))
                                     .cornerRadius(10)
                                 }
-                                .disabled(isLoading)
+                                .disabled(isLoading || !userTierManager.canPerformAnalysis())
                             }
                             .padding(.horizontal)
 
@@ -407,10 +418,12 @@ private struct RecommendedProductsView: View {
             // Bubble now handled at parent ChatView for persistence across navigation
         }
         .onAppear(perform: loadWithoutProductSearch)
-        .onReceive(skinAnalysisManager.$recommendations) { _ in
-            // When recommendations are updated (e.g., from DashboardView refresh),
-            // refresh the product search to show new products for updated routines
-            load()
+        .onReceive(skinAnalysisManager.$recommendations) { recommendations in
+            // Only trigger product search if we have actual recommendations
+            // This prevents premature API calls when recommendations are nil/empty
+            if recommendations != nil && !recommendations!.morningRoutine.isEmpty {
+                load()
+            }
         }
         .background(isDark ? NuraColors.backgroundDark : Color(red: 0.98, green: 0.97, blue: 0.95))
     }
@@ -543,6 +556,8 @@ private struct RecommendedProductsView: View {
         Task { @MainActor in
             isLoading = true
             await skinAnalysisManager.regenerateRecommendations()
+            // Reset loading state after recommendations are regenerated
+            isLoading = false
             load() // This will trigger product search API calls
         }
     }
