@@ -146,6 +146,88 @@ class SupabaseProxyManager: ObservableObject {
             maxTokens: maxTokens
         )
     }
+    
+    // MARK: - Email Support Methods
+    
+    func sendSupportEmail(emailData: [String: Any]) async throws {
+        guard let session = AuthenticationManager.shared.session else {
+            throw SupabaseProxyError.notAuthenticated
+        }
+        
+        isProcessing = true
+        errorMessage = nil
+        
+        defer { isProcessing = false }
+        
+        do {
+            // Get access token for authentication
+            let accessToken = session.accessToken
+            
+            // Make request to Supabase Edge Function for email sending
+            let url = URL(string: APIConfig.supabaseEmailFunctionURL)!
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            
+            // Convert email data to JSON
+            let jsonData = try JSONSerialization.data(withJSONObject: emailData)
+            request.httpBody = jsonData
+            
+            print("📧 SupabaseProxyManager: Sending support email")
+            print("📧 SupabaseProxyManager: To: \(emailData["to"] ?? "unknown")")
+            print("📧 SupabaseProxyManager: Subject: \(emailData["subject"] ?? "unknown")")
+            
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            // Check HTTP response
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw SupabaseProxyError.invalidResponse
+            }
+            
+            print("📧 SupabaseProxyManager: Email HTTP Status: \(httpResponse.statusCode)")
+            print("📧 SupabaseProxyManager: Email Response Headers: \(httpResponse.allHeaderFields)")
+            if let responseString = String(data: data, encoding: .utf8), !responseString.isEmpty {
+                let snippet = responseString.count > 2000 ? String(responseString.prefix(2000)) + "…(truncated)" : responseString
+                print("📧 SupabaseProxyManager: Email Response Body: \(snippet)")
+            } else {
+                print("📧 SupabaseProxyManager: Email Response Body: <empty>")
+            }
+            
+            // Handle different HTTP status codes
+            switch httpResponse.statusCode {
+            case 200:
+                print("✅ SupabaseProxyManager: Support email sent successfully")
+                return
+                
+            case 401:
+                throw SupabaseProxyError.notAuthenticated
+                
+            case 400...499:
+                // Client error
+                let errorData = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+                let errorMessage = errorData?["error"] as? String ?? "Email sending failed"
+                throw SupabaseProxyError.clientError(message: errorMessage)
+                
+            case 500...599:
+                // Server error
+                let errorData = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+                let errorMessage = errorData?["error"] as? String ?? "Email server error"
+                throw SupabaseProxyError.serverError(message: errorMessage)
+                
+            default:
+                throw SupabaseProxyError.unknownError
+            }
+            
+        } catch {
+            if error is SupabaseProxyError {
+                throw error
+            } else {
+                print("❌ SupabaseProxyManager: Email sending error: \(error)")
+                throw SupabaseProxyError.networkError(error)
+            }
+        }
+    }
 }
 
 // MARK: - Error Types

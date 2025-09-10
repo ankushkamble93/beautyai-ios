@@ -220,7 +220,10 @@ struct SkinAnalysisView: View {
                                         Task {
                                             let index = skinAnalysisManager.uploadedImages.count - 1
                                             let validationResult = await validateSinglePhotoAsync(img)
-                                            await MainActor.run { photoValidationResults[index] = validationResult }
+                                            await MainActor.run { 
+                                                photoValidationResults[index] = validationResult 
+                                                print("✅ SkinAnalysisView: Camera image validated. Total images: \(skinAnalysisManager.uploadedImages.count). Waiting for user to press Analyze button.")
+                                            }
                                         }
                                     }
                                 }
@@ -401,6 +404,10 @@ struct SkinAnalysisView: View {
                         photoValidationResults[index] = validationResult
                     }
                 }
+                
+                // IMPORTANT: Do NOT automatically trigger analysis here
+                // Analysis should only be triggered when the user presses the "Analyze" button
+                print("✅ SkinAnalysisView: Validation completed for \(loadedImages.count) images. Waiting for user to press Analyze button.")
             }
         }
     }
@@ -417,6 +424,10 @@ struct SkinAnalysisView: View {
                     photoValidationResults[index] = validationResult
                 }
             }
+            
+            // IMPORTANT: Do NOT automatically trigger analysis here
+            // Analysis should only be triggered when the user presses the "Analyze" button
+            print("✅ SkinAnalysisView: Initialization validation completed for \(skinAnalysisManager.uploadedImages.count) images. Waiting for user to press Analyze button.")
         }
     }
     
@@ -580,7 +591,17 @@ struct SkinAnalysisView: View {
                 }
                 
                 if let error = error {
+                    // Suppress known simulator errors (Error Code 1: cancelled, Error Code 9: inference context)
+                    #if !targetEnvironment(simulator)
                     print("⚠️ Vision framework error: \(error)")
+                    #else
+                    // In simulator, these errors are expected due to Neural Engine limitations
+                    if let nsError = error as NSError?, nsError.code == 1 || nsError.code == 9 {
+                        print("ℹ️ Vision framework simulator limitation (expected): \(error.localizedDescription)")
+                    } else {
+                        print("⚠️ Vision framework error: \(error)")
+                    }
+                    #endif
                     return
                 }
                 
@@ -628,13 +649,27 @@ struct SkinAnalysisView: View {
                 print("✅ Vision framework result: Face detected")
             }
             
+            // Configure for simulator compatibility
+            #if targetEnvironment(simulator)
+            request.usesCPUOnly = true
+            #endif
+            
             let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
             
             do {
                 print("🔍 Starting Vision framework face detection...")
                 try handler.perform([request])
             } catch {
+                // Suppress known simulator errors during perform
+                #if !targetEnvironment(simulator)
                 print("⚠️ Vision framework error during perform: \(error)")
+                #else
+                if let nsError = error as NSError?, nsError.code == 9 {
+                    print("ℹ️ Vision framework simulator limitation during perform (expected): \(error.localizedDescription)")
+                } else {
+                    print("⚠️ Vision framework error during perform: \(error)")
+                }
+                #endif
                 semaphore.signal()
             }
             

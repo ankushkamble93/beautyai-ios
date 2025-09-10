@@ -110,8 +110,10 @@ struct ProductSearchResult: Identifiable, Codable {
     let ingredients: [String]?
     // Optional product type classification (e.g., cleanser, serum, moisturizer, sunscreen)
     let productType: String?
+    // Optional product description for enhanced user experience
+    let description: String?
 
-    init(id: UUID = UUID(), name: String, brand: String?, priceText: String?, benefits: [String], imageURL: String?, destinationURL: String?, ingredients: [String]? = nil, productType: String? = nil) {
+    init(id: UUID = UUID(), name: String, brand: String?, priceText: String?, benefits: [String], imageURL: String?, destinationURL: String?, ingredients: [String]? = nil, productType: String? = nil, description: String? = nil) {
         self.id = id
         self.name = name
         self.brand = brand
@@ -121,6 +123,7 @@ struct ProductSearchResult: Identifiable, Codable {
         self.destinationURL = destinationURL
         self.ingredients = ingredients
         self.productType = productType
+        self.description = description
     }
 }
 

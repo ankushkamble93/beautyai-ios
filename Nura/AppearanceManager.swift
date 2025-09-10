@@ -7,6 +7,13 @@ class AppearanceManager: ObservableObject {
             UserDefaults.standard.set(colorSchemePreference, forKey: "colorSchemePreference")
         }
     }
+    
+    /// Computed property to determine if the app should use dark mode
+    /// This helps avoid complex boolean expressions in SwiftUI views that cause compiler type-checking issues
+    var isDarkMode: Bool {
+        return colorSchemePreference == "dark" || 
+               (colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark)
+    }
     init() {
         // For new users, default to light mode
         // For existing users who haven't set a preference, also default to light mode

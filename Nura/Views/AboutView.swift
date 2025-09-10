@@ -57,7 +57,7 @@ struct AboutView: View {
                                 AboutSection(title: "What is Nura?", text: "A mirror, reimagined. Nura helps you understand your skin, not just cover it.")
                             }
                             FadeInSection(delay: 0.2) {
-                                AboutSection(title: "Our Story", text: "A quiet rebellion against one-size-fits-all skincare. Designed by beauty obsessives, perfectionists, and believers in glow.")
+                                AboutSection(title: "Our Story", text: "Born at the intersection of dermatology and design, Nura honors the individuality of every complexion. We pair measured science with thoughtful craft so your skin can return to its calm, luminous state.")
                             }
                             FadeInSection(delay: 0.3) {
                                 VStack(spacing: 10) {
@@ -65,14 +65,32 @@ struct AboutView: View {
                                         .font(.headline).fontWeight(.semibold)
                                         .foregroundColor(sectionText)
                                     HStack(spacing: 32) {
-                                        ParallaxIcon(symbol: "brain") // HuggingFace placeholder
-                                        ParallaxIcon(symbol: "creditcard") // Stripe placeholder
-                                        ParallaxIcon(symbol: "bolt.shield") // OpenAI placeholder
+                                        ParallaxIcon(symbol: "brain", delay: 0.0) // HuggingFace placeholder
+                                        ParallaxIcon(symbol: "creditcard", delay: 0.15) // Stripe placeholder
+                                        ParallaxIcon(symbol: "bolt.shield", delay: 0.30) // OpenAI placeholder
                                     }
                                     .padding(.top, 2)
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 18)
+                                .background(sectionBG)
+                                .cornerRadius(16)
+                                .shadow(color: dimmed, radius: 6, x: 0, y: 2)
+                            }
+                            FadeInSection(delay: 0.35) {
+                                VStack(spacing: 12) {
+                                    Text("The Nura Method")
+                                        .font(.headline).fontWeight(.semibold)
+                                        .foregroundColor(sectionText)
+                                    HStack(alignment: .top, spacing: 16) {
+                                        AboutPillar(icon: "camera", title: "Observe", text: "True-to-skin imaging that respects tone and texture.")
+                                        AboutPillar(icon: "brain", title: "Understand", text: "Signal over noise—clinical patterns, not trends.")
+                                        AboutPillar(icon: "wand.and.stars", title: "Guide", text: "Small, steady rituals that earn lasting results.")
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 18)
+                                .padding(.horizontal, 12)
                                 .background(sectionBG)
                                 .cornerRadius(16)
                                 .shadow(color: dimmed, radius: 6, x: 0, y: 2)
@@ -160,19 +178,42 @@ struct FadeInSection<Content: View>: View {
 
 struct ParallaxIcon: View {
     let symbol: String
-    @State private var offset: CGFloat = 0
+    var delay: Double = 0
+    @State private var isUp: Bool = false
     var body: some View {
         Image(systemName: symbol)
             .resizable()
             .scaledToFit()
             .frame(width: 38, height: 38)
             .foregroundColor(.gray.opacity(0.55))
-            .offset(y: offset)
+            .offset(y: isUp ? -4 : 4)
             .onAppear {
-                withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
-                    offset = CGFloat.random(in: -6...6)
+                withAnimation(.easeInOut(duration: 1.8).delay(delay).repeatForever(autoreverses: true)) {
+                    isUp.toggle()
                 }
             }
+    }
+}
+
+struct AboutPillar: View {
+    let icon: String
+    let title: String
+    let text: String
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 26, height: 26)
+                .foregroundColor(.gray.opacity(0.65))
+            Text(title)
+                .font(.subheadline).fontWeight(.semibold)
+            Text(text)
+                .font(.footnote)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 

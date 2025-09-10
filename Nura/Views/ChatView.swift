@@ -5,6 +5,7 @@ struct ChatView: View {
     @EnvironmentObject var appearanceManager: AppearanceManager
     @EnvironmentObject var userTierManager: UserTierManager
     @EnvironmentObject var skinAnalysisManager: SkinAnalysisManager
+    @EnvironmentObject var routineOverrideManager: RoutineOverrideManager
     @State private var messageText = ""
     @FocusState private var isTextFieldFocused: Bool
     @State private var showNuraProSheet = false
@@ -21,10 +22,11 @@ struct ChatView: View {
                         .environmentObject(appearanceManager)
                         .environmentObject(userTierManager)
                         .environmentObject(skinAnalysisManager)
+                        .environmentObject(routineOverrideManager)
                 }
                 // Global Ask Nura bubble (visible across pushes, including product detail)
                 if userTierManager.tier != .free {
-                    let isDark = appearanceManager.colorSchemePreference == "dark" || (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark)
+                    let isDark = appearanceManager.isDarkMode
                     Button(action: { showGlobalChatSheet = true }) {
                         HStack(spacing: 8) {
                             Image(systemName: "message.fill")
@@ -54,7 +56,7 @@ struct ChatView: View {
     
     // MARK: - Free tier: existing chat (with paywall overlay)
     private var freeTierChat: some View {
-        let isDark = appearanceManager.colorSchemePreference == "dark" || (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark)
+        let isDark = appearanceManager.isDarkMode
         return VStack {
             // Title
             ZStack(alignment: .topTrailing) {
@@ -140,7 +142,7 @@ struct ChatView: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(
-                            (appearanceManager.colorSchemePreference == "dark" || (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark)) ? NuraColors.cardDark : NuraColors.card
+                            appearanceManager.isDarkMode ? NuraColors.cardDark : NuraColors.card
                         )
                         .cornerRadius(14)
                     Spacer()
@@ -289,6 +291,7 @@ private struct RecommendedProductsView: View {
     @EnvironmentObject var userTierManager: UserTierManager
     @EnvironmentObject var skinAnalysisManager: SkinAnalysisManager
     @EnvironmentObject var chatManager: ChatManager
+    @EnvironmentObject var routineOverrideManager: RoutineOverrideManager
     
     @State private var isLoading: Bool = false
     @State private var showChatSheet: Bool = false
@@ -297,7 +300,7 @@ private struct RecommendedProductsView: View {
     @State private var weeklyStepProducts: [RoutineStepProducts] = []
     
     var body: some View {
-        let isDark = appearanceManager.colorSchemePreference == "dark" || (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark)
+        let isDark = appearanceManager.isDarkMode
         return ZStack(alignment: .bottomTrailing) {
             ScrollView {
                 VStack(spacing: 18) {
@@ -408,22 +411,48 @@ private struct RecommendedProductsView: View {
 
                         }
                         
-                        CategorySection(title: "Morning Routine", icon: "sun.max.fill", stepProducts: morningStepProducts, reasonBuilder: reason, recommendationText: getRecommendationText())
-                        CategorySection(title: "Evening Routine", icon: "moon.stars.fill", stepProducts: eveningStepProducts, reasonBuilder: reason, recommendationText: getRecommendationText())
-                        CategorySection(title: "Weekly Treatments", icon: "calendar", stepProducts: weeklyStepProducts, reasonBuilder: reason, recommendationText: getRecommendationText())
+                        CategorySection(title: "Morning Routine", icon: "sun.max.fill", stepProducts: morningStepProducts, reasonBuilder: reason, recommendationText: getRecommendationText(), onTriggerLoading: {
+                            Task { @MainActor in
+                                await load()
+                            }
+                        })
+                        .environmentObject(appearanceManager)
+                        .environmentObject(userTierManager)
+                        .environmentObject(routineOverrideManager)
+                        CategorySection(title: "Evening Routine", icon: "moon.stars.fill", stepProducts: eveningStepProducts, reasonBuilder: reason, recommendationText: getRecommendationText(), onTriggerLoading: {
+                            Task { @MainActor in
+                                await load()
+                            }
+                        })
+                        .environmentObject(appearanceManager)
+                        .environmentObject(userTierManager)
+                        .environmentObject(routineOverrideManager)
+                        CategorySection(title: "Weekly Treatments", icon: "calendar", stepProducts: weeklyStepProducts, reasonBuilder: reason, recommendationText: getRecommendationText(), onTriggerLoading: {
+                            Task { @MainActor in
+                                await load()
+                            }
+                        })
+                        .environmentObject(appearanceManager)
+                        .environmentObject(userTierManager)
+                        .environmentObject(routineOverrideManager)
                     }
                 }
                 .padding()
             }
             // Bubble now handled at parent ChatView for persistence across navigation
         }
-        .onAppear(perform: loadWithoutProductSearch)
+        // Removed onAppear trigger - product loading now happens after skin analysis
         .onReceive(skinAnalysisManager.$recommendations) { recommendations in
             // Only trigger product search if we have actual recommendations AND it's an explicit refresh
             // This prevents premature API calls when loading cached recommendations
             if recommendations != nil && !recommendations!.morningRoutine.isEmpty && skinAnalysisManager.isExplicitRefresh {
                 load()
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .nuraTriggerProductLoading)) { _ in
+            // Trigger product loading when skin analysis is complete
+            print("🚀 ChatView: Received product loading trigger from skin analysis")
+            load()
         }
         .background(isDark ? NuraColors.backgroundDark : Color(red: 0.98, green: 0.97, blue: 0.95))
     }
@@ -452,22 +481,48 @@ private struct RecommendedProductsView: View {
             guard let brand = p.brand?.trimmingCharacters(in: .whitespacesAndNewlines), !brand.isEmpty else { return nil }
             let hasBrandInName = p.name.lowercased().contains(brand.lowercased())
             guard hasBrandInName, p.name.split(separator: " ").count >= 3 else { return nil }
+            
+            // Store original URL BEFORE it gets overridden
+            let originalURL = p.destinationURL
             let fixedDest = ensureAmazonURL(for: p.name, dest: p.destinationURL)
-            return ProductSearchResult(id: p.id, name: p.name, brand: p.brand, priceText: p.priceText, benefits: p.benefits, imageURL: p.imageURL, destinationURL: fixedDest, ingredients: p.ingredients)
+            
+            // Store original URL in benefits array for the new button (temporary solution)
+            var updatedBenefits = p.benefits
+            if let originalURL = originalURL, 
+               let originalHost = URL(string: originalURL)?.host?.lowercased(),
+               !originalHost.contains("amazon") {
+                updatedBenefits.append("ORIGINAL_URL:\(originalURL)")
+            }
+            return ProductSearchResult(id: p.id, name: p.name, brand: p.brand, priceText: p.priceText, benefits: updatedBenefits, imageURL: p.imageURL, destinationURL: fixedDest, ingredients: p.ingredients, productType: p.productType, description: p.description)
         }
     }
     
     private func load() {
+        print("🚀 [load] Starting product loading process")
         Task { @MainActor in
             isLoading = true
-            defer { isLoading = false }
-            guard let recs = skinAnalysisManager.recommendations else { return }
+            defer { 
+                isLoading = false
+                print("✅ [load] Product loading process completed")
+            }
+            guard let recs = skinAnalysisManager.recommendations else { 
+                print("❌ [load] No recommendations available")
+                return 
+            }
             let pm = ProductSearchManager.shared
             
+            print("🔄 [load] Loading morning routine products...")
             // Load products for each routine step individually
             morningStepProducts = await loadProductsForSteps(recs.morningRoutine, productManager: pm)
+            print("🔄 [load] Morning products loaded: \(morningStepProducts.map { $0.products.count })")
+            
+            print("🔄 [load] Loading evening routine products...")
             eveningStepProducts = await loadProductsForSteps(recs.eveningRoutine, productManager: pm)
+            print("🔄 [load] Evening products loaded: \(eveningStepProducts.map { $0.products.count })")
+            
+            print("🔄 [load] Loading weekly treatment products...")
             weeklyStepProducts = await loadProductsForSteps(recs.weeklyTreatments, productManager: pm)
+            print("🔄 [load] Weekly products loaded: \(weeklyStepProducts.map { $0.products.count })")
         }
     }
     
@@ -480,6 +535,42 @@ private struct RecommendedProductsView: View {
         eveningStepProducts = recs.eveningRoutine.map { RoutineStepProducts(step: $0, products: []) }
         weeklyStepProducts = recs.weeklyTreatments.map { RoutineStepProducts(step: $0, products: []) }
     }
+    
+    private func loadProductsIfNeeded() {
+        print("🔄 [loadProductsIfNeeded] Starting product loading check")
+        
+        // Load routine steps first
+        loadWithoutProductSearch()
+        
+        // If we have recommendations but no products loaded yet, trigger product loading
+        guard let recs = skinAnalysisManager.recommendations else { 
+            print("❌ [loadProductsIfNeeded] No recommendations available")
+            return 
+        }
+        
+        // Check if any step has products loaded
+        let hasProducts = morningStepProducts.contains { !$0.products.isEmpty } ||
+                         eveningStepProducts.contains { !$0.products.isEmpty } ||
+                         weeklyStepProducts.contains { !$0.products.isEmpty }
+        
+        print("🔍 [loadProductsIfNeeded] Has products: \(hasProducts)")
+        print("🔍 [loadProductsIfNeeded] Morning routine count: \(recs.morningRoutine.count)")
+        print("🔍 [loadProductsIfNeeded] Morning step products count: \(morningStepProducts.map { $0.products.count })")
+        
+        // If no products are loaded and we have recommendations, load them immediately
+        if !hasProducts && !recs.morningRoutine.isEmpty {
+            print("🚀 [loadProductsIfNeeded] Triggering product loading...")
+            Task { @MainActor in
+                isLoading = true
+                await load()
+                isLoading = false
+                print("✅ [loadProductsIfNeeded] Product loading completed")
+            }
+        } else {
+            print("⏭️ [loadProductsIfNeeded] Skipping product loading - hasProducts: \(hasProducts), morningRoutine: \(!recs.morningRoutine.isEmpty)")
+        }
+    }
+    
     
     private func loadProductsForSteps(_ steps: [SkincareStep], productManager: ProductSearchManager) async -> [RoutineStepProducts] {
         var stepProducts: [RoutineStepProducts] = []
@@ -498,35 +589,65 @@ private struct RecommendedProductsView: View {
     
     private func searchProductsForStep(_ step: SkincareStep, productManager: ProductSearchManager) async -> [ProductSearchResult] {
         var allProducts: [ProductSearchResult] = []
+        var searchedQueries: Set<String> = [] // Track queries to prevent duplicates
         
         // Search by step name if it's a specific product
         if !isGeneric(step.name) {
-            let explicitProducts = await productManager.searchProducts(forNames: [step.name])
-            allProducts.append(contentsOf: explicitProducts)
+            let normalizedStepName = step.name.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            if searchedQueries.insert(normalizedStepName).inserted {
+                let explicitProducts = await productManager.searchProducts(forNames: [step.name])
+                allProducts.append(contentsOf: explicitProducts)
+            }
         }
         
-        // Search by category and step name
-        let categoryQuery = ProductSearchManager.ProductQuery(
-            rawText: step.name,
-            normalizedQuery: step.name,
-            categoryHint: step.category.rawValue
-        )
-        let categoryProducts = await productManager.searchProducts(query: categoryQuery)
-        allProducts.append(contentsOf: categoryProducts)
-        
-        // Search by category-specific keywords
-        let categoryKeywords = getKeywordsForCategory(step.category)
-        for keyword in categoryKeywords {
-            let keywordQuery = ProductSearchManager.ProductQuery(
-                rawText: keyword,
-                normalizedQuery: keyword,
+        // Search by category and step name (only if different from step name)
+        let categoryQueryText = "\(step.name) \(step.category.rawValue)"
+        let normalizedCategoryQuery = categoryQueryText.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if searchedQueries.insert(normalizedCategoryQuery).inserted {
+            let categoryQuery = ProductSearchManager.ProductQuery(
+                rawText: categoryQueryText,
+                normalizedQuery: categoryQueryText,
                 categoryHint: step.category.rawValue
             )
-            let keywordProducts = await productManager.searchProducts(query: keywordQuery)
-            allProducts.append(contentsOf: keywordProducts)
+            let categoryProducts = await productManager.searchProducts(query: categoryQuery)
+            allProducts.append(contentsOf: categoryProducts)
         }
         
-        return allProducts
+        // Search by category-specific keywords (only unique ones)
+        let categoryKeywords = getKeywordsForCategory(step.category)
+        for keyword in categoryKeywords {
+            let normalizedKeyword = keyword.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            if searchedQueries.insert(normalizedKeyword).inserted {
+                let keywordQuery = ProductSearchManager.ProductQuery(
+                    rawText: keyword,
+                    normalizedQuery: keyword,
+                    categoryHint: step.category.rawValue
+                )
+                let keywordProducts = await productManager.searchProducts(query: keywordQuery)
+                allProducts.append(contentsOf: keywordProducts)
+            }
+        }
+        
+        // Deduplicate results by product name and brand to ensure variety
+        return deduplicateProductsByNameAndBrand(allProducts)
+    }
+    
+    private func deduplicateProductsByNameAndBrand(_ products: [ProductSearchResult]) -> [ProductSearchResult] {
+        var seen: Set<String> = []
+        var deduped: [ProductSearchResult] = []
+        
+        for product in products {
+            // Create a unique key from normalized name and brand
+            let normalizedName = product.name.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalizedBrand = (product.brand ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = "\(normalizedName)|\(normalizedBrand)"
+            
+            if seen.insert(key).inserted {
+                deduped.append(product)
+            }
+        }
+        
+        return deduped
     }
     
     private func getKeywordsForCategory(_ category: SkincareStep.StepCategory) -> [String] {
@@ -564,8 +685,11 @@ private struct RecommendedProductsView: View {
     }
     
     private func reason(for product: ProductSearchResult) -> String {
+        print("🔄 [reason] Generating reason for product: \(product.name)")
         let conditions = skinAnalysisManager.getCachedAnalysisResults()?.conditions.map { $0.name }.prefix(2).joined(separator: ", ") ?? "your skin profile"
-        return "Recommended for \(conditions)."
+        let reasonText = "Recommended for \(conditions)."
+        print("🔄 [reason] Generated reason: \(reasonText)")
+        return reasonText
     }
     
     private func getRecommendationText() -> String? {
@@ -586,10 +710,13 @@ private struct CategorySection: View {
     let stepProducts: [RoutineStepProducts]
     let reasonBuilder: (ProductSearchResult) -> String
     let recommendationText: String?
+    let onTriggerLoading: () -> Void
     @EnvironmentObject var appearanceManager: AppearanceManager
+    @EnvironmentObject var userTierManager: UserTierManager
+    @EnvironmentObject var routineOverrideManager: RoutineOverrideManager
     
     var body: some View {
-        let isDark = appearanceManager.colorSchemePreference == "dark" || (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark)
+        let isDark = appearanceManager.isDarkMode
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 8) {
                 Image(systemName: icon).foregroundColor(.orange)
@@ -616,8 +743,12 @@ private struct CategorySection: View {
                     ForEach(stepProducts) { stepProduct in
                         RoutineStepRow(
                             stepProduct: stepProduct,
-                            reasonBuilder: reasonBuilder
+                            reasonBuilder: reasonBuilder,
+                            onTriggerLoading: onTriggerLoading
                         )
+                        .environmentObject(appearanceManager)
+                        .environmentObject(userTierManager)
+                        .environmentObject(routineOverrideManager)
                     }
                 }
             }
@@ -632,21 +763,60 @@ private struct CategorySection: View {
 private struct RoutineStepRow: View {
     let stepProduct: RoutineStepProducts
     let reasonBuilder: (ProductSearchResult) -> String
+    let onTriggerLoading: () -> Void
     @State private var currentProductIndex: Int = 0
     @State private var isDragging: Bool = false
     @State private var showProductDetail: Bool = false
     @State private var selectedProduct: ProductSearchResult? = nil
+    @State private var isLoadingProducts: Bool = false
     @EnvironmentObject var appearanceManager: AppearanceManager
+    @EnvironmentObject var skinAnalysisManager: SkinAnalysisManager
+    @EnvironmentObject var userTierManager: UserTierManager
+    @EnvironmentObject var routineOverrideManager: RoutineOverrideManager
+    
+    // MARK: - Computed Properties
+    
+    private var stepNameColor: Color {
+        let isDark = appearanceManager.isDarkMode
+        return isDark ? NuraColors.textPrimaryDark : .primary
+    }
+    
+    private var noProductsTextColor: Color {
+        let isDark = appearanceManager.isDarkMode
+        return isDark ? NuraColors.textSecondaryDark : .secondary
+    }
+    
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 25)
+            .onChanged { value in
+                // Only set dragging if the user has moved significantly
+                if abs(value.translation.width) > 15 || abs(value.translation.height) > 15 {
+                    isDragging = true
+                }
+            }
+            .onEnded { value in
+                // Only set dragging flag if there was significant movement
+                let significantMovement = abs(value.translation.width) > 15 || abs(value.translation.height) > 15
+                if significantMovement {
+                    // Shorter delay for better responsiveness
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        isDragging = false
+                    }
+                } else {
+                    // Reset immediately for taps
+                    isDragging = false
+                }
+            }
+    }
     
     var body: some View {
-        let isDark = appearanceManager.colorSchemePreference == "dark" || (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark)
-        HStack(alignment: .top, spacing: 16) {
+        return HStack(alignment: .top, spacing: 16) {
             // Left side: Step information (centered vertically and horizontally)
             VStack {
                 Text(stepProduct.step.name)
                     .font(.subheadline)
                     .fontWeight(.semibold)
-                    .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                    .foregroundColor(stepNameColor)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -655,11 +825,23 @@ private struct RoutineStepRow: View {
             
             // Right side: Swipable product cards
             if stepProduct.products.isEmpty {
-                Text("No products found")
-                    .font(.caption)
-                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : .secondary)
+                if isLoadingProducts {
+                    VStack(spacing: 8) {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text("Loading products...")
+                            .font(.caption)
+                            .foregroundColor(noProductsTextColor)
+                    }
                     .frame(maxWidth: .infinity, alignment: .center)
                     .frame(height: 100)
+                } else {
+                    Text("No products found")
+                        .font(.caption)
+                        .foregroundColor(noProductsTextColor)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .frame(height: 100)
+                }
             } else {
                 VStack(spacing: 8) {
                     // Swipable product cards
@@ -669,25 +851,50 @@ private struct RoutineStepRow: View {
                                 Button(action: {
                                     // Only navigate if not dragging (to prevent swipe conflicts)
                                     if !isDragging {
-                                        selectedProduct = product
-                                        showProductDetail = true
+                                        print("🖱️ [Product Click] User clicked product: '\(product.name)'")
+                                        print("🖱️ [Product Click] Product imageURL: '\(product.imageURL ?? "nil")'")
+                                        print("🖱️ [Product Click] Is dragging: \(isDragging)")
+                                        
+                                        Task {
+                                            // Ensure products are loaded before showing detail view
+                                            print("🔄 [Product Click] Calling ensureProductsLoaded...")
+                                            let productsLoaded = await ensureProductsLoaded()
+                                            print("🔄 [Product Click] ensureProductsLoaded result: \(productsLoaded)")
+                                            
+                                            await MainActor.run {
+                                                if productsLoaded && !product.name.isEmpty {
+                                                    print("✅ [Product Click] Products loaded, showing detail view")
+                                                    selectedProduct = product
+                                                    showProductDetail = true
+                                                } else {
+                                                    print("❌ [Product Click] Products not loaded, triggering loading and retrying...")
+                                                    // Show loading state and trigger loading
+                                                    isLoadingProducts = true
+                                                    
+                                                    // Wait a bit for loading to complete, then retry
+                                                    Task {
+                                                        try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                                                        await MainActor.run {
+                                                            isLoadingProducts = false
+                                                            // Check if the product is now available
+                                                            if !product.name.isEmpty && product.imageURL != nil && !product.imageURL!.isEmpty {
+                                                                print("✅ [Product Click] Retry successful, showing detail view")
+                                                                selectedProduct = product
+                                                                showProductDetail = true
+                                                            } else {
+                                                                print("❌ [Product Click] Retry failed, product still incomplete")
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }) {
                                     CompactProductCard(product: product)
                                 }
                                 .buttonStyle(PlainButtonStyle())
-                                .simultaneousGesture(
-                                    DragGesture(minimumDistance: 10)
-                                        .onChanged { _ in
-                                            isDragging = true
-                                        }
-                                        .onEnded { _ in
-                                            // Longer delay to prevent accidental taps after swipe
-                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                                isDragging = false
-                                            }
-                                        }
-                                )
+                                .simultaneousGesture(dragGesture)
                             }
                             .tag(index)
                         }
@@ -711,9 +918,92 @@ private struct RoutineStepRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .sheet(isPresented: $showProductDetail) {
-            if let product = selectedProduct {
+            // Log sheet presentation details
+            let _ = {
+                print("🔄 [Sheet] Sheet is being presented")
+                print("🔄 [Sheet] selectedProduct: \(selectedProduct?.name ?? "nil")")
+                print("🔄 [Sheet] showProductDetail: \(showProductDetail)")
+            }()
+            
+            if let product = selectedProduct, !product.name.isEmpty {
+                // Log successful product detail view presentation
+                let _ = {
+                    print("✅ [Sheet] Showing ProductDetailView for: \(product.name)")
+                }()
+                
                 ProductDetailView(product: product, reason: reasonBuilder(product))
+                    .environmentObject(appearanceManager)
+                    .environmentObject(userTierManager)
+                    .environmentObject(routineOverrideManager)
+            } else {
+                // Log loading state presentation
+                let _ = {
+                    print("❌ [Sheet] Showing loading state - product: \(selectedProduct?.name ?? "nil")")
+                }()
+                
+                // Show loading state if product data is incomplete
+                VStack(spacing: 20) {
+                    ProgressView()
+                        .scaleEffect(1.2)
+                    Text("Loading product details...")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                    Text("If this hasn't loaded in 5 seconds, please swipe out of the page and retry clicking the product again.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(.systemBackground))
             }
+        }
+    }
+    
+    // MARK: - Helper Functions
+    
+    private func ensureProductsLoaded() async -> Bool {
+        print("🔍 [ensureProductsLoaded] Starting validation for step: \(stepProduct.step.name)")
+        print("🔍 [ensureProductsLoaded] Products count: \(stepProduct.products.count)")
+        
+        // Check if products exist and have complete data
+        guard !stepProduct.products.isEmpty else {
+            print("❌ [ensureProductsLoaded] No products found for step: \(stepProduct.step.name)")
+            // Try to trigger product loading for this specific step
+            await triggerProductLoadingForStep()
+            return false
+        }
+        
+        // Log each product's data completeness
+        for (index, product) in stepProduct.products.enumerated() {
+            print("🔍 [ensureProductsLoaded] Product \(index): name='\(product.name)', imageURL='\(product.imageURL ?? "nil")'")
+        }
+        
+        // Validate that products have complete data (name, imageURL, etc.)
+        let hasCompleteProducts = stepProduct.products.allSatisfy { product in
+            let isValid = !product.name.isEmpty && 
+                         product.imageURL != nil && 
+                         !product.imageURL!.isEmpty
+            print("🔍 [ensureProductsLoaded] Product '\(product.name)' validity: \(isValid)")
+            return isValid
+        }
+        
+        if !hasCompleteProducts {
+            print("⚠️ [ensureProductsLoaded] Products incomplete, triggering loading...")
+            await triggerProductLoadingForStep()
+        }
+        
+        print("✅ [ensureProductsLoaded] All products complete: \(hasCompleteProducts)")
+        return hasCompleteProducts
+    }
+    
+    private func triggerProductLoadingForStep() async {
+        print("🚀 [triggerProductLoadingForStep] Triggering loading for step: \(stepProduct.step.name)")
+        
+        // Use the callback to trigger loading in the parent view
+        await MainActor.run {
+            print("🔄 [triggerProductLoadingForStep] Calling parent loading callback...")
+            onTriggerLoading()
         }
     }
 }
@@ -723,7 +1013,7 @@ private struct CompactProductCard: View {
     @EnvironmentObject var appearanceManager: AppearanceManager
     
     var body: some View {
-        let isDark = appearanceManager.colorSchemePreference == "dark" || (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark)
+        let isDark = appearanceManager.isDarkMode
         VStack(alignment: .leading, spacing: 6) {
             // Product image
             ZStack {
@@ -789,7 +1079,15 @@ private struct ProductDetailView: View {
     @EnvironmentObject var routineOverrideManager: RoutineOverrideManager
     
     var body: some View {
-        let isDark = appearanceManager.colorSchemePreference == "dark" || (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark)
+        let isDark = appearanceManager.isDarkMode
+        
+        // Log product details
+        let _ = {
+            print("🔄 [ProductDetailView] Creating ProductDetailView for: \(product.name)")
+            print("🔄 [ProductDetailView] Product imageURL: \(product.imageURL ?? "nil")")
+            print("🔄 [ProductDetailView] Reason: \(reason)")
+        }()
+        
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 ZStack {
@@ -812,6 +1110,14 @@ private struct ProductDetailView: View {
                 Text(product.name).font(.title2).fontWeight(.bold)
                 if let brand = product.brand { Text("Company: \(brand)").foregroundColor(.secondary) }
                 
+                // Product description
+                if let description = product.description, !description.isEmpty {
+                    Text(description)
+                        .font(.body)
+                        .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                        .padding(.vertical, 8)
+                }
+                
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Why this fits you").font(.headline)
                     VStack(alignment: .leading, spacing: 6) {
@@ -832,25 +1138,82 @@ private struct ProductDetailView: View {
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.15), lineWidth: 1))
                 .cornerRadius(12)
                 
-                HStack(spacing: 16) {
-                    Button(action: { routineOverrideManager.save(product: product, inferredFrom: product.name) }) {
+                // Button layout: Shop button on top (matching width of bottom buttons), Save and Amazon below
+                VStack(spacing: 12) {
+                    // Save to Routine and Amazon buttons (invisible, used for width calculation)
+                    HStack(spacing: 16) {
+                        // Save to Routine button (invisible, for width reference)
                         HStack(spacing: 8) { Image(systemName: "plus.circle.fill"); Text("Save to Routine").fontWeight(.semibold) }
-                            .foregroundColor(.white)
+                            .foregroundColor(.clear)
                             .padding(.horizontal, 18)
                             .padding(.vertical, 10)
-                            .background(LinearGradient(gradient: Gradient(colors: [NuraColors.primary, .purple]), startPoint: .leading, endPoint: .trailing))
+                            .background(Color.clear)
                             .cornerRadius(24)
-                            .shadow(color: NuraColors.primary.opacity(0.25), radius: 8, x: 0, y: 4)
+                        
+                        // Amazon button (invisible, for width reference)
+                        HStack(spacing: 8) { Image(systemName: "cart.fill"); Text("Amazon").fontWeight(.semibold) }
+                            .foregroundColor(.clear)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 10)
+                            .background(Color.clear)
+                            .cornerRadius(24)
                     }
-                    if let dest = product.destinationURL, let url = URL(string: dest) {
-                        Link(destination: url) {
-                            HStack(spacing: 8) { Image(systemName: "cart.fill"); Text("Amazon").fontWeight(.semibold) }
-                                .foregroundColor(isDark ? .black : .white)
+                    .opacity(0) // Make invisible
+                    .overlay(
+                        // Shop on original retailer button (matching width of invisible buttons)
+                        Group {
+                            if let originalURL = getOriginalRetailerURL(for: product), let url = URL(string: originalURL) {
+                                Link(destination: url) {
+                                    HStack(spacing: 8) { 
+                                        Image(systemName: "bag.fill")
+                                        Text("Shop on \(getRetailerName(from: originalURL))").fontWeight(.semibold) 
+                                    }
+                                        .foregroundColor(.white)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.horizontal, 18)
+                                        .padding(.vertical, 12)
+                                        .background(LinearGradient(gradient: Gradient(colors: [Color.blue, Color.purple]), startPoint: .leading, endPoint: .trailing))
+                                        .cornerRadius(24)
+                                        .shadow(color: Color.blue.opacity(0.25), radius: 8, x: 0, y: 4)
+                                }
+                            } else {
+                                // Debug: Show a placeholder to see if the condition is being evaluated (simulator only)
+                                #if targetEnvironment(simulator)
+                                Text("DEBUG: No original URL found")
+                                    .foregroundColor(.red)
+                                    .font(.caption)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.horizontal, 18)
+                                    .padding(.vertical, 12)
+                                #endif
+                            }
+                        }
+                    )
+                    
+                    // Save to Routine and Amazon buttons below with spacing
+                    HStack(spacing: 16) {
+                        // Save to Routine button
+                        Button(action: { routineOverrideManager.save(product: product, inferredFrom: product.name) }) {
+                            HStack(spacing: 8) { Image(systemName: "plus.circle.fill"); Text("Save to Routine").fontWeight(.semibold) }
+                                .foregroundColor(.white)
                                 .padding(.horizontal, 18)
                                 .padding(.vertical, 10)
-                                .background(LinearGradient(gradient: Gradient(colors: [Color.orange, Color.red]), startPoint: .leading, endPoint: .trailing))
+                                .background(LinearGradient(gradient: Gradient(colors: [NuraColors.primary, .purple]), startPoint: .leading, endPoint: .trailing))
                                 .cornerRadius(24)
-                                .shadow(color: Color.orange.opacity(0.25), radius: 8, x: 0, y: 4)
+                                .shadow(color: NuraColors.primary.opacity(0.25), radius: 8, x: 0, y: 4)
+                        }
+                        
+                        // Amazon button
+                        if let dest = product.destinationURL, let url = URL(string: dest) {
+                            Link(destination: url) {
+                                HStack(spacing: 8) { Image(systemName: "cart.fill"); Text("Amazon").fontWeight(.semibold) }
+                                    .foregroundColor(isDark ? .black : .white)
+                                    .padding(.horizontal, 18)
+                                    .padding(.vertical, 10)
+                                    .background(LinearGradient(gradient: Gradient(colors: [Color.orange, Color.red]), startPoint: .leading, endPoint: .trailing))
+                                    .cornerRadius(24)
+                                    .shadow(color: Color.orange.opacity(0.25), radius: 8, x: 0, y: 4)
+                            }
                         }
                     }
                 }
@@ -859,11 +1222,12 @@ private struct ProductDetailView: View {
                 
                 // Feature ratings: centered vertical stack with separators
                 VStack(spacing: 6) {
-                    RatingRow(text: "Derm-friendly", systemIcon: "hand.raised.fill")
-                    Divider().opacity(0.15)
-                    RatingRow(text: "Popular", systemIcon: "star.fill")
-                    Divider().opacity(0.15)
-                    RatingRow(text: "Fast shipping", systemIcon: "bolt.fill")
+                    ForEach(Array(getProductFeatures(for: product).enumerated()), id: \.offset) { index, feature in
+                        RatingRow(text: feature.text, systemIcon: feature.icon)
+                        if index < getProductFeatures(for: product).count - 1 {
+                            Divider().opacity(0.15)
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal)
@@ -882,6 +1246,162 @@ private struct ProductDetailView: View {
         let parts = lowered.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         if parts.isEmpty { return [text] }
         return parts
+    }
+    
+    private func getRetailerName(from urlString: String) -> String {
+        guard let url = URL(string: urlString),
+              let host = url.host?.lowercased() else {
+            return "Store"
+        }
+        
+        // Extract retailer name from common domains
+        if host.contains("amazon") {
+            return "Amazon"
+        } else if host.contains("target") {
+            return "Target"
+        } else if host.contains("sephora") {
+            return "Sephora"
+        } else if host.contains("ulta") {
+            return "Ulta"
+        } else if host.contains("walmart") {
+            return "Walmart"
+        } else if host.contains("cvs") {
+            return "CVS"
+        } else if host.contains("walgreens") {
+            return "Walgreens"
+        } else if host.contains("dermstore") {
+            return "Dermstore"
+        } else if host.contains("skinstore") {
+            return "SkinStore"
+        } else if host.contains("beautylish") {
+            return "Beautylish"
+        } else if host.contains("cultbeauty") {
+            return "Cult Beauty"
+        } else if host.contains("lookfantastic") {
+            return "Lookfantastic"
+        } else if host.contains("spacenk") {
+            return "Space NK"
+        } else if host.contains("boots") {
+            return "Boots"
+        } else if host.contains("superdrug") {
+            return "Superdrug"
+        } else if host.contains("asos") {
+            return "ASOS"
+        } else if host.contains("hollandandbarrett") {
+            return "Holland & Barrett"
+        } else if host.contains("feelunique") {
+            return "Feelunique"
+        } else {
+            // For unknown domains, try to extract a meaningful name from the host
+            let components = host.components(separatedBy: ".")
+            if let firstComponent = components.first, firstComponent != "www" {
+                return firstComponent.capitalized
+            }
+            return "Store"
+        }
+    }
+    
+    private func getOriginalRetailerURL(for product: ProductSearchResult) -> String? {
+        // Extract original URL from benefits array where we stored it
+        for benefit in product.benefits {
+            if benefit.hasPrefix("ORIGINAL_URL:") {
+                let originalURL = String(benefit.dropFirst("ORIGINAL_URL:".count))
+                print("DEBUG: Found original URL: \(originalURL)")
+                return originalURL
+            }
+        }
+        print("DEBUG: No original URL found in benefits: \(product.benefits)")
+        return nil
+    }
+    
+    private func getProductFeatures(for product: ProductSearchResult) -> [(text: String, icon: String)] {
+        var features: [(text: String, icon: String)] = []
+        
+        // Analyze product name and benefits for personalized features
+        let productName = product.name.lowercased()
+        let benefits = product.benefits.map { $0.lowercased() }
+        let productType = product.productType?.lowercased() ?? ""
+        
+        // Derm-friendly: Check for dermatologist-recommended brands or gentle ingredients
+        let dermFriendlyBrands = ["cerave", "la roche-posay", "eucerin", "avene", "bioderma", "vichy", "neutrogena", "zo skin health"]
+        let gentleIngredients = ["ceramide", "hyaluronic", "niacinamide", "gentle", "sensitive", "fragrance-free"]
+        
+        if dermFriendlyBrands.contains(where: { productName.contains($0) }) ||
+           gentleIngredients.contains(where: { productName.contains($0) || benefits.contains(where: { $0.contains($0) }) }) {
+            features.append((text: "Derm-friendly", icon: "hand.raised.fill"))
+        }
+        
+        // Popular: Check for well-known brands or high ratings
+        let popularBrands = ["the ordinary", "paula's choice", "drunk elephant", "tatcha", "supergoop", "olay", "zo skin health"]
+        if popularBrands.contains(where: { productName.contains($0) }) {
+            features.append((text: "Popular", icon: "star.fill"))
+        }
+        
+        // Fast shipping: Check for Amazon availability or express delivery indicators
+        if product.destinationURL?.contains("amazon") == true {
+            features.append((text: "Fast shipping", icon: "bolt.fill"))
+        }
+        
+        // SPF protection: ONLY for sunscreen products or products explicitly containing SPF
+        // Be very strict - only show SPF protection for actual sunscreens
+        let sunscreenKeywords = ["spf", "sunscreen", "sun screen", "uv protection", "broad spectrum"]
+        let isSunscreen = productType == "sunscreen" || 
+                         sunscreenKeywords.contains(where: { productName.contains($0) }) ||
+                         benefits.contains(where: { benefit in sunscreenKeywords.contains(where: { benefit.contains($0) }) })
+        
+        if isSunscreen {
+            features.append((text: "SPF protection", icon: "sun.max.fill"))
+        }
+        
+        // Anti-aging: Check for retinol, vitamin C, or anti-aging ingredients
+        let antiAgingIngredients = ["retinol", "vitamin c", "peptide", "niacinamide", "glycolic", "lactic"]
+        if antiAgingIngredients.contains(where: { ingredient in productName.contains(ingredient) || benefits.contains(where: { benefit in benefit.contains(ingredient) }) }) {
+            features.append((text: "Anti-aging", icon: "sparkles"))
+        }
+        
+        // Hydrating: Check for hydrating ingredients
+        let hydratingIngredients = ["hyaluronic", "glycerin", "ceramide", "moisturizing", "hydrating"]
+        if hydratingIngredients.contains(where: { ingredient in productName.contains(ingredient) || benefits.contains(where: { benefit in benefit.contains(ingredient) }) }) {
+            features.append((text: "Hydrating", icon: "drop.fill"))
+        }
+        
+        // Exfoliating: Check for exfoliating ingredients (for cleansers, treatments)
+        let exfoliatingIngredients = ["salicylic", "glycolic", "lactic", "aha", "bha", "exfoliating"]
+        if exfoliatingIngredients.contains(where: { ingredient in productName.contains(ingredient) || benefits.contains(where: { benefit in benefit.contains(ingredient) }) }) {
+            features.append((text: "Exfoliating", icon: "sparkles"))
+        }
+        
+        // Gentle: Check for gentle/soothing ingredients (for cleansers, sensitive skin)
+        let gentleKeywords = ["gentle", "soothing", "calming", "sensitive", "mild"]
+        if gentleKeywords.contains(where: { keyword in productName.contains(keyword) || benefits.contains(where: { benefit in benefit.contains(keyword) }) }) {
+            features.append((text: "Gentle", icon: "leaf.fill"))
+        }
+        
+        // If no specific features found, use default ones based on product type
+        if features.isEmpty {
+            if productType == "cleanser" {
+                features = [
+                    (text: "Derm-friendly", icon: "hand.raised.fill"),
+                    (text: "Gentle", icon: "leaf.fill"),
+                    (text: "Fast shipping", icon: "bolt.fill")
+                ]
+            } else if productType == "sunscreen" {
+                features = [
+                    (text: "SPF protection", icon: "sun.max.fill"),
+                    (text: "Derm-friendly", icon: "hand.raised.fill"),
+                    (text: "Fast shipping", icon: "bolt.fill")
+                ]
+            } else {
+                features = [
+                    (text: "Derm-friendly", icon: "hand.raised.fill"),
+                    (text: "Popular", icon: "star.fill"),
+                    (text: "Fast shipping", icon: "bolt.fill")
+                ]
+            }
+        }
+        
+        // Limit to 3 features for clean UI
+        return Array(features.prefix(3))
     }
 }
 
@@ -926,7 +1446,7 @@ private struct MiniChatSheet: View {
     @FocusState private var focused: Bool
     
     var body: some View {
-        let isDark = appearanceManager.colorSchemePreference == "dark" || (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark)
+        let isDark = appearanceManager.isDarkMode
         NavigationView {
             VStack(spacing: 0) {
                 ScrollViewReader { proxy in
@@ -1001,7 +1521,7 @@ struct MessageBubble: View {
     @EnvironmentObject var appearanceManager: AppearanceManager
     
     var body: some View {
-        let isDark = appearanceManager.colorSchemePreference == "dark" || (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark)
+        let isDark = appearanceManager.isDarkMode
         HStack {
             if message.isUser {
                 Spacer(minLength: 50)

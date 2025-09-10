@@ -4,6 +4,7 @@ struct APIConfig {
     // MARK: - Supabase Proxy Configuration
     static let supabaseURL = "https://zmstyicgzplmuaehtloe.supabase.co"
     static let supabaseEdgeFunctionURL = "\(supabaseURL)/functions/v1/openai-proxy"
+    static let supabaseEmailFunctionURL = "\(supabaseURL)/functions/v1/send-support-email"
     
     // MARK: - Legacy OpenAI Configuration (for reference only)
     static let openAIBaseURL = "https://api.openai.com/v1"
