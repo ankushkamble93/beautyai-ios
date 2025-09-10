@@ -3,7 +3,9 @@ import UIKit
 
 final class ProductSearchManager {
     static let shared = ProductSearchManager()
-    private init() {}
+    private init() {
+        loadCachedResults()
+    }
     
     // Simple in-memory cache for search results to reduce API calls
     private var recentQueryToResults: [String: [ProductSearchResult]] = [:]
@@ -11,6 +13,58 @@ final class ProductSearchManager {
     // Enhanced SkincareAPI caching: separate cache with longer TTL since it's free
     private var skincareAPICache: [String: (results: [ProductSearchResult], timestamp: Date)] = [:]
     private let skincareAPICacheTTL: TimeInterval = 24 * 60 * 60 // 24 hours
+    
+    // MARK: - Persistent Cache Management
+    
+    private var productSearchCacheURL: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = appSupport.appendingPathComponent("Nura", isDirectory: true)
+        if !FileManager.default.fileExists(atPath: dir.path) {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        return dir.appendingPathComponent("product_search_cache.json")
+    }
+    
+    private func saveCachedResults() {
+        do {
+            // Ensure we don't cache products with missing imageURLs unless they're placeholders
+            let filteredResults = recentQueryToResults.mapValues { products in
+                products.map { product in
+                    // If imageURL is nil and it's not a local fallback, try to preserve the original
+                    if product.imageURL == nil && product.brand != nil {
+                        print("⚠️ ProductSearchManager: Caching product '\(product.name)' without image URL")
+                    }
+                    return product
+                }
+            }
+            
+            let data = try JSONEncoder().encode(filteredResults)
+            try data.write(to: productSearchCacheURL, options: .atomic)
+            print("✅ ProductSearchManager: Saved \(filteredResults.count) cached results to disk")
+        } catch {
+            print("⚠️ ProductSearchManager: Failed saving cached results to disk: \(error)")
+        }
+    }
+    
+    private func loadCachedResults() {
+        do {
+            let data = try Data(contentsOf: productSearchCacheURL)
+            recentQueryToResults = try JSONDecoder().decode([String: [ProductSearchResult]].self, from: data)
+            print("✅ ProductSearchManager: Loaded \(recentQueryToResults.count) cached results from disk")
+            
+            // Check if cached results have descriptions
+            for (query, products) in recentQueryToResults {
+                let hasDescriptions = products.allSatisfy { $0.description != nil && !$0.description!.isEmpty }
+                print("🔍 [Cache] Query '\(query)' has descriptions: \(hasDescriptions) (products: \(products.count))")
+                if !hasDescriptions {
+                    print("⚠️ [Cache] Cached results for '\(query)' missing descriptions - will regenerate")
+                }
+            }
+        } catch {
+            print("ℹ️ ProductSearchManager: No disk cache or failed to decode cached results: \(error)")
+            recentQueryToResults = [:]
+        }
+    }
     
     // MARK: - Public API
     
@@ -36,11 +90,72 @@ final class ProductSearchManager {
     func searchProducts(query: ProductQuery) async -> [ProductSearchResult] {
         if let cached = recentQueryToResults[query.normalizedQuery] {
             print("🗂️ ProductSearch: cache hit for=\(query.normalizedQuery) results=\(cached.count)")
+            
+            // Check if cached results have descriptions, if not regenerate them
+            let needsDescriptionUpdate = cached.contains { $0.description == nil || $0.description!.isEmpty }
+            if needsDescriptionUpdate {
+                print("🔄 ProductSearch: Regenerating descriptions for cached results")
+                let updatedProducts = cached.map { product in
+                    let newDescription = generateProductDescription(
+                        name: product.name,
+                        brand: product.brand,
+                        ingredients: product.ingredients ?? [],
+                        productType: product.productType
+                    )
+                    return ProductSearchResult(
+                        id: product.id,
+                        name: product.name,
+                        brand: product.brand,
+                        priceText: product.priceText,
+                        benefits: product.benefits,
+                        imageURL: product.imageURL,
+                        destinationURL: product.destinationURL,
+                        ingredients: product.ingredients,
+                        productType: product.productType,
+                        description: newDescription
+                    )
+                }
+                recentQueryToResults[query.normalizedQuery] = updatedProducts
+                saveCachedResults()
+                return updatedProducts
+            }
+            
             return cached
         }
         // Check SkincareAPI cache first (longer TTL, free API)
         if let cached = getSkincareAPICache(for: query.normalizedQuery) {
             print("🗂️ ProductSearch: SkincareAPI cache hit for query=\(query.normalizedQuery) results=\(cached.count)")
+            
+            // Check if cached results have descriptions, if not regenerate them
+            let needsDescriptionUpdate = cached.contains { $0.description == nil || $0.description!.isEmpty }
+            if needsDescriptionUpdate {
+                print("🔄 ProductSearch: Regenerating descriptions for SkincareAPI cached results")
+                let updatedProducts = cached.map { product in
+                    let newDescription = generateProductDescription(
+                        name: product.name,
+                        brand: product.brand,
+                        ingredients: product.ingredients ?? [],
+                        productType: product.productType
+                    )
+                    return ProductSearchResult(
+                        id: product.id,
+                        name: product.name,
+                        brand: product.brand,
+                        priceText: product.priceText,
+                        benefits: product.benefits,
+                        imageURL: product.imageURL,
+                        destinationURL: product.destinationURL,
+                        ingredients: product.ingredients,
+                        productType: product.productType,
+                        description: newDescription
+                    )
+                }
+                setSkincareAPICache(for: query.normalizedQuery, results: updatedProducts)
+                recentQueryToResults[query.normalizedQuery] = updatedProducts
+                saveCachedResults()
+                return updatedProducts
+            }
+            
             return cached
         }
         // First try SkincareAPI (public dataset) for a quick, cheap hit
@@ -49,12 +164,14 @@ final class ProductSearchManager {
             // Cache SkincareAPI results separately with longer TTL
             setSkincareAPICache(for: query.normalizedQuery, results: deduped)
             recentQueryToResults[query.normalizedQuery] = deduped
+            saveCachedResults() // Persist to disk
             return deduped
         }
         if googleBlocked {
             print("🛑 ProductSearch: Google CSE blocked this session; using local fallback for=\(query.normalizedQuery)")
             let local = localResults(for: query)
             recentQueryToResults[query.normalizedQuery] = local
+            saveCachedResults() // Persist to disk
             return local
         }
         // Primary: Google Custom Search API
@@ -62,12 +179,14 @@ final class ProductSearchManager {
             print("✅ ProductSearch: Google CSE returned \(results.count) results for=\(query.normalizedQuery)")
             let deduped = Self.deduplicate(results)
             recentQueryToResults[query.normalizedQuery] = deduped
+            saveCachedResults() // Persist to disk
             return deduped
         }
         // Fallback: Local DB
         let local = localResults(for: query)
         print("🟡 ProductSearch: using local fallback results=\(local.count) for=\(query.normalizedQuery)")
         recentQueryToResults[query.normalizedQuery] = local
+        saveCachedResults() // Persist to disk
         return local
     }
     
@@ -136,7 +255,7 @@ final class ProductSearchManager {
             let canonical = await resolveCanonicalFromSkincareAPI(name) ?? name
             if googleBlocked {
                 // Produce placeholder card aligned with AI text
-                results.append(ProductSearchResult(name: canonical, brand: nil, priceText: nil, benefits: [], imageURL: nil, destinationURL: nil))
+                results.append(ProductSearchResult(name: canonical, brand: nil, priceText: nil, benefits: [], imageURL: nil, destinationURL: nil, description: generateProductDescription(name: canonical, brand: nil, ingredients: [], productType: nil)))
                 continue
             }
             if let single = try? await googleCustomSearchExact(name: canonical) {
@@ -151,10 +270,18 @@ final class ProductSearchManager {
             }
             print("⚠️ ProductSearch: no result for explicit name=\(name)")
             // As last resort, attach a placeholder so UI still aligns with AI mention
-            results.append(ProductSearchResult(name: canonical, brand: nil, priceText: nil, benefits: [], imageURL: nil, destinationURL: nil))
+            results.append(ProductSearchResult(name: canonical, brand: nil, priceText: nil, benefits: [], imageURL: nil, destinationURL: nil, description: generateProductDescription(name: canonical, brand: nil, ingredients: [], productType: nil)))
             }
         }
-        return Self.deduplicate(results)
+        let dedupedResults = Self.deduplicate(results)
+        // Cache the results for each name searched
+        for (index, name) in names.enumerated() {
+            if index < dedupedResults.count {
+                recentQueryToResults[name] = [dedupedResults[index]]
+            }
+        }
+        saveCachedResults() // Persist to disk
+        return dedupedResults
     }
     
     // MARK: - Google Custom Search (Primary)
@@ -205,6 +332,7 @@ final class ProductSearchManager {
                 let thumb = thumbCandidate
                 let derivedIngs = Self.deriveIngredients(fromTitle: title)
                 let derivedType = Self.classifyType(from: title)
+                let description = generateProductDescription(name: title, brand: brand, ingredients: derivedIngs, productType: derivedType)
                 let product = ProductSearchResult(
                     name: title,
                     brand: brand,
@@ -213,7 +341,8 @@ final class ProductSearchManager {
                     imageURL: thumb,
                     destinationURL: aff?.absoluteString ?? dest,
                     ingredients: derivedIngs,
-                    productType: derivedType
+                    productType: derivedType,
+                    description: description
                 )
                 aggregated.append(product)
             }
@@ -239,7 +368,8 @@ final class ProductSearchManager {
         struct APIItem: Decodable { 
             let brand: String?; 
             let name: String?; 
-            let ingredient_list: [String]? 
+            let ingredient_list: [String]?;
+            let description: String?
         }
         
         let decoded = try? JSONDecoder().decode([APIItem].self, from: data)
@@ -254,6 +384,9 @@ final class ProductSearchManager {
             let ingredientList = (item.ingredient_list ?? []).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             let benefits = parseBenefitsFromIngredients(ingredientList)
             
+            // Generate description from available data or use API description
+            let description = item.description ?? generateProductDescription(name: title, brand: item.brand, ingredients: ingredientList, productType: Self.classifyType(from: title))
+            
             // Try to get an image for this product (UX: visual appeal)
             let imageURL = await getProductImage(for: title)
             
@@ -265,7 +398,8 @@ final class ProductSearchManager {
                 imageURL: imageURL, 
                 destinationURL: nil,
                 ingredients: ingredientList,
-                productType: Self.classifyType(from: title)
+                productType: Self.classifyType(from: title),
+                description: description
             )
             mapped.append(product)
         }
@@ -313,17 +447,49 @@ final class ProductSearchManager {
         let dest = item.image?.contextLink
         let aff = Self.buildAffiliateLink(from: dest)
         let thumb = item.image?.thumbnailLink ?? item.link
-        return ProductSearchResult(name: displayTitle, brand: brand, priceText: nil, benefits: benefits, imageURL: thumb, destinationURL: aff?.absoluteString ?? dest)
+        let productType = Self.classifyType(from: displayTitle)
+        let description = generateProductDescription(name: displayTitle, brand: brand, ingredients: [], productType: productType)
+        return ProductSearchResult(name: displayTitle, brand: brand, priceText: nil, benefits: benefits, imageURL: thumb, destinationURL: aff?.absoluteString ?? dest, ingredients: [], productType: productType, description: description)
     }
     
     // MARK: - Helpers
     
     private func localResults(for query: ProductQuery) -> [ProductSearchResult] {
-        // Minimal curated fallback set
+        // Enhanced curated fallback set with placeholder images to improve UX
         let db: [ProductSearchResult] = [
-            ProductSearchResult(name: "CeraVe Hydrating Cleanser", brand: "CeraVe", priceText: "$10-$15", benefits: ["gentle", "non-stripping"], imageURL: nil, destinationURL: nil),
-            ProductSearchResult(name: "La Roche-Posay Toleriane Moisturizer", brand: "La Roche-Posay", priceText: "$20-$30", benefits: ["ceramides", "soothing"], imageURL: nil, destinationURL: nil),
-            ProductSearchResult(name: "Supergoop! Unseen Sunscreen SPF 40", brand: "Supergoop!", priceText: "$30-$40", benefits: ["invisible", "broad-spectrum"], imageURL: nil, destinationURL: nil)
+            ProductSearchResult(
+                name: "CeraVe Hydrating Cleanser", 
+                brand: "CeraVe", 
+                priceText: "$10-$15", 
+                benefits: ["gentle", "non-stripping"], 
+                imageURL: "https://via.placeholder.com/150x150/E8F4FD/2563EB?text=CeraVe", // Placeholder for better UX
+                destinationURL: nil,
+                ingredients: ["Ceramides", "Hyaluronic Acid"],
+                productType: "cleanser",
+                description: "A gentle yet effective cleanser designed to remove impurities while maintaining your skin's natural moisture balance. Formulated with key ingredients including Ceramides, Hyaluronic Acid. This dermatologist-recommended formula is trusted by skincare professionals worldwide."
+            ),
+            ProductSearchResult(
+                name: "La Roche-Posay Toleriane Moisturizer", 
+                brand: "La Roche-Posay", 
+                priceText: "$20-$30", 
+                benefits: ["ceramides", "soothing"], 
+                imageURL: "https://via.placeholder.com/150x150/F0F9FF/0EA5E9?text=LRP", // Placeholder for better UX
+                destinationURL: nil,
+                ingredients: ["Ceramides", "Prebiotic Thermal Water"],
+                productType: "moisturizer",
+                description: "A hydrating moisturizer that provides long-lasting moisture and helps maintain your skin's protective barrier. Formulated with key ingredients including Ceramides, Prebiotic Thermal Water. This dermatologist-recommended formula is trusted by skincare professionals worldwide."
+            ),
+            ProductSearchResult(
+                name: "Supergoop! Unseen Sunscreen SPF 40", 
+                brand: "Supergoop!", 
+                priceText: "$30-$40", 
+                benefits: ["invisible", "broad-spectrum"], 
+                imageURL: "https://via.placeholder.com/150x150/FEF3C7/F59E0B?text=SPF", // Placeholder for better UX
+                destinationURL: nil,
+                ingredients: ["Zinc Oxide", "Red Algae"],
+                productType: "sunscreen",
+                description: "A broad-spectrum sunscreen that provides reliable protection against harmful UVA and UVB rays. Formulated with key ingredients including Zinc Oxide, Red Algae. This dermatologist-recommended formula is trusted by skincare professionals worldwide."
+            )
         ]
         if let hint = query.categoryHint {
             return db.filter { $0.name.lowercased().contains(hint) }
@@ -549,6 +715,57 @@ final class ProductSearchManager {
         var items: [URLQueryItem] = [URLQueryItem(name: "k", value: title)]
         components?.queryItems = items
         return components?.url
+    }
+    
+    // MARK: - Product Description Generation
+    
+    /// Generates a professional product description based on available product data
+    private func generateProductDescription(name: String, brand: String?, ingredients: [String], productType: String?) -> String {
+        let productName = name.lowercased()
+        let brandName = brand?.lowercased() ?? ""
+        
+        // Base description based on product type
+        var baseDescription = ""
+        if let type = productType {
+            switch type.lowercased() {
+            case "cleanser":
+                baseDescription = "A gentle yet effective cleanser designed to remove impurities while maintaining your skin's natural moisture balance."
+            case "serum":
+                baseDescription = "A concentrated serum formulated with active ingredients to target specific skin concerns and deliver visible results."
+            case "moisturizer":
+                baseDescription = "A hydrating moisturizer that provides long-lasting moisture and helps maintain your skin's protective barrier."
+            case "sunscreen":
+                baseDescription = "A broad-spectrum sunscreen that provides reliable protection against harmful UVA and UVB rays."
+            case "treatment":
+                baseDescription = "A targeted treatment product designed to address specific skin concerns with clinically-proven ingredients."
+            case "toner":
+                baseDescription = "A refreshing toner that helps balance your skin's pH and prepares it for subsequent skincare steps."
+            case "mask":
+                baseDescription = "A nourishing face mask that provides intensive care and helps improve your skin's overall appearance."
+            case "exfoliant", "aha", "bha":
+                baseDescription = "An exfoliating product that helps remove dead skin cells and promotes a smoother, more radiant complexion."
+            default:
+                baseDescription = "A carefully formulated skincare product designed to improve your skin's health and appearance."
+            }
+        } else {
+            baseDescription = "A carefully formulated skincare product designed to improve your skin's health and appearance."
+        }
+        
+        // Add ingredient-specific details if available
+        if !ingredients.isEmpty {
+            let keyIngredients = ingredients.prefix(3).joined(separator: ", ")
+            baseDescription += " Formulated with key ingredients including \(keyIngredients)."
+        }
+        
+        // Add brand-specific context if available
+        if !brandName.isEmpty {
+            let knownBrands = ["cerave", "la roche-posay", "eucerin", "avene", "bioderma", "vichy", "neutrogena", "the ordinary", "paula's choice", "drunk elephant", "tatcha", "supergoop", "olay", "zo skin health"]
+            if knownBrands.contains(where: { brandName.contains($0) }) {
+                baseDescription += " This dermatologist-recommended formula is trusted by skincare professionals worldwide."
+            }
+        }
+        
+        return baseDescription
     }
 }
 

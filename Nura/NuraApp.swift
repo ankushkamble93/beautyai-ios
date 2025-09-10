@@ -51,6 +51,13 @@ struct NuraApp: App {
                                 chatManager.absorb(recs)
                             }
                         }
+                        .onReceive(authManager.$isAuthenticated) { isAuthenticated in
+                            if isAuthenticated {
+                                print("🔍 NuraApp: User authenticated, ensuring recommendations are loaded")
+                                skinAnalysisManager.loadCachedRecommendations()
+                                chatManager.absorb(skinAnalysisManager.recommendations)
+                            }
+                        }
                 } else {
                     LoginView()
                         .environmentObject(authManager)
@@ -73,6 +80,13 @@ struct NuraApp: App {
                             NotificationCenter.default.addObserver(forName: .nuraRecommendationsUpdated, object: nil, queue: .main) { note in
                                 let recs = note.object as? SkincareRecommendations
                                 chatManager.absorb(recs)
+                            }
+                        }
+                        .onReceive(authManager.$isAuthenticated) { isAuthenticated in
+                            if isAuthenticated {
+                                print("🔍 NuraApp: User authenticated, ensuring recommendations are loaded")
+                                skinAnalysisManager.loadCachedRecommendations()
+                                chatManager.absorb(skinAnalysisManager.recommendations)
                             }
                         }
                 }

@@ -430,9 +430,19 @@ struct DashboardView: View {
         .onAppear {
             print("🔍 DashboardView: Appeared")
             print("🔍 DashboardView: User profile - onboarding_complete = \(authManager.userProfile?.onboarding_complete ?? false)")
+            
+            // Load cached recommendations immediately, but also ensure they're loaded after auth state changes
             skinAnalysisManager.loadCachedRecommendations()
+            
             updateInsights()
             setupWelcomeCardTimer()
+        }
+        .onReceive(authManager.$isAuthenticated) { isAuthenticated in
+            if isAuthenticated {
+                print("🔍 DashboardView: User authenticated, loading cached recommendations")
+                // Ensure recommendations are loaded when user becomes authenticated
+                skinAnalysisManager.loadCachedRecommendations()
+            }
         }
         .onReceive(skinAnalysisManager.$recommendations) { _ in
             updateInsights()

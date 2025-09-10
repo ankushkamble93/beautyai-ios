@@ -10,7 +10,7 @@ struct ComicBookPremiumBanner: View {
     @State private var isVisible = false
     
     var body: some View {
-        let isDark = appearanceManager.colorSchemePreference == "dark" || (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark)
+        let isDark = appearanceManager.isDarkMode
         
         ZStack {
             // Semi-transparent background overlay

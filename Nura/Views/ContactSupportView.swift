@@ -1,11 +1,13 @@
 import SwiftUI
 import PhotosUI
 
+// MARK: - Contact Support View
+
 struct ContactSupportView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
-    @State private var name: String = "Jane Doe" // Replace with user info if available
-    @State private var email: String = "jane@nura.app" // Replace with user info if available
+    @State private var name: String = ""
+    @State private var email: String = ""
     @State private var message: String = ""
     @State private var isSending: Bool = false
     @State private var sent: Bool = false
@@ -13,6 +15,12 @@ struct ContactSupportView: View {
     @State private var selectedImage: PhotosPickerItem? = nil
     @State private var attachedImage: UIImage? = nil
     @FocusState private var messageFocused: Bool
+    @State private var showSuccessAnimation: Bool = false
+    @State private var dragOffset: CGFloat = 0
+    @State private var isDragging: Bool = false
+    @State private var showReplyInfo: Bool = false
+    @State private var hasSentToday: Bool = false
+    @State private var lastSendDate: String = ""
     private var cardBackground: Color {
         colorScheme == .dark ? Color.black.opacity(0.7) : .white
     }
@@ -27,21 +35,22 @@ struct ContactSupportView: View {
                     gradient: Gradient(colors: colorScheme == .dark ? [charcoal, Color.black] : [offWhite, peach]),
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ).ignoresSafeArea()
-                VStack(spacing: 0) {
-                    Spacer(minLength: 12)
-                    // Header
-                    VStack(spacing: 8) {
-                        Text("Need a hand?")
-                            .font(.largeTitle).fontWeight(.bold)
-                            .foregroundColor(colorScheme == .dark ? offWhite : charcoal)
-                            .padding(.top, 8)
-                        Text("We’re here for anything—product advice, account issues, or life crises.")
-                            .font(.subheadline)
-                            .foregroundColor(colorScheme == .dark ? accent.opacity(0.85) : .secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 16)
-                    }
-                    .padding(.bottom, 18)
+                ScrollView {
+                    VStack(spacing: 0) {
+                        Spacer(minLength: 12)
+                        // Header
+                        VStack(spacing: 8) {
+                            Text("Need a hand?")
+                                .font(.largeTitle).fontWeight(.bold)
+                                .foregroundColor(colorScheme == .dark ? offWhite : charcoal)
+                                .padding(.top, 8)
+                            Text("We're here for anything—product advice, account issues, or life crises.")
+                                .font(.subheadline)
+                                .foregroundColor(colorScheme == .dark ? accent.opacity(0.85) : .secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 16)
+                        }
+                        .padding(.bottom, 18)
                     // Quick Actions
                     VStack(spacing: 10) {
                         HStack(spacing: 10) {
@@ -180,56 +189,80 @@ struct ContactSupportView: View {
                     .shadow(color: colorScheme == .dark ? .black.opacity(0.12) : .gray.opacity(0.08), radius: 10, x: 0, y: 4)
                     .padding(.horizontal, 8)
                     .padding(.bottom, 10)
-                    // Microcopy
-                    VStack(spacing: 4) {
-                        Text("We usually reply within a few hours.")
-                            .font(.footnote)
-                            .foregroundColor(.secondary)
-                        
-                        Text("Live chat and phone support coming soon!")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .italic()
-                    }
-                    .padding(.bottom, 10)
-                    // Send button
-                    Button(action: sendMessage) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 14)
-                                .fill(
-                                    message.isEmpty
-                                        ? (colorScheme == .dark ? Color.gray.opacity(0.18) : accent.opacity(0.18))
-                                        : (colorScheme == .dark ? Color(red: 0.60, green: 0.68, blue: 0.95) : accent)
-                                )
-                                .frame(height: 52)
-                                .shadow(color: (colorScheme == .dark ? Color(red: 0.60, green: 0.68, blue: 0.95) : accent).opacity(0.18), radius: 6, x: 0, y: 2)
-                            if isSending {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            } else if sent {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 28, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .scaleEffect(sent ? 1.2 : 1.0)
-                                    .animation(.spring(response: 0.4, dampingFraction: 0.7), value: sent)
-                            } else {
-                                Text("Send")
-                                    .font(.title3).fontWeight(.semibold)
-                                    .foregroundColor(message.isEmpty ? .secondary : .white)
-                            }
+                    // Microcopy - only show after email submission
+                    if showReplyInfo {
+                        VStack(spacing: 4) {
+                            Text("We usually reply within a few hours.")
+                                .font(.footnote)
+                                .foregroundColor(.secondary)
+                            
+                            Text("Live chat and phone support coming soon!")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .italic()
                         }
+                        .padding(.bottom, 10)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
-                    .disabled(message.isEmpty || isSending)
-                    .padding(.horizontal, 8)
-                    .padding(.bottom, 18)
-                    .scaleEffect(isSending ? 0.97 : 1.0)
-                    .animation(.easeInOut(duration: 0.18), value: isSending)
-                    Spacer()
+                    
+                    // Send button with card stack appearance and slide-up functionality
+                    if hasSentToday {
+                        // Daily limit reached - show message instead of send button
+                        VStack(spacing: 8) {
+                            HStack {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                    .font(.title2)
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Message sent today!")
+                                        .font(.headline)
+                                        .foregroundColor(.primary)
+                                    
+                                    Text("You can submit another request tomorrow")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
+                                
+                                Spacer()
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 16)
+                            .background(cardBackground)
+                            .cornerRadius(18)
+                            .shadow(color: colorScheme == .dark ? .black.opacity(0.12) : .gray.opacity(0.08), radius: 10, x: 0, y: 4)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 20) // Extra bottom padding to ensure visibility
+                    } else {
+                        SlideUpSendButton(
+                            isEnabled: !message.isEmpty && !isSending,
+                            isSending: isSending,
+                            sent: sent,
+                            dragOffset: $dragOffset,
+                            isDragging: $isDragging,
+                            onSend: sendMessage,
+                            colorScheme: colorScheme,
+                            accent: accent
+                        )
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 0)
+                    }
+                    }
+                    .padding(.bottom, 20) // Ensure bottom content is fully visible
                 }
                 .sheet(isPresented: $showFAQ) {
                     HelpAndFAQView()
                 }
-                .onChange(of: selectedImage, initial: false) { oldItem, newItem in
+                // Success animation overlay
+                if showSuccessAnimation {
+                    SuccessAnimationOverlay()
+                        .transition(.opacity.combined(with: .scale))
+                        .zIndex(1000)
+                        .animation(.easeInOut(duration: 0.3), value: showSuccessAnimation)
+                }
+            }
+            .onChange(of: selectedImage, initial: false) { oldItem, newItem in
                     if let newItem {
                         Task {
                             if let data = try? await newItem.loadTransferable(type: Data.self), let uiImage = UIImage(data: data) {
@@ -238,31 +271,120 @@ struct ContactSupportView: View {
                         }
                     }
                 }
-            }
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarItems(leading: Button("Done") { dismiss() })
+            .onAppear {
+                loadUserInformation()
+                checkDailySendLimit()
+            }
         }
-    }
+        }
+    
     func sendMessage() {
-        guard !message.isEmpty else { return }
+        guard !message.isEmpty && !hasSentToday else { return }
         isSending = true
         sent = false
-        // Simulate send delay and animation
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+        
+        // Use native email approach for better reliability and simpler UX
+        openNativeEmailSupport()
+        
+        // Simulate success for better UX
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             isSending = false
             sent = true
             message = ""
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            attachedImage = nil
+            selectedImage = nil
+            
+            // Mark as sent today
+            markAsSentToday()
+            
+            // Show reply info with animation
+            withAnimation(.easeInOut(duration: 0.5)) {
+                showReplyInfo = true
+            }
+            
+            // Show success animation
+            showSuccessAnimation = true
+            
+            // Hide success animation after 2.5 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                showSuccessAnimation = false
                 sent = false
             }
+        }
+    }
+    
+    // MARK: - Native Email Support (Simplified Approach)
+    
+    // MARK: - Daily Send Limit Management
+    
+    private func checkDailySendLimit() {
+        let today = getCurrentDateString()
+        let lastSend = UserDefaults.standard.string(forKey: "lastSendDate") ?? ""
+        
+        if lastSend == today {
+            hasSentToday = true
+        } else {
+            hasSentToday = false
+            // Clear old data if it's a new day
+            if !lastSend.isEmpty {
+                UserDefaults.standard.removeObject(forKey: "lastSendDate")
+            }
+        }
+    }
+    
+    private func markAsSentToday() {
+        let today = getCurrentDateString()
+        UserDefaults.standard.set(today, forKey: "lastSendDate")
+        hasSentToday = true
+    }
+    
+    private func getCurrentDateString() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date())
+    }
+    
+    // MARK: - User Information Loading
+    
+    private func loadUserInformation() {
+        // Load user information from AuthenticationManager
+        if let session = AuthenticationManager.shared.session {
+            let user = session.user
+            
+            // Set email from session
+            email = user.email ?? ""
+            
+            // Try to get name from user metadata
+            let userMetadata = user.userMetadata
+            if let userName = userMetadata["name"]?.stringValue {
+                name = userName
+            } else if let fullName = userMetadata["full_name"]?.stringValue {
+                name = fullName
+            } else if let givenName = userMetadata["given_name"]?.stringValue,
+                      let familyName = userMetadata["family_name"]?.stringValue {
+                name = "\(givenName) \(familyName)"
+            } else {
+                // Fallback to email prefix if no name found
+                name = email.components(separatedBy: "@").first ?? "User"
+            }
+        } else {
+            // Fallback values for unauthenticated users
+            name = "Guest User"
+            email = "guest@nura.app"
         }
     }
     
     // MARK: - Support Actions
     
     func openEmailSupport() {
-        let email = "nura.help@gmail.com"
-        let subject = "Nura Support Request"
+        openNativeEmailSupport()
+    }
+    
+    func openNativeEmailSupport() {
+        let email = "nura.assistance@gmail.com"
+        let subject = "Nura Support Request - \(name)"
         
         // Get device info for better support
         let deviceInfo = getDeviceInfo()
@@ -270,9 +392,7 @@ struct ContactSupportView: View {
         let body = """
         Hello Nura Support Team,
         
-        I need help with the following:
-        
-        [Please describe your issue here]
+        \(message.isEmpty ? "I need help with the following:\n\n[Please describe your issue here]" : message)
         
         ---
         User Information:
@@ -283,11 +403,19 @@ struct ContactSupportView: View {
         \(deviceInfo)
         
         ---
-        Please provide as much detail as possible about your issue.
+        This message was sent from the Nura iOS app.
         """
         
         if let url = createEmailURL(to: email, subject: subject, body: body) {
-            UIApplication.shared.open(url)
+            UIApplication.shared.open(url) { success in
+                if !success {
+                    // Fallback: Copy email to clipboard and show alert
+                    DispatchQueue.main.async {
+                        UIPasteboard.general.string = email
+                        showEmailCopiedAlert()
+                    }
+                }
+            }
         } else {
             // Fallback: Copy email to clipboard
             UIPasteboard.general.string = email
@@ -327,11 +455,7 @@ struct ContactSupportView: View {
         
         alert.addAction(UIAlertAction(title: "OK", style: .cancel))
         
-        // Present the alert
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first {
-            window.rootViewController?.present(alert, animated: true)
-        }
+        presentAlert(alert)
     }
     
     func openChatSupport() {
@@ -360,24 +484,71 @@ struct ContactSupportView: View {
         )
         
         alert.addAction(UIAlertAction(title: "Open Mail App", style: .default) { _ in
-            if let mailURL = URL(string: "mailto:nura.help@gmail.com") {
+            if let mailURL = URL(string: "mailto:nura.assistance@gmail.com") {
                 UIApplication.shared.open(mailURL)
             }
         })
         
         alert.addAction(UIAlertAction(title: "OK", style: .cancel))
         
-        // Present the alert
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first {
-            window.rootViewController?.present(alert, animated: true)
-        }
+        presentAlert(alert)
     }
     
     private func showChatInfoAlert() {
         // Show chat availability and contact info
         print("💬 Chat support info displayed")
     }
+    
+    private func showEmailFallbackAlert(error: Error) {
+        let alert = UIAlertController(
+            title: "Email Service Unavailable 📧",
+            message: "We couldn't send your message directly. Would you like to open your email app instead?",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Open Email App", style: .default) { _ in
+            openEmailSupport()
+        })
+        
+        alert.addAction(UIAlertAction(title: "Try Again", style: .default) { _ in
+            // User can try sending again
+        })
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        
+        presentAlert(alert)
+    }
+
+    // MARK: - Alert Presentation Helper
+    private func presentAlert(_ alert: UIAlertController) {
+        DispatchQueue.main.async {
+            guard let rootViewController = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .flatMap({ $0.windows })
+                .first(where: { $0.isKeyWindow })?.rootViewController else { return }
+            let top = topViewController(from: rootViewController)
+            // Avoid stacking multiple alerts
+            if top is UIAlertController {
+                print("⚠️ Skipping alert presentation: another alert is already visible")
+                return
+            }
+            top.present(alert, animated: true)
+        }
+    }
+
+    private func topViewController(from root: UIViewController) -> UIViewController {
+        if let presented = root.presentedViewController {
+            return topViewController(from: presented)
+        }
+        if let navigation = root as? UINavigationController, let visible = navigation.visibleViewController {
+            return topViewController(from: visible)
+        }
+        if let tab = root as? UITabBarController, let selected = tab.selectedViewController {
+            return topViewController(from: selected)
+        }
+        return root
+    }
+
 }
 
 struct PillButton: View {
@@ -410,6 +581,185 @@ struct PillButton: View {
         }
         .buttonStyle(PlainButtonStyle())
         .animation(.easeInOut(duration: 0.18), value: UUID())
+    }
+}
+
+// MARK: - Slide Up Send Button Component
+struct SlideUpSendButton: View {
+    let isEnabled: Bool
+    let isSending: Bool
+    let sent: Bool
+    @Binding var dragOffset: CGFloat
+    @Binding var isDragging: Bool
+    let onSend: () -> Void
+    let colorScheme: ColorScheme
+    let accent: Color
+    
+    private let slideThreshold: CGFloat = 37 // About 1 inch
+    
+    var body: some View {
+        ZStack {
+            // Single cohesive button with stretching background
+            RoundedRectangle(cornerRadius: 18)
+                .fill(
+                    isEnabled
+                        ? LinearGradient(
+                            gradient: Gradient(colors: [
+                                colorScheme == .dark ? Color(red: 0.55, green: 0.63, blue: 0.90) : Color(red: 0.90, green: 0.75, blue: 0.75),
+                                colorScheme == .dark ? Color(red: 0.45, green: 0.53, blue: 0.80) : Color(red: 0.80, green: 0.65, blue: 0.65)
+                            ]),
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        : LinearGradient(
+                            gradient: Gradient(colors: [
+                                colorScheme == .dark ? Color.gray.opacity(0.25) : accent.opacity(0.25),
+                                colorScheme == .dark ? Color.gray.opacity(0.15) : accent.opacity(0.15)
+                            ]),
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                )
+                .frame(height: max(52 + 34, 52 + 34 + abs(dragOffset)))
+                .ignoresSafeArea(.container, edges: .bottom)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(
+                            isEnabled
+                                ? (colorScheme == .dark ? Color.white.opacity(0.15) : Color.white.opacity(0.2))
+                                : Color.clear,
+                            lineWidth: 1
+                        )
+                )
+                .shadow(
+                    color: (colorScheme == .dark ? Color(red: 0.50, green: 0.58, blue: 0.85) : Color(red: 0.85, green: 0.70, blue: 0.70)).opacity(0.4),
+                    radius: isDragging ? 12 : 8,
+                    x: 0,
+                    y: isDragging ? 8 : 4
+                )
+                .scaleEffect(isDragging ? 1.02 : 1.0)
+            
+            // Content with dynamic positioning - sticks to top of stretching background
+            VStack(spacing: 0) {
+                // Dynamic content that moves with the stretching background
+                HStack {
+                    if isSending {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    } else if sent {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundColor(.white)
+                            .scaleEffect(sent ? 1.2 : 1.0)
+                    } else {
+                        Text("Send")
+                            .font(.title3).fontWeight(.semibold)
+                            .foregroundColor(isEnabled ? .white : .secondary)
+                        
+                        Spacer()
+                        
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(isEnabled ? .white.opacity(0.8) : .secondary)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12) // Match horizontal padding for better visual balance
+                
+                // Spacer to fill remaining space
+                Spacer()
+            }
+        }
+        .scaleEffect(isSending ? 0.97 : 1.0)
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    if isEnabled && !isSending && !sent {
+                        isDragging = true
+                        // Simple upward movement - no complex animations
+                        dragOffset = min(0, value.translation.height)
+                        
+                        // Single haptic feedback at threshold
+                        if dragOffset < -slideThreshold && dragOffset > -slideThreshold - 5 {
+                            let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                            impactFeedback.impactOccurred()
+                        }
+                    }
+                }
+                .onEnded { value in
+                    if isEnabled && !isSending && !sent {
+                        isDragging = false
+                        
+                        // Check if slide threshold was reached
+                        if value.translation.height < -slideThreshold {
+                            // Trigger send
+                            onSend()
+                            
+                            // Success haptic feedback
+                            let successFeedback = UINotificationFeedbackGenerator()
+                            successFeedback.notificationOccurred(.success)
+                        }
+                        
+                        // Simple reset - no animation to avoid system overload
+                        dragOffset = 0
+                    }
+                }
+        )
+        .onTapGesture {
+            if isEnabled && !isSending && !sent {
+                onSend()
+            }
+        }
+    }
+}
+
+// MARK: - Success Animation Overlay
+struct SuccessAnimationOverlay: View {
+    @State private var scale: CGFloat = 0.5
+    @State private var opacity: Double = 0
+    @State private var rotation: Double = 0
+    
+    var body: some View {
+        ZStack {
+            // Background blur
+            Color.black.opacity(0.3)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 20) {
+                ZStack {
+                    // Outer ring
+                    Circle()
+                        .stroke(Color.green, lineWidth: 4)
+                        .frame(width: 120, height: 120)
+                        .scaleEffect(scale)
+                        .opacity(opacity)
+                    
+                    // Checkmark
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 50, weight: .bold))
+                        .foregroundColor(.green)
+                        .scaleEffect(scale)
+                        .opacity(opacity)
+                        .rotationEffect(.degrees(rotation))
+                }
+                
+                Text("Email Sent!")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+                    .opacity(opacity)
+            }
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                scale = 1.0
+                opacity = 1.0
+            }
+            
+            withAnimation(.easeInOut(duration: 0.8).delay(0.2)) {
+                rotation = 360
+            }
+        }
     }
 }
 

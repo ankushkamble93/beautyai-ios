@@ -26,6 +26,7 @@ class SkinAnalysisManager: ObservableObject {
     @Published var errorMessage: String?
     @Published var analysisProgress: Double = 0.0
     @Published var lastRecommendationsResponse: String? // raw content from model (for spike/debug)
+    @Published var isExplicitRefresh: Bool = false // Track if this is an explicit refresh vs cache load
     
     private let chatGPTService = ChatGPTServiceManager()
     private let userTierManager: UserTierManager
@@ -55,6 +56,7 @@ class SkinAnalysisManager: ObservableObject {
     func uploadImages(_ images: [UIImage]) {
         print("🔍 SkinAnalysisManager: Starting image upload process")
         print("🔍 SkinAnalysisManager: Images count: \(images.count)")
+        print("🔍 SkinAnalysisManager: ⚠️ IMPORTANT: This method should ONLY be called when user presses the 'Analyze' button")
         
         guard !images.isEmpty else {
             print("❌ SkinAnalysisManager: No images provided")
@@ -81,6 +83,7 @@ class SkinAnalysisManager: ObservableObject {
         }
         
         print("🔍 SkinAnalysisManager: User can perform analysis, proceeding...")
+        print("🔍 SkinAnalysisManager: ✅ Analysis triggered by user action (Analyze button pressed)")
         isAnalyzing = true
         errorMessage = nil
         uploadedImages = images
@@ -105,6 +108,9 @@ class SkinAnalysisManager: ObservableObject {
                     // Send notification when analysis is complete
                     LocalNotificationService.shared.sendSkinAnalysisCompleteNotification()
                     NotificationCenter.default.post(name: .nuraAnalysisCompleted, object: result)
+                    
+                    // Trigger product loading after analysis is complete
+                    NotificationCenter.default.post(name: .nuraTriggerProductLoading, object: nil)
                 }
                 
             } catch {
@@ -274,6 +280,7 @@ class SkinAnalysisManager: ObservableObject {
     
     func loadCachedRecommendations() {
         if let recs = loadRecommendationsFromDisk() {
+            self.isExplicitRefresh = false // This is a cache load, not an explicit refresh
             self.recommendations = recs
             print("✅ SkinAnalysisManager: Loaded cached recommendations from disk")
             return
@@ -281,6 +288,7 @@ class SkinAnalysisManager: ObservableObject {
         // Backward-compatibility: try legacy UserDefaults cache once
         if let data = UserDefaults.standard.data(forKey: recommendationsCacheKey),
            let recs = try? JSONDecoder().decode(SkincareRecommendations.self, from: data) {
+            self.isExplicitRefresh = false // This is a cache load, not an explicit refresh
             self.recommendations = recs
             print("✅ SkinAnalysisManager: Loaded cached recommendations from UserDefaults (legacy)")
             // migrate to disk
@@ -299,6 +307,7 @@ class SkinAnalysisManager: ObservableObject {
         
         do {
             isReloading = true
+            isExplicitRefresh = true // This is an explicit refresh action
             reloadStartTime = Date() // Set start time for timer
             let oldRecs = self.recommendations
             let startTs = Date()
@@ -386,8 +395,10 @@ class SkinAnalysisManager: ObservableObject {
             - Use detailed descriptions (5-8 words)
             - Include helpful tips for each step
             - Avoid sunscreen at night
-            - Use simple string IDs like "step-1", "step-2" (NOT UUIDs)
+            - Use simple string IDs like "step-1", "step-2" for steps and "prod-1", "prod-2" for products
             - Use only these frequency values: "daily", "twice_daily", "nightly", "weekly", "as_needed"
+            - Use only these categories: "cleanser", "toner", "serum", "exfoliant", "bha", "aha", "treatment", "moisturizer", "sunscreen", "mask", "clay"
+            - Use only these stepTimes: "morning", "evening", "anytime"
             
             Analysis JSON:
             \(resultsJSON)
@@ -428,9 +439,13 @@ class SkinAnalysisManager: ObservableObject {
                 }
             }
             
+            // Preprocess JSON to convert string IDs to UUIDs before decoding
+            let preprocessedJSON = preprocessJSONForUUIDConversion(jsonString)
+            
             // Try decoding full SkincareRecommendations
-            if let data = jsonString.data(using: .utf8) {
+            if let data = preprocessedJSON.data(using: .utf8) {
                 print("📦 Attempting JSON decode: bytes=\(data.count)")
+                print("🔍 Preprocessed JSON preview: \(String(preprocessedJSON.prefix(200)))...")
                 do {
                     var recs = try JSONDecoder().decode(SkincareRecommendations.self, from: data)
                     print("✅ Decoded recs: morning=\(recs.morningRoutine.count), evening=\(recs.eveningRoutine.count), weekly=\(recs.weeklyTreatments.count)")
@@ -459,11 +474,13 @@ class SkinAnalysisManager: ObservableObject {
                     return
                 } catch {
                     print("ℹ️ JSON decode failed: \(error)")
+                    print("🔍 Error details: \(error.localizedDescription)")
                     
                     // Enhanced truncation detection and recovery
                     if let truncatedData = detectAndRecoverTruncatedJSON(jsonString) {
                         print("🔧 Detected truncated JSON, attempting recovery...")
-                        if let recoveredData = truncatedData.data(using: .utf8),
+                        let preprocessedTruncated = preprocessJSONForUUIDConversion(truncatedData)
+                        if let recoveredData = preprocessedTruncated.data(using: .utf8),
                            let recsTry = try? JSONDecoder().decode(SkincareRecommendations.self, from: recoveredData) {
                             print("✅ Recovered truncated JSON successfully")
                             var recs = recsTry
@@ -493,63 +510,42 @@ class SkinAnalysisManager: ObservableObject {
                     
                     // Retry with sanitized JSON if truncated or unbalanced
                     let sanitized = sanitizePossiblyTruncatedJSON(jsonString)
-                    if sanitized != jsonString, let sData = sanitized.data(using: .utf8), let recsTry = try? JSONDecoder().decode(SkincareRecommendations.self, from: sData) {
-                        print("✅ Sanitized JSON decoded successfully (balanced braces)")
-                        var recs = recsTry
-                        recs = SkincareRecommendations(
-                            morningRoutine: Array(recs.morningRoutine.prefix(4)),
-                            eveningRoutine: Array(recs.eveningRoutine.prefix(4)),
-                            weeklyTreatments: Array(recs.weeklyTreatments.prefix(2)),
-                            lifestyleTips: recs.lifestyleTips,
-                            productRecommendations: recs.productRecommendations,
-                            progressTracking: recs.progressTracking
-                        )
-                        recs = applyLocalRules(to: recs)
-                        await MainActor.run {
-                            self.recommendations = recs
-                            self.recommendationsUpdatedAt = Date()
-                            self.recommendationsChangeLog = self.buildChangeLog(old: oldRecs, new: recs)
-                            self.saveRecommendationsToDisk(recs)
-                            print("✅ SkinAnalysisManager: Cached recommendations (disk) [sanitized]")
-                            print("📋 Routines summary → morning: \(recs.morningRoutine.map{ $0.name }.joined(separator: ", ")), evening: \(recs.eveningRoutine.map{ $0.name }.joined(separator: ", ")), weekly: \(recs.weeklyTreatments.map{ $0.name }.joined(separator: ", ")) )")
-                            self.isReloading = false
-                            print("⏱️ Total regenerate latency: \(String(format: "%.2fs", Date().timeIntervalSince(startTs)))")
-                            NotificationCenter.default.post(name: .nuraRecommendationsUpdated, object: recs)
+                    if sanitized != jsonString {
+                        let preprocessedSanitized = preprocessJSONForUUIDConversion(sanitized)
+                        if let sData = preprocessedSanitized.data(using: .utf8), let recsTry = try? JSONDecoder().decode(SkincareRecommendations.self, from: sData) {
+                            print("✅ Sanitized JSON decoded successfully (balanced braces)")
+                            var recs = recsTry
+                            recs = SkincareRecommendations(
+                                morningRoutine: Array(recs.morningRoutine.prefix(4)),
+                                eveningRoutine: Array(recs.eveningRoutine.prefix(4)),
+                                weeklyTreatments: Array(recs.weeklyTreatments.prefix(2)),
+                                lifestyleTips: recs.lifestyleTips,
+                                productRecommendations: recs.productRecommendations,
+                                progressTracking: recs.progressTracking
+                            )
+                            recs = applyLocalRules(to: recs)
+                            await MainActor.run {
+                                self.recommendations = recs
+                                self.recommendationsUpdatedAt = Date()
+                                self.recommendationsChangeLog = self.buildChangeLog(old: oldRecs, new: recs)
+                                self.saveRecommendationsToDisk(recs)
+                                print("✅ SkinAnalysisManager: Cached recommendations (disk) [sanitized]")
+                                print("📋 Routines summary → morning: \(recs.morningRoutine.map{ $0.name }.joined(separator: ", ")), evening: \(recs.eveningRoutine.map{ $0.name }.joined(separator: ", ")), weekly: \(recs.weeklyTreatments.map{ $0.name }.joined(separator: ", ")) )")
+                                self.isReloading = false
+                                print("⏱️ Total regenerate latency: \(String(format: "%.2fs", Date().timeIntervalSince(startTs)))")
+                                NotificationCenter.default.post(name: .nuraRecommendationsUpdated, object: recs)
+                            }
+                            return
                         }
-                        return
                     }
-                    // One-time retry with stricter JSON-mode instruction if still invalid
-                    print("🔁 Retrying once with stricter JSON enforcement…")
-                    let stricterPrompt = "Return strict JSON only with keys morningRoutine, eveningRoutine, weeklyTreatments, lifestyleTips, productRecommendations, progressTracking. No commentary. Ensure valid JSON and close all arrays/objects. Limit morning to 4, evening to 4, weekly to 2 items.\n" + prompt
-                    let retryRaw = try await makeTextOnlyRequest(model: model, prompt: stricterPrompt)
-                    let retryJSON = extractJSONFromResponse(retryRaw)
-                    if let rData = retryJSON.data(using: .utf8), let recs2 = try? JSONDecoder().decode(SkincareRecommendations.self, from: rData) {
-                        var recs = recs2
-                        recs = SkincareRecommendations(
-                            morningRoutine: Array(recs.morningRoutine.prefix(4)),
-                            eveningRoutine: Array(recs.eveningRoutine.prefix(4)),
-                            weeklyTreatments: Array(recs.weeklyTreatments.prefix(2)),
-                            lifestyleTips: recs.lifestyleTips,
-                            productRecommendations: recs.productRecommendations,
-                            progressTracking: recs.progressTracking
-                        )
-                        recs = applyLocalRules(to: recs)
-                        await MainActor.run {
-                            self.recommendations = recs
-                            self.recommendationsUpdatedAt = Date()
-                            self.recommendationsChangeLog = self.buildChangeLog(old: oldRecs, new: recs)
-                            self.saveRecommendationsToDisk(recs)
-                            print("✅ SkinAnalysisManager: Cached recommendations (disk) [retry]")
-                            self.isReloading = false
-                            NotificationCenter.default.post(name: .nuraRecommendationsUpdated, object: recs)
-                        }
-                        return
-                    }
+                    // No retry needed - we've fixed the root cause with preprocessing
+                    print("⚠️ All JSON processing attempts failed - this should be rare with the new preprocessing")
                     // Attempt to find first JSON object substring explicitly
                     if let start = raw.firstIndex(of: "{"), let end = raw.lastIndex(of: "}") {
                         let inner = String(raw[start...end])
                         print("🔍 Trying inner JSON slice (first 300): \(inner.prefix(300))…")
-                        if let innerData = inner.data(using: .utf8) {
+                        let preprocessedInner = preprocessJSONForUUIDConversion(inner)
+                        if let innerData = preprocessedInner.data(using: .utf8) {
                             if var recs = try? JSONDecoder().decode(SkincareRecommendations.self, from: innerData) {
                                 print("✅ Inner slice decoded: morning=\(recs.morningRoutine.count), evening=\(recs.eveningRoutine.count), weekly=\(recs.weeklyTreatments.count)")
                                 recs = applyLocalRules(to: recs)
@@ -672,6 +668,108 @@ class SkinAnalysisManager: ObservableObject {
             self.errorMessage = error.localizedDescription
             self.isReloading = false
         }
+    }
+    
+    // MARK: - JSON Preprocessing for UUID Conversion
+    
+    /// Preprocesses JSON to convert string IDs to deterministic UUIDs before decoding
+    private func preprocessJSONForUUIDConversion(_ jsonString: String) -> String {
+        var processedJSON = jsonString
+        
+        // Validate JSON structure before processing
+        guard processedJSON.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("{") &&
+              processedJSON.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("}") else {
+            print("⚠️ JSON preprocessing: Invalid JSON structure, returning original")
+            return jsonString
+        }
+        
+        // Convert string IDs to deterministic UUIDs for SkincareStep objects
+        // Pattern: "id": "step-1" -> "id": "generated-uuid"
+        let stepIdPattern = #""id"\s*:\s*"step-(\d+)""#
+        if let regex = try? NSRegularExpression(pattern: stepIdPattern) {
+            let matches = regex.matches(in: processedJSON, range: NSRange(location: 0, length: processedJSON.count))
+            
+            // Process matches in reverse order to avoid index shifting
+            for match in matches.reversed() {
+                if match.numberOfRanges > 1 {
+                    let stepNumberRange = match.range(at: 1)
+                    let stepNumber = (processedJSON as NSString).substring(with: stepNumberRange)
+                    
+                    // Generate deterministic UUID from step number
+                    let deterministicUUID = generateDeterministicUUID(from: "step-\(stepNumber)")
+                    
+                    // Replace the string ID with the UUID
+                    let replacement = "\"id\": \"\(deterministicUUID)\""
+                    let fullMatchRange = match.range
+                    processedJSON = (processedJSON as NSString).replacingCharacters(in: fullMatchRange, with: replacement)
+                    
+                    print("✅ SkincareStep: String ID 'step-\(stepNumber)' converted to deterministic UUID")
+                }
+            }
+        }
+        
+        // Convert string IDs to deterministic UUIDs for ProductRecommendation objects
+        // Pattern: "id": "prod-1" -> "id": "generated-uuid"
+        let productIdPattern = #""id"\s*:\s*"prod-(\d+)""#
+        if let regex = try? NSRegularExpression(pattern: productIdPattern) {
+            let matches = regex.matches(in: processedJSON, range: NSRange(location: 0, length: processedJSON.count))
+            
+            // Process matches in reverse order to avoid index shifting
+            for match in matches.reversed() {
+                if match.numberOfRanges > 1 {
+                    let prodNumberRange = match.range(at: 1)
+                    let prodNumber = (processedJSON as NSString).substring(with: prodNumberRange)
+                    
+                    // Generate deterministic UUID from product number
+                    let deterministicUUID = generateDeterministicUUID(from: "prod-\(prodNumber)")
+                    
+                    // Replace the string ID with the UUID
+                    let replacement = "\"id\": \"\(deterministicUUID)\""
+                    let fullMatchRange = match.range
+                    processedJSON = (processedJSON as NSString).replacingCharacters(in: fullMatchRange, with: replacement)
+                    
+                    print("✅ ProductRecommendation: String ID 'prod-\(prodNumber)' converted to deterministic UUID")
+                }
+            }
+        }
+        
+        // Validate the processed JSON is still valid
+        if let data = processedJSON.data(using: .utf8) {
+            do {
+                _ = try JSONSerialization.jsonObject(with: data, options: [])
+                print("✅ JSON preprocessing: Processed JSON is valid")
+                return processedJSON
+            } catch {
+                print("⚠️ JSON preprocessing: Processed JSON is invalid (\(error.localizedDescription)), returning original")
+                return jsonString
+            }
+        } else {
+            print("⚠️ JSON preprocessing: Could not convert processed JSON to data, returning original")
+            return jsonString
+        }
+    }
+    
+    /// Generates a deterministic UUID from a string seed
+    private func generateDeterministicUUID(from seed: String) -> String {
+        // Create a deterministic UUID by hashing the seed
+        let data = seed.data(using: .utf8) ?? Data()
+        let hash = data.withUnsafeBytes { bytes in
+            var hash: UInt64 = 5381
+            for byte in bytes {
+                hash = ((hash << 5) &+ hash) &+ UInt64(byte)
+            }
+            return hash
+        }
+        
+        // Convert hash to UUID format
+        let uuidString = String(format: "%08X-%04X-%04X-%04X-%012X",
+                               UInt32((hash >> 32) & 0xFFFFFFFF),
+                               UInt16((hash >> 16) & 0xFFFF),
+                               UInt16(hash & 0xFFFF),
+                               UInt16((hash >> 48) & 0xFFFF),
+                               UInt64(hash & 0xFFFFFFFFFFFF))
+        
+        return uuidString
     }
     
     // MARK: - JSON Truncation Detection and Recovery

@@ -29,6 +29,7 @@ extension Notification.Name {
     static let nuraAnalysisCompleted = Notification.Name("nura.analysis.completed")
     static let nuraRecommendationsUpdated = Notification.Name("nura.recommendations.updated")
     static let nuraSwitchTab = Notification.Name("nura.switch.tab")
+    static let nuraTriggerProductLoading = Notification.Name("nura.trigger.product.loading")
 }
 
 // MARK: - API Usage Models

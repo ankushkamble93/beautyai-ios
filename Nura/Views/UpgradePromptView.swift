@@ -8,7 +8,7 @@ struct UpgradePromptView: View {
     @EnvironmentObject var appearanceManager: AppearanceManager
     
     var body: some View {
-        let isDark = appearanceManager.colorSchemePreference == "dark" || (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark)
+        let isDark = appearanceManager.isDarkMode
         
         VStack(spacing: 16) {
             Image(systemName: feature.icon)
