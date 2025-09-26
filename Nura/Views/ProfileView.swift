@@ -905,6 +905,7 @@ struct SettingsSectionView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @State private var showingSettings = false
     @State private var showingPersonalInfo = false
+    @State private var showingEditOnboarding = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
@@ -920,6 +921,18 @@ struct SettingsSectionView: View {
                     color: NuraColors.secondary
                 ) {
                     showingPersonalInfo = true
+                }
+                
+                Divider()
+                    .padding(.leading, 50)
+                
+                SettingsRow(
+                    title: "Edit Onboarding Answers",
+                    subtitle: "Update onboarding answers",
+                    icon: "square.and.pencil",
+                    color: .orange
+                ) {
+                    showingEditOnboarding = true
                 }
                 
                 Divider()
@@ -985,6 +998,10 @@ struct SettingsSectionView: View {
         }
         .sheet(isPresented: $showingPersonalInfo) {
             PersonalInformationView()
+        }
+        .sheet(isPresented: $showingEditOnboarding) {
+            ResetOnboardingView()
+                .environmentObject(authManager)
         }
     }
 }
@@ -1317,6 +1334,9 @@ struct PersonalInformationView: View {
     @State private var errorMessage: String? = nil
     @State private var lastUpdated: Date? = nil
     @State private var hasChanges = false
+    // Women's cycle fields (optional, shown if sex is female)
+    @State private var periodCycleInfo: String = ""
+    @State private var birthControlInfo: String = ""
     
     // Store original values to detect changes
     @State private var originalName: String = ""
@@ -1484,6 +1504,32 @@ struct PersonalInformationView: View {
                                     cardBackground: cardBackground
                                 )
                                 
+                                // If sex is female, show women's health section
+                                if authManager.getOnboardingAnswers()?.sex.lowercased().contains("female") == true {
+                                    VStack(alignment: .leading, spacing: 10) {
+                                        Text("Women's Health (Optional)")
+                                            .font(.headline)
+                                        FormField(
+                                            title: "Period / Cycle",
+                                            subtitle: "Example: 28 days, luteal phase",
+                                            icon: "calendar",
+                                            text: $periodCycleInfo,
+                                            isRequired: false,
+                                            hasChanges: true,
+                                            cardBackground: cardBackground
+                                        )
+                                        FormField(
+                                            title: "Birth Control",
+                                            subtitle: "Pill, IUD, Implant, None",
+                                            icon: "pills.fill",
+                                            text: $birthControlInfo,
+                                            isRequired: false,
+                                            hasChanges: true,
+                                            cardBackground: cardBackground
+                                        )
+                                    }
+                                }
+
                                 // Privacy notice for phone storage
                                 if !phone.trimmingCharacters(in: .whitespaces).isEmpty {
                                     HStack(spacing: 8) {
@@ -1754,6 +1800,16 @@ struct PersonalInformationView: View {
             do {
                 // Update user profile in Supabase
                 try await updateUserProfile()
+                // Append women's health fields to onboarding answers if present
+                if var answers = authManager.getOnboardingAnswers() {
+                    if !periodCycleInfo.trimmingCharacters(in: .whitespaces).isEmpty {
+                        answers.periodCycleInfo = periodCycleInfo
+                    }
+                    if !birthControlInfo.trimmingCharacters(in: .whitespaces).isEmpty {
+                        answers.birthControlInfo = birthControlInfo
+                    }
+                    await authManager.setOnboardingComplete(onboardingAnswers: answers)
+                }
                 
                 await MainActor.run {
                     isSaving = false

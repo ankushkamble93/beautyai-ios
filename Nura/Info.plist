@@ -48,5 +48,11 @@
 	<string>Nura needs access to your photo library to save profile pictures that you select. This allows you to keep your chosen profile photo in your Photos app.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Nura uses the camera for optional live skin analysis overlays.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>instagram</string>
+		<string>instagram-stories</string>
+		<string>snapchat</string>
+	</array>
 </dict>
 </plist>

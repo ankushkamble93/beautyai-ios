@@ -10,7 +10,7 @@ struct OnboardingQuestionnaireView: View {
     @State private var otherCondition: String = ""
     @State private var isSaving: Bool = false
     @State private var errorMessage: String? = nil
-    let totalSteps = 9
+    let totalSteps = 10
     @State private var dermatologistSelection: String = ""
     @State private var medicationSelection: String = ""
     @State private var healthSelection: String = ""
@@ -286,18 +286,12 @@ struct OnboardingQuestionnaireView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 VStack(spacing: 10) {
                     ForEach(["No", "Yes – checkups only", "Yes – currently under treatment"], id: \.self) { option in
-                        Button(action: { 
-                            dermatologistSelection = option
-                            if !dermatologistSelection.isEmpty && !medicationSelection.isEmpty {
-                                answers[6] = "Dermatologist: \(dermatologistSelection) | Medications: \(medicationSelection)"
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { nextStep() }
-                            }
-                        }) {
+                        Button(action: { dermatologistSelection = option }) {
                             Text(option)
                                 .fontWeight(.medium)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 12)
-                                .background(dermatologistSelection == option ? Color.mint.opacity(0.22) : Color.mint.opacity(0.13))
+                                .background(dermatologistSelection == option ? Color(red:0.52, green:0.24, blue:0.67) : Color.mint.opacity(0.13))
                                 .foregroundColor(.primary)
                                 .cornerRadius(12)
                         }
@@ -312,18 +306,12 @@ struct OnboardingQuestionnaireView: View {
                     .foregroundColor(.primary)
                 VStack(spacing: 10) {
                     ForEach(["None", "Topicals (e.g., retinoids)", "Orals (e.g., antibiotics)", "Both"], id: \.self) { sub in
-                        Button(action: { 
-                            medicationSelection = sub 
-                            if !dermatologistSelection.isEmpty && !medicationSelection.isEmpty {
-                                answers[6] = "Dermatologist: \(dermatologistSelection) | Medications: \(medicationSelection)"
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { nextStep() }
-                            }
-                        }) {
+                        Button(action: { medicationSelection = sub }) {
                             Text(sub)
                                 .fontWeight(.medium)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 12)
-                                .background(medicationSelection == sub ? Color.mint.opacity(0.22) : Color.mint.opacity(0.13))
+                                .background(medicationSelection == sub ? Color(red:0.52, green:0.24, blue:0.67) : Color.mint.opacity(0.13))
                                 .foregroundColor(.primary)
                                 .cornerRadius(12)
                         }
@@ -331,6 +319,21 @@ struct OnboardingQuestionnaireView: View {
                     }
                 }
                 .padding(.top, 4)
+                Button(action: {
+                    if !dermatologistSelection.isEmpty && !medicationSelection.isEmpty {
+                        answers[6] = "Dermatologist: \(dermatologistSelection) | Medications: \(medicationSelection)"
+                        nextStep()
+                    }
+                }) {
+                    Text("Continue")
+                        .fontWeight(.semibold)
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 32)
+                        .background((!dermatologistSelection.isEmpty && !medicationSelection.isEmpty) ? Color(red:0.52, green:0.24, blue:0.67) : Color.gray.opacity(0.3))
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                }
+                .disabled(dermatologistSelection.isEmpty || medicationSelection.isEmpty)
             }
         case 7:
             VStack(spacing: 18) {
@@ -391,7 +394,7 @@ struct OnboardingQuestionnaireView: View {
                     .lineLimit(nil)
                     .fixedSize(horizontal: false, vertical: true)
                                     HStack(spacing: 10) {
-                        ForEach(["No", "Occasionally", "Daily"], id: \.self) { choice in
+                    ForEach(["No", "Occasionally", "Daily"], id: \.self) { choice in
                             Button(action: { 
                                 smokingSelection = choice 
                                 if !sleepSelection.isEmpty { 
@@ -403,7 +406,7 @@ struct OnboardingQuestionnaireView: View {
                                 Text(choice)
                                     .padding(.vertical, 10)
                                     .frame(maxWidth: .infinity)
-                                    .background((smokingSelection == choice) ? Color.mint.opacity(0.22) : Color.mint.opacity(0.13))
+                                .background((smokingSelection == choice) ? Color(red:0.52, green:0.24, blue:0.67) : Color.mint.opacity(0.13))
                                     .foregroundColor(.primary)
                                     .cornerRadius(10)
                             }
@@ -415,7 +418,7 @@ struct OnboardingQuestionnaireView: View {
                     .lineLimit(nil)
                     .fixedSize(horizontal: false, vertical: true)
                                     HStack(spacing: 10) {
-                        ForEach(["<6 hrs", "6–7 hrs", "7–8 hrs", ">8 hrs"], id: \.self) { s in
+                    ForEach(["<6 hrs", "6–7 hrs", "7–8 hrs", ">8 hrs"], id: \.self) { s in
                             Button(action: { 
                                 sleepSelection = s 
                                 if !smokingSelection.isEmpty { 
@@ -427,12 +430,57 @@ struct OnboardingQuestionnaireView: View {
                                 Text(s)
                                     .padding(.vertical, 10)
                                     .frame(maxWidth: .infinity)
-                                    .background((sleepSelection == s) ? Color.mint.opacity(0.22) : Color.mint.opacity(0.13))
+                                .background((sleepSelection == s) ? Color(red:0.52, green:0.24, blue:0.67) : Color.mint.opacity(0.13))
                                     .foregroundColor(.primary)
                                     .cornerRadius(10)
                             }
                         }
                     }
+            }
+        case 9:
+            // Female-specific: period/cycle + pills page (only shown if sex == Female)
+            VStack(spacing: 18) {
+                Text("Women's Health (Optional)")
+                    .font(.title2).fontWeight(.semibold)
+                    .multilineTextAlignment(.center)
+                Text("Cycle info helps us time actives to reduce irritation.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                VStack(spacing: 12) {
+                    TextField("Period/Cycle details (e.g., 28d, currently in luteal)", text: $otherCondition)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                    HStack {
+                        ForEach(["None","Pill","IUD","Implant","Ring"], id: \.self) { method in
+                            Button(method) {
+                                medicationSelection = method
+                            }
+                            .font(.caption)
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 10)
+                            .background(medicationSelection == method ? Color.mint.opacity(0.22) : Color.mint.opacity(0.13))
+                            .cornerRadius(8)
+                            .foregroundColor(.primary)
+                        }
+                    }
+                }
+                Button(action: {
+                    // Only persist if user indicated Female earlier
+                    if answers.count >= 2 && answers[1].lowercased().contains("female") {
+                        // Reserve keys: we’ll pass through setOnboardingComplete()
+                        // Store transiently inside answers array trailing indices
+                        answers.append(otherCondition)
+                        answers.append(medicationSelection)
+                    }
+                    finishOnboarding()
+                }) {
+                    Text("Finish")
+                        .fontWeight(.semibold)
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 32)
+                        .background(Color.mint.opacity(0.18))
+                        .foregroundColor(.primary)
+                        .cornerRadius(12)
+                }
             }
         default:
             EmptyView()
@@ -466,7 +514,16 @@ struct OnboardingQuestionnaireView: View {
         errorMessage = nil
         
         // Create OnboardingAnswers structure for ChatGPT integration
-        let onboardingAnswers = OnboardingAnswers.fromAnswers(answers)
+        var onboardingAnswers = OnboardingAnswers.fromAnswers(answers)
+        // If we appended period/pills at the end (female path), capture them
+        if answers.count > 10 {
+            // last two entries: cycle, method
+            let tail = answers.suffix(2)
+            if tail.count == 2 {
+                onboardingAnswers?.periodCycleInfo = tail[tail.index(tail.startIndex, offsetBy: 0)]
+                onboardingAnswers?.birthControlInfo = tail[tail.index(tail.startIndex, offsetBy: 1)]
+            }
+        }
         
         // Log the answers for debugging and future ChatGPT integration
         print("🔍 OnboardingAnswers created:")

@@ -1693,6 +1693,8 @@ struct UpcomingTasksCard: View {
                             Text(isReloading ? "Reloading" : "Reload")
                                 .font(.caption2)
                                 .fontWeight(.medium)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
                         }
                         .foregroundColor(isDark ? Color.purple.opacity(0.8) : Color.purple)
                         .padding(.horizontal, 8)
@@ -1838,9 +1840,15 @@ struct UpcomingTasksCard: View {
                             }
                             VStack(alignment: .leading, spacing: 2) {
                                 ForEach(bulletItems(from: task.description), id: \.self) { item in
-                                    Text("• \(item)")
-                                        .font(.caption2)
-                                        .foregroundColor(DashboardStyle.whiteText(isDark: isDark))
+                                    HStack(spacing: 6) {
+                                        Text("• \(item)")
+                                            .font(.caption2)
+                                            .foregroundColor(DashboardStyle.whiteText(isDark: isDark))
+                                        // Lightweight countdown chip from known durations if we can parse trailing "(Xm)"
+                                        if let minutes = parseDurationMinutes(from: item) {
+                                            CountdownChip(totalMinutes: minutes)
+                                        }
+                                    }
                                 }
                             }
                             if checkedStates[idx], let time = timeRemainingForTask[idx], !canCompleteTask[idx] {
@@ -2050,6 +2058,22 @@ struct UpcomingTasksCard: View {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
     }
+    // Parse duration minutes from a line like "Cleanser (60s)" or "Mask (10m)"
+    private func parseDurationMinutes(from line: String) -> Int? {
+        let pattern = #"\((\d+)\s*(s|sec|m|min)\)"#
+        if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+            let range = NSRange(line.startIndex..<line.endIndex, in: line)
+            if let match = regex.firstMatch(in: line, options: [], range: range), match.numberOfRanges >= 3,
+               let numRange = Range(match.range(at: 1), in: line),
+               let unitRange = Range(match.range(at: 2), in: line) {
+                let num = Int(line[numRange]) ?? 0
+                let unit = String(line[unitRange]).lowercased()
+                if ["s","sec"].contains(unit) { return max(1, Int(ceil(Double(num)/60.0))) }
+                return num
+            }
+        }
+        return nil
+    }
     
     private func formatElapsedTime(_ timeInterval: TimeInterval) -> String {
         let seconds = Int(timeInterval)
@@ -2075,6 +2099,32 @@ struct UpcomingTasksCard: View {
             let remainingSeconds = seconds % 60
             return String(format: "%dm %ds", minutes, remainingSeconds)
         }
+    }
+}
+
+// MARK: - Lightweight countdown chip
+private struct CountdownChip: View {
+    let totalMinutes: Int
+    @State private var remainingSeconds: Int = 0
+    var body: some View {
+        let display = format(remainingSeconds > 0 ? remainingSeconds : totalMinutes * 60)
+        return Text(display)
+            .font(.caption2)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.purple.opacity(0.12))
+            .foregroundColor(.purple)
+            .cornerRadius(6)
+            .onAppear { remainingSeconds = totalMinutes * 60 }
+            .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+                if remainingSeconds > 0 { remainingSeconds -= 1 }
+            }
+    }
+    private func format(_ s: Int) -> String {
+        let m = s / 60
+        let r = s % 60
+        if m > 0 { return String(format: "%dm %02ds", m, r) }
+        return String(format: "%ds", r)
     }
 }
 

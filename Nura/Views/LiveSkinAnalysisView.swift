@@ -20,6 +20,7 @@ struct LiveSkinAnalysisView: View {
     
     var body: some View {
         ZStack {
+            Color.black.ignoresSafeArea()
             if camera.isAvailable && camera.permissionGranted {
                 CameraPreview(session: camera.session)
                     .ignoresSafeArea()
@@ -349,49 +350,75 @@ final class CameraVisionController: NSObject, ObservableObject {
         
         // Check device availability (simulator has no camera)
         #if targetEnvironment(simulator)
-        self.isAvailable = false
-        self.simulatorFeedEnabled = true
+        DispatchQueue.main.async {
+            self.isAvailable = false
+            self.simulatorFeedEnabled = true
+        }
         session.commitConfiguration()
         return
         #else
-        if AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) == nil { self.isAvailable = false; session.commitConfiguration(); return } else { self.isAvailable = true }
+        if AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) == nil {
+            DispatchQueue.main.async { self.isAvailable = false }
+            session.commitConfiguration(); return
+        } else {
+            DispatchQueue.main.async { self.isAvailable = true }
+        }
         #endif
         
         // Request permission if needed
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized:
-            permissionGranted = true
-        case .notDetermined:
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        var hasPermission = false
+        if status == .authorized {
+            hasPermission = true
+        } else if status == .notDetermined {
+            // IMPORTANT: Block until the user answers so we don't show a black preview
             let semaphore = DispatchSemaphore(value: 0)
             AVCaptureDevice.requestAccess(for: .video) { granted in
+                hasPermission = granted
                 DispatchQueue.main.async { self.permissionGranted = granted }
                 semaphore.signal()
             }
-            semaphore.wait()
-        default:
-            permissionGranted = false
+            _ = semaphore.wait(timeout: .now() + 30) // generous timeout
+        } else {
+            hasPermission = false
         }
-        guard permissionGranted else { session.commitConfiguration(); return }
-        
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front),
-              let input = try? AVCaptureDeviceInput(device: device),
-              session.canAddInput(input) else {
+        // Reflect state for the UI, but make gating decision from local variable to avoid races
+        DispatchQueue.main.async { self.permissionGranted = hasPermission }
+
+        guard hasPermission else {
+            print("⚠️ LiveScan: Camera permission not granted; aborting configuration")
             session.commitConfiguration(); return
         }
+        
+        var deviceOpt: AVCaptureDevice?
+        DispatchQueue.main.sync {
+            deviceOpt = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
+        }
+        guard let device = deviceOpt else { print("❌ LiveScan: Failed to get front camera device"); session.commitConfiguration(); return }
+        guard let input = try? AVCaptureDeviceInput(device: device) else { print("❌ LiveScan: Failed to create device input"); session.commitConfiguration(); return }
+        guard session.canAddInput(input) else { print("❌ LiveScan: Cannot add device input to session"); session.commitConfiguration(); return }
         session.addInput(input)
         
         videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
         videoOutput.setSampleBufferDelegate(self, queue: visionQueue)
         videoOutput.alwaysDiscardsLateVideoFrames = true
-        if session.canAddOutput(videoOutput) { session.addOutput(videoOutput) }
+        if session.canAddOutput(videoOutput) { session.addOutput(videoOutput) } else { print("❌ LiveScan: Cannot add video output") }
         
-        if let connection = videoOutput.connection(with: .video), connection.isVideoOrientationSupported {
-            connection.videoOrientation = .portrait
-            connection.isVideoMirrored = true
+        if let connection = videoOutput.connection(with: .video) {
+            // iOS 17+: prefer rotationAngle API, otherwise fall back
+            if connection.responds(to: Selector(("isVideoRotationAngleSupported:"))) {
+                if connection.isVideoRotationAngleSupported(90) {
+                    connection.videoRotationAngle = 90
+                }
+            } else if connection.isVideoOrientationSupported {
+                connection.videoOrientation = .portrait
+            }
+            if connection.isVideoMirroringSupported { connection.automaticallyAdjustsVideoMirroring = true }
         }
         
         session.commitConfiguration()
         configured = true
+        print("✅ LiveScan: Camera configured")
     }
 }
 
@@ -451,8 +478,9 @@ extension CameraVisionController: AVCaptureVideoDataOutputSampleBufferDelegate {
                 let foreheadTop = faceRect.maxY
                 let noseY = first.landmarks?.nose?.normalizedPoints.first.map { Double(faceRect.minY + faceRect.height * CGFloat($0.y)) } ?? Double(faceRect.midY)
                 lm = FaceLandmarks(foreheadTop: foreheadTop, chinY: chinY, noseY: CGFloat(noseY))
-                self.yaw = first.yaw?.doubleValue
-                self.roll = first.roll?.doubleValue
+                let newYaw = first.yaw?.doubleValue
+                let newRoll = first.roll?.doubleValue
+                DispatchQueue.main.async { self.yaw = newYaw; self.roll = newRoll }
             }
             DispatchQueue.main.async {
                 self.faceOverlays = rects
@@ -472,15 +500,32 @@ struct CameraPreview: UIViewRepresentable {
 }
 
 final class PreviewView: UIView {
-    private let videoLayer = AVCaptureVideoPreviewLayer()
+    override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
+    private var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
     init(session: AVCaptureSession) {
         super.init(frame: .zero)
-        videoLayer.session = session
-        videoLayer.videoGravity = .resizeAspectFill
-        layer.addSublayer(videoLayer)
+        previewLayer.session = session
+        previewLayer.videoGravity = .resizeAspectFill
+        previewLayer.backgroundColor = UIColor.black.cgColor
+        if let connection = previewLayer.connection {
+            if connection.responds(to: Selector(("isVideoRotationAngleSupported:"))) {
+                if connection.isVideoRotationAngleSupported(90) { connection.videoRotationAngle = 90 }
+            } else if connection.isVideoOrientationSupported { connection.videoOrientation = .portrait }
+            if connection.isVideoMirroringSupported { connection.automaticallyAdjustsVideoMirroring = true }
+        }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-    override func layoutSubviews() { super.layoutSubviews(); videoLayer.frame = bounds }
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        previewLayer.frame = bounds
+        if let connection = previewLayer.connection {
+            if connection.responds(to: Selector(("isVideoRotationAngleSupported:"))) {
+                if connection.isVideoRotationAngleSupported(90) { connection.videoRotationAngle = 90 }
+            } else if connection.isVideoOrientationSupported {
+                connection.videoOrientation = .portrait
+            }
+        }
+    }
 }
 
 // MARK: - Simulator preview (animated gradient placeholder)

@@ -2,19 +2,22 @@ import Foundation
 
 // Structure to collect all onboarding answers for ChatGPT integration
 struct OnboardingAnswers {
-    let age: String
-    let sex: String
-    let activityLevel: String
-    let hydrationLevel: String
-    let skincareGoal: String
-    let skinConditions: String
-    let dermatologistStatus: String
-    let healthConditions: String
-    let smokingStatus: String
-    let sleepQuality: String
+    var age: String
+    var sex: String
+    var activityLevel: String
+    var hydrationLevel: String
+    var skincareGoal: String
+    var skinConditions: String
+    var dermatologistStatus: String
+    var healthConditions: String
+    var smokingStatus: String
+    var sleepQuality: String
+    // Optional reproductive health fields (for female users). Only persisted if set
+    var periodCycleInfo: String? = nil
+    var birthControlInfo: String? = nil
     
     var asDictionary: [String: String] {
-        return [
+        var dict: [String: String] = [
             "age": age,
             "sex": sex,
             "activity_level": activityLevel,
@@ -26,10 +29,17 @@ struct OnboardingAnswers {
             "smoking_status": smokingStatus,
             "sleep_quality": sleepQuality
         ]
+        if let period = periodCycleInfo, !period.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            dict["period_cycle_info"] = period
+        }
+        if let pills = birthControlInfo, !pills.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            dict["birth_control_info"] = pills
+        }
+        return dict
     }
     
     var asFormattedString: String {
-        return """
+        var base = """
         User Profile:
         - Age: \(age)
         - Sex: \(sex)
@@ -42,6 +52,13 @@ struct OnboardingAnswers {
         - Smoking: \(smokingStatus)
         - Sleep: \(sleepQuality)
         """
+        if let period = periodCycleInfo, !period.isEmpty {
+            base += "\n        - Period/Cycle: \(period)"
+        }
+        if let pills = birthControlInfo, !pills.isEmpty {
+            base += "\n        - Birth Control: \(pills)"
+        }
+        return base
     }
     
     // Static function to create from array of answers

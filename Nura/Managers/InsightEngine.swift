@@ -64,7 +64,7 @@ struct InsightEngine {
 
                 insights.append(Insight(
                     id: UUID(),
-                    title: "Retinoid Tolerance",
+                    title: "⚠️ Retinoid Tolerance",
                     description: caution,
                     type: .warning,
                     date: now,
@@ -76,11 +76,41 @@ struct InsightEngine {
             if hasVitaminC {
                 insights.append(Insight(
                     id: UUID(),
-                    title: "SPF Priority",
+                    title: "🧴 SPF Priority",
                     description: "Vitamin C pairs best with daily SPF. Reapply if outdoors.",
                     type: .tip,
                     date: now,
                     reason: "Morning routine includes vitamin C."
+                ))
+            }
+        }
+
+        // 2b) Incorporate AI-provided lifestyle tips and step-level tips for personalization
+        if let recs = recommendations {
+            // Prefer explicit lifestyle tips if provided by AI
+            let lifestyle = recs.lifestyleTips.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            if let tip = lifestyle.first {
+                insights.append(Insight(
+                    id: UUID(),
+                    title: "🌿 Lifestyle Tip",
+                    description: tip,
+                    type: .tip,
+                    date: now,
+                    reason: "From AI lifestyleTips in your latest recommendations."
+                ))
+            }
+            // Mine per-step tips for actionable guidance
+            let stepTips = (recs.morningRoutine + recs.eveningRoutine + recs.weeklyTreatments)
+                .flatMap { $0.tips }
+                .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            if let t = stepTips.first {
+                insights.append(Insight(
+                    id: UUID(),
+                    title: "💡 Pro Tip",
+                    description: t,
+                    type: .tip,
+                    date: now,
+                    reason: "From tips attached to your routine steps."
                 ))
             }
         }
@@ -142,7 +172,7 @@ struct InsightEngine {
 
         let motivation = Insight(
             id: UUID(),
-            title: "Motivation",
+            title: "✨ Motivation",
             description: motivationPool.randomElement() ?? motivationPool[0],
             type: .achievement,
             date: now,
@@ -189,13 +219,28 @@ struct InsightEngine {
         // Choose one contextual insight from computed list above if available
         let contextual = insights.first ?? Insight(
             id: UUID(),
-            title: "Routine Ready",
+            title: "📋 Routine Ready",
             description: "Your personalized routine is ready to follow.",
             type: .improvement,
             date: now,
             reason: "Fallback contextual insight."
         )
 
-        return [motivation, helping, contextual]
+        // Return top 3-4 insights with priority ordering: contextual > lifestyle/step > helping > motivation
+        var ordered: [Insight] = []
+        // Ensure at least one contextual item
+        ordered.append(contextual)
+        // Add most recent personalized additions we may have appended above (at indices after contextual creations)
+        // Filter duplicates by title+description to keep list tight
+        let personalized = insights.filter { $0.id != contextual.id }
+        for i in personalized {
+            if !ordered.contains(where: { $0.title == i.title && $0.description == i.description }) {
+                ordered.append(i)
+            }
+            if ordered.count >= 3 { break }
+        }
+        if ordered.count < 3 { ordered.append(helping) }
+        if ordered.count < 3 { ordered.append(motivation) }
+        return Array(ordered.prefix(3))
     }
 }

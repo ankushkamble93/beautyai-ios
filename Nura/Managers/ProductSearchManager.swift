@@ -322,7 +322,7 @@ final class ProductSearchManager {
         if let items = decoded.items {
             for item in items.prefix(12) {
                 let cleaned = cleanProductTitle(item.title)
-                let title = (try? await resolveCanonicalFromSkincareAPI(cleaned)) ?? cleaned
+                let title = await resolveCanonicalFromSkincareAPI(cleaned) ?? cleaned
                 let brand = inferBrand(from: title)
                 let benefits = inferBenefits(from: title)
                 let dest = item.image?.contextLink
@@ -441,7 +441,7 @@ final class ProductSearchManager {
         let decoded = try JSONDecoder().decode(GCSearchResponse.self, from: data)
         guard let item = decoded.items?.first else { return nil }
         let cleaned = cleanProductTitle(item.title)
-        let displayTitle = (try? await resolveCanonicalFromSkincareAPI(cleaned)) ?? cleaned
+        let displayTitle = await resolveCanonicalFromSkincareAPI(cleaned) ?? cleaned
         let brand = inferBrand(from: displayTitle)
         let benefits = inferBenefits(from: displayTitle)
         let dest = item.image?.contextLink
@@ -712,7 +712,7 @@ final class ProductSearchManager {
     // Prefer Amazon search for product view links
     static func amazonSearchURL(for title: String) -> URL? {
         var components = URLComponents(string: "https://www.amazon.com/s")
-        var items: [URLQueryItem] = [URLQueryItem(name: "k", value: title)]
+        let items: [URLQueryItem] = [URLQueryItem(name: "k", value: title)]
         components?.queryItems = items
         return components?.url
     }
@@ -721,7 +721,7 @@ final class ProductSearchManager {
     
     /// Generates a professional product description based on available product data
     private func generateProductDescription(name: String, brand: String?, ingredients: [String], productType: String?) -> String {
-        let productName = name.lowercased()
+        // let productName = name.lowercased() // unused
         let brandName = brand?.lowercased() ?? ""
         
         // Base description based on product type

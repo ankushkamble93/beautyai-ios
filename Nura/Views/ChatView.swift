@@ -50,8 +50,34 @@ struct ChatView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .navigationTitle("")
+            .toolbar {
+                if FeatureFlags.enableBarcodeScan {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        if userTierManager.tier == .free {
+                            Button(action: { showNuraProSheet = true }) {
+                                Image(systemName: "barcode.viewfinder")
+                            }
+                            .accessibilityLabel("Scan product barcode (Premium)")
+                        } else {
+                            NavigationLink(destination: ScanProductHost()) {
+                                Image(systemName: "barcode.viewfinder")
+                            }
+                            .accessibilityLabel("Scan product barcode")
+                        }
+                    }
+                }
+            }
         }
         .id(appearanceManager.colorSchemePreference)
+        .onReceive(NotificationCenter.default.publisher(for: .nuraOpenMiniChatAndSend)) { note in
+            if let text = note.object as? String {
+                showGlobalChatSheet = true
+                // Delay sending until sheet is presented
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    chatManager.sendMessage(text)
+                }
+            }
+        }
     }
     
     // MARK: - Free tier: existing chat (with paywall overlay)
@@ -271,6 +297,74 @@ struct ChatView: View {
     }
 }
 
+private struct ScanProductHost: View {
+    @Environment(\.dismiss) var dismiss
+    @EnvironmentObject var appearanceManager: AppearanceManager
+    @EnvironmentObject var userTierManager: UserTierManager
+    @EnvironmentObject var routineOverrideManager: RoutineOverrideManager
+    @EnvironmentObject var skinAnalysisManager: SkinAnalysisManager
+    @EnvironmentObject var chatManager: ChatManager
+    @State private var resolved: ResolvedProduct? = nil
+    @State private var verdict: FitVerdict? = nil
+    @State private var showResult = false
+
+    var body: some View {
+        ZStack {
+            if !showResult {
+                ScanProductView(onCancel: { dismiss() }, onDetected: { code in
+                    Task { await handle(code: code) }
+                })
+            }
+            if let r = resolved, let v = verdict, showResult {
+                ScannedProductResultView(resolved: r, verdict: v, onAskNura: {
+                    let brandPrefix = (r.brand != nil && !(r.brand!.isEmpty)) ? " (\(r.brand!))" : ""
+                    let q = "[barcode_query] Is \(r.name)\(brandPrefix) a good fit for me? Ingredients: \(r.ingredients?.joined(separator: ", ") ?? "unknown")"
+                    NotificationCenter.default.post(name: .nuraOpenMiniChatAndSend, object: q)
+                    dismiss()
+                }, onClose: { dismiss() })
+                .environmentObject(appearanceManager)
+                .environmentObject(userTierManager)
+                .environmentObject(routineOverrideManager)
+            }
+        }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func handle(code: String) async {
+        print("🔎 [Scan] Resolving barcode \(code)")
+        if let rp = await ProductResolver.shared.resolve(barcode: code) {
+            resolved = rp
+            let onboarding = loadOnboardingAnswers()
+            let v = FitEvaluator.shared.evaluate(productName: rp.name, ingredients: rp.ingredients, onboarding: onboarding)
+            verdict = v
+            withAnimation { showResult = true }
+        } else {
+            resolved = ResolvedProduct(barcode: code, name: "Unknown product", brand: nil, imageURL: nil, ingredients: nil, retailerURL: nil)
+            let onboarding = loadOnboardingAnswers()
+            verdict = FitEvaluator.shared.evaluate(productName: "", ingredients: nil, onboarding: onboarding)
+            withAnimation { showResult = true }
+        }
+    }
+
+    private func loadOnboardingAnswers() -> OnboardingAnswers {
+        // In v1, derive minimal answers from existing managers or defaults.
+        // Placeholder fallback values to avoid blocking UI if unavailable.
+        return OnboardingAnswers(
+            age: "",
+            sex: "",
+            activityLevel: "",
+            hydrationLevel: "",
+            skincareGoal: "",
+            skinConditions: "",
+            dermatologistStatus: "",
+            healthConditions: "",
+            smokingStatus: "",
+            sleepQuality: ""
+        )
+    }
+}
+
 // MARK: - Premium: Recommended Products
 
 // MARK: - Product Recommendations by Routine Step
@@ -446,13 +540,17 @@ private struct RecommendedProductsView: View {
             // Only trigger product search if we have actual recommendations AND it's an explicit refresh
             // This prevents premature API calls when loading cached recommendations
             if recommendations != nil && !recommendations!.morningRoutine.isEmpty && skinAnalysisManager.isExplicitRefresh {
-                load()
+                Task { @MainActor in
+                    await load()
+                }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .nuraTriggerProductLoading)) { _ in
             // Trigger product loading when skin analysis is complete
             print("🚀 ChatView: Received product loading trigger from skin analysis")
-            load()
+            Task { @MainActor in
+                await load()
+            }
         }
         .background(isDark ? NuraColors.backgroundDark : Color(red: 0.98, green: 0.97, blue: 0.95))
     }
@@ -497,33 +595,31 @@ private struct RecommendedProductsView: View {
         }
     }
     
-    private func load() {
+    @MainActor
+    private func load() async {
         print("🚀 [load] Starting product loading process")
-        Task { @MainActor in
-            isLoading = true
-            defer { 
-                isLoading = false
-                print("✅ [load] Product loading process completed")
-            }
-            guard let recs = skinAnalysisManager.recommendations else { 
-                print("❌ [load] No recommendations available")
-                return 
-            }
-            let pm = ProductSearchManager.shared
-            
-            print("🔄 [load] Loading morning routine products...")
-            // Load products for each routine step individually
-            morningStepProducts = await loadProductsForSteps(recs.morningRoutine, productManager: pm)
-            print("🔄 [load] Morning products loaded: \(morningStepProducts.map { $0.products.count })")
-            
-            print("🔄 [load] Loading evening routine products...")
-            eveningStepProducts = await loadProductsForSteps(recs.eveningRoutine, productManager: pm)
-            print("🔄 [load] Evening products loaded: \(eveningStepProducts.map { $0.products.count })")
-            
-            print("🔄 [load] Loading weekly treatment products...")
-            weeklyStepProducts = await loadProductsForSteps(recs.weeklyTreatments, productManager: pm)
-            print("🔄 [load] Weekly products loaded: \(weeklyStepProducts.map { $0.products.count })")
+        isLoading = true
+        defer {
+            isLoading = false
+            print("✅ [load] Product loading process completed")
         }
+        guard let recs = skinAnalysisManager.recommendations else {
+            print("❌ [load] No recommendations available")
+            return
+        }
+        let pm = ProductSearchManager.shared
+
+        print("🔄 [load] Loading morning routine products...")
+        morningStepProducts = await loadProductsForSteps(recs.morningRoutine, productManager: pm)
+        print("🔄 [load] Morning products loaded: \(morningStepProducts.map { $0.products.count })")
+
+        print("🔄 [load] Loading evening routine products...")
+        eveningStepProducts = await loadProductsForSteps(recs.eveningRoutine, productManager: pm)
+        print("🔄 [load] Evening products loaded: \(eveningStepProducts.map { $0.products.count })")
+
+        print("🔄 [load] Loading weekly treatment products...")
+        weeklyStepProducts = await loadProductsForSteps(recs.weeklyTreatments, productManager: pm)
+        print("🔄 [load] Weekly products loaded: \(weeklyStepProducts.map { $0.products.count })")
     }
     
     private func loadWithoutProductSearch() {
