@@ -21,6 +21,10 @@ struct NuraApp: App {
         self._skinAnalysisManager = StateObject(wrappedValue: SkinAnalysisManager(userTierManager: UserTierManager(authManager: authManager)))
         // Setup Google CSE credentials for development
         GoogleAPIConfig.setupDevelopmentCredentials()
+        // Diagnostic: confirm Google CSE keys presence at launch (no UI changes)
+        let hasCSEKey = (GoogleAPIConfig.apiKey?.isEmpty == false)
+        let hasCSEId = (GoogleAPIConfig.searchEngineId?.isEmpty == false)
+        print("🔎 [Diag] Google CSE configured? key=\(hasCSEKey) id=\(hasCSEId)")
     }
     
     var body: some Scene {

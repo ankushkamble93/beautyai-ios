@@ -9,7 +9,6 @@ struct SkinAnalysisView: View {
     @EnvironmentObject var userTierManager: UserTierManager
     @State private var selectedImages: [PhotosPickerItem] = []
     @State private var showingImagePicker = false
-    @State private var showingCamera = false
     @State private var showingResults = false
     @State private var showPremiumBanner = false
     @State private var showLimitReachedBanner = false
@@ -42,55 +41,6 @@ struct SkinAnalysisView: View {
                         .font(.system(size: 60))
                         .foregroundColor(isDark ? NuraColors.primaryDark : NuraColors.primary)
                         .padding(.top, -6)
-                        .onLongPressGesture(minimumDuration: 0.8) {
-                            #if DEBUG
-                            debugLiveEnabled.toggle()
-                            showDebugAlert = true
-                            #endif
-                        }
-                        .alert("Debug Live Scan", isPresented: $showDebugAlert) {
-                            Button("OK", role: .cancel) {}
-                        } message: {
-                            Text(debugLiveEnabled ? "Enabled. Tap Live Scan to open the demo." : "Disabled.")
-                        }
-                    // Live scan entry (disabled by default; enable via debug long-press; hidden when 3 photos ready)
-                    if skinAnalysisManager.uploadedImages.count < 3 {
-                    HStack(spacing: 10) {
-                        Button(action: {
-                            #if DEBUG
-                            if debugLiveEnabled { showLiveAnalysis = true }
-                            #endif
-                        }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "camera.viewfinder")
-                                Text("Live Scan (Beta)")
-                                    .fontWeight(.semibold)
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(debugLiveEnabled ? Color.blue.opacity(0.85) : Color.gray.opacity(0.35))
-                            .foregroundColor(.white)
-                            .clipShape(Capsule())
-                        }
-                        .disabled(!debugLiveEnabled)
-                        Button(action: { showLiveInfo = true }) {
-                            Image(systemName: "info.circle")
-                                .foregroundColor(isDark ? .white : .black)
-                        }
-                        .accessibilityLabel("About Live Scan")
-                        .alert("Live Scan (Beta)", isPresented: $showLiveInfo) {
-                            Button("OK", role: .cancel) {}
-                        } message: {
-                            Text("Live, on-device skin scan with face landmarks and guidance. Available on real devices; coming soon for release.")
-                        }
-                    }
-                    .padding(.top, 6)
-                    .sheet(isPresented: $showLiveAnalysis) {
-                        LiveSkinAnalysisView { images in
-                            skinAnalysisManager.uploadedImages = images
-                        }
-                    }
-                    }
                         
                     // Removed duplicate "Upload 3 selfies" text - only keeping the one in the upload section
                     
@@ -204,7 +154,7 @@ struct SkinAnalysisView: View {
                         
                         // Upload + Camera row: 5/6 select + 1/6 camera
                         HStack(spacing: 8) {
-                            Button(action: { showingCamera = true }) {
+                            Button(action: { showLiveAnalysis = true }) {
                                 Image(systemName: "camera.fill")
                                     .frame(width: 50, height: 50)
                                     .foregroundColor(.white)
@@ -213,21 +163,6 @@ struct SkinAnalysisView: View {
                                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.black.opacity(0.75), lineWidth: 1))
                             }
                             .disabled(isUploadLocked)
-                            .sheet(isPresented: $showingCamera) {
-                                CameraCaptureView { image in
-                                    if let img = image {
-                                        skinAnalysisManager.uploadedImages.append(img)
-                                        Task {
-                                            let index = skinAnalysisManager.uploadedImages.count - 1
-                                            let validationResult = await validateSinglePhotoAsync(img)
-                                            await MainActor.run { 
-                                                photoValidationResults[index] = validationResult 
-                                                print("✅ SkinAnalysisView: Camera image validated. Total images: \(skinAnalysisManager.uploadedImages.count). Waiting for user to press Analyze button.")
-                                            }
-                                        }
-                                    }
-                                }
-                            }
                             .frame(width: 50)
                             
                             PhotosPicker(selection: $selectedImages, maxSelectionCount: 3, matching: .images) {
@@ -343,6 +278,25 @@ struct SkinAnalysisView: View {
         .onAppear {
             initializeValidation()
         }
+        // Ensure the Live Scan sheet is always attachable regardless of conditional UI
+        .sheet(isPresented: $showLiveAnalysis) {
+            LiveSkinAnalysisView { images in
+                // Replace current images with those returned from Live Scan
+                skinAnalysisManager.uploadedImages = images
+                // Clear picker-related state
+                selectedImages.removeAll()
+                imageToPhotosPickerMapping.removeAll()
+                // Re-validate all photos immediately so Photo Quality Check updates without leaving the page
+                photoValidationResults.removeAll()
+                Task {
+                    for (index, image) in images.enumerated() {
+                        let result = await validateSinglePhotoAsync(image)
+                        await MainActor.run { photoValidationResults[index] = result }
+                    }
+                    print("✅ SkinAnalysisView: Live Scan images validated immediately (\(images.count))")
+                }
+            }
+        }
         .overlay(
             Group {
                 if showPremiumBanner {
@@ -372,6 +326,21 @@ struct SkinAnalysisView: View {
                 }
             }
         )
+    }
+
+    // Handle images coming from Live Scan (kept for clarity if we later reuse)
+    private func handleLiveScanImages(_ images: [UIImage]) {
+        skinAnalysisManager.uploadedImages = images
+        selectedImages.removeAll()
+        imageToPhotosPickerMapping.removeAll()
+        photoValidationResults.removeAll()
+        Task {
+            for (index, image) in images.enumerated() {
+                let validationResult = await validateSinglePhotoAsync(image)
+                await MainActor.run { photoValidationResults[index] = validationResult }
+            }
+            print("✅ SkinAnalysisView: handleLiveScanImages validated \(images.count) images")
+        }
     }
     
     private func loadImages(from items: [PhotosPickerItem]) async {

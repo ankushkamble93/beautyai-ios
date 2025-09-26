@@ -60,6 +60,7 @@ struct ShareOptionsView: View {
                             endPoint: .bottomTrailing
                         )
                     ) {
+                        shareManager.prepareSharePayload(analysis: analysis, skinScore: skinScore)
                         shareManager.shareToInstagram()
                         withAnimation(.easeInOut(duration: 0.2)) {
                             isPresented = false
@@ -78,6 +79,7 @@ struct ShareOptionsView: View {
                             endPoint: .bottomTrailing
                         )
                     ) {
+                        shareManager.prepareSharePayload(analysis: analysis, skinScore: skinScore)
                         shareManager.shareToSnapchat()
                         withAnimation(.easeInOut(duration: 0.2)) {
                             isPresented = false
@@ -96,25 +98,8 @@ struct ShareOptionsView: View {
                             endPoint: .bottomTrailing
                         )
                     ) {
+                        shareManager.prepareSharePayload(analysis: analysis, skinScore: skinScore)
                         shareManager.shareToText()
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            isPresented = false
-                        }
-                    }
-                    
-                    // General share
-                    ShareOptionButton(
-                        title: "More Options",
-                        subtitle: "Share to other apps",
-                        icon: "square.and.arrow.up.fill",
-                        iconColor: .blue,
-                        backgroundColor: LinearGradient(
-                            gradient: Gradient(colors: [Color.blue, Color.cyan]),
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    ) {
-                        shareManager.shareSkinAnalysisResult(analysis: analysis, skinScore: skinScore)
                         withAnimation(.easeInOut(duration: 0.2)) {
                             isPresented = false
                         }

@@ -15,61 +15,95 @@ class ShareManager: ObservableObject {
     
     // MARK: - Share Methods
     
-    func shareSkinAnalysisResult(analysis: SkinAnalysisResult, skinScore: Double) {
+    func prepareSharePayload(analysis: SkinAnalysisResult, skinScore: Double) {
         let image = generateShareImage(analysis: analysis, skinScore: skinScore)
         let text = generateShareText(analysis: analysis, skinScore: skinScore)
-        
         self.shareImage = image
         self.shareText = text
+    }
+
+    func shareSkinAnalysisResult(analysis: SkinAnalysisResult, skinScore: Double) {
+        prepareSharePayload(analysis: analysis, skinScore: skinScore)
         self.isShowingShareSheet = true
     }
     
     func shareToInstagram() {
         guard let image = shareImage else { return }
         
-        // Instagram sharing via URL scheme
-        if let instagramURL = URL(string: "instagram://app") {
-            if UIApplication.shared.canOpenURL(instagramURL) {
-                // Save image to photos and open Instagram
-                UIImageWriteToSavedPhotosAlbum(image, self, #selector(image(_:didFinishSavingWithError:contextInfo:)), nil)
-            } else {
-                // Instagram not installed, show App Store
-                if let appStoreURL = URL(string: "https://apps.apple.com/app/instagram/id389801252") {
-                    UIApplication.shared.open(appStoreURL)
-                }
-            }
+        // Prefer Instagram Stories share if available
+        let storiesURL = URL(string: "instagram-stories://share")!
+        if UIApplication.shared.canOpenURL(storiesURL), let png = image.pngData() {
+            let pasteboardItems: [[String: Any]] = [[
+                "com.instagram.sharedSticker.backgroundImage": png
+            ]]
+            UIPasteboard.general.setItems(pasteboardItems, options: [
+                UIPasteboard.OptionsKey.expirationDate: Date().addingTimeInterval(300)
+            ])
+            UIApplication.shared.open(storiesURL)
+            return
+        }
+        // Fallback: open Instagram app so the user can post from library
+        if let appURL = URL(string: "instagram://app"), UIApplication.shared.canOpenURL(appURL) {
+            UIApplication.shared.open(appURL)
+        } else if let appStoreURL = URL(string: "https://apps.apple.com/app/instagram/id389801252") {
+            UIApplication.shared.open(appStoreURL)
         }
     }
     
     func shareToSnapchat() {
         guard let image = shareImage else { return }
         
-        // Snapchat sharing via URL scheme
-        if let snapchatURL = URL(string: "snapchat://") {
-            if UIApplication.shared.canOpenURL(snapchatURL) {
-                // Save image to photos and open Snapchat
-                UIImageWriteToSavedPhotosAlbum(image, self, #selector(image(_:didFinishSavingWithError:contextInfo:)), nil)
-            } else {
-                // Snapchat not installed, show App Store
-                if let appStoreURL = URL(string: "https://apps.apple.com/app/snapchat/id447188370") {
-                    UIApplication.shared.open(appStoreURL)
-                }
-            }
+        // Attempt Creative Kit pasteboard share (best-effort without SDK)
+        if let png = image.pngData(), let creativeURL = URL(string: "snapchat://creativeKit/share"), UIApplication.shared.canOpenURL(creativeURL) {
+            let items: [[String: Any]] = [[
+                "com.snapchat.creativeKit.sticker": png
+            ]]
+            UIPasteboard.general.setItems(items, options: [
+                UIPasteboard.OptionsKey.expirationDate: Date().addingTimeInterval(300)
+            ])
+            UIApplication.shared.open(creativeURL)
+            return
+        }
+        // Fallback: open camera and let user choose image from Photos
+        if let cameraURL = URL(string: "snapchat://camera"), UIApplication.shared.canOpenURL(cameraURL) {
+            UIApplication.shared.open(cameraURL)
+        } else if let appStoreURL = URL(string: "https://apps.apple.com/app/snapchat/id447188370") {
+            UIApplication.shared.open(appStoreURL)
         }
     }
     
     func shareToText() {
-        guard let image = shareImage, let text = shareText.isEmpty ? nil : shareText else { return }
-        
-        let activityVC = UIActivityViewController(activityItems: [image, text], applicationActivities: nil)
+        // Ensure payload prepared
+        if shareImage == nil || shareText.isEmpty {
+            // Provide a default composed card to avoid no-op
+            let fallback = SkinAnalysisResult(
+                conditions: [],
+                confidence: 0.9,
+                analysisDate: Date(),
+                recommendations: [],
+                skinHealthScore: 80,
+                analysisVersion: "1.0",
+                routineGenerationTimestamp: nil,
+                analysisProvider: .mock,
+                imageCount: 0,
+                skinAgeYears: nil
+            )
+            self.prepareSharePayload(analysis: fallback, skinScore: 8.0)
+        }
+        guard let image = shareImage else { return }
+        let items: [Any] = shareText.isEmpty ? [image] : [image, shareText]
+        let activityVC = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        activityVC.excludedActivityTypes = [.assignToContact, .addToReadingList, .print]
         
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first {
-            if let presenter = window.rootViewController {
-                activityVC.popoverPresentationController?.sourceView = window
-                activityVC.popoverPresentationController?.sourceRect = CGRect(x: window.bounds.midX, y: window.bounds.midY, width: 0, height: 0)
-                presenter.present(activityVC, animated: true)
+           let window = windowScene.windows.first,
+           let presenter = window.rootViewController {
+            if let pop = activityVC.popoverPresentationController {
+                pop.sourceView = window
+                pop.sourceRect = CGRect(x: window.bounds.midX, y: window.bounds.midY, width: 1, height: 1)
+                pop.permittedArrowDirections = []
             }
+            presenter.present(activityVC, animated: true)
         }
     }
     
@@ -91,6 +125,11 @@ class ShareManager: ObservableObject {
             gradient.startPoint = CGPoint(x: 0, y: 0)
             gradient.endPoint = CGPoint(x: 1, y: 1)
             gradient.render(in: context.cgContext)
+
+            // Soft vignette overlay for depth
+            let vignette = UIBezierPath(rect: rect)
+            UIColor.black.withAlphaComponent(0.15).setFill()
+            vignette.fill()
             
             // Nura logo/branding
             let logoText = "Nura"
@@ -102,25 +141,40 @@ class ShareManager: ObservableObject {
             let logoRect = CGRect(x: (rect.width - logoSize.width) / 2, y: 100, width: logoSize.width, height: logoSize.height)
             logoText.draw(in: logoRect, withAttributes: logoAttributes)
             
-            // Skin Score
-            let scoreText = "Skin Score:"
-            let scoreAttributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: 36, weight: .medium),
-                .foregroundColor: UIColor.white
-            ]
-            let scoreSize = scoreText.size(withAttributes: scoreAttributes)
-            let scoreRect = CGRect(x: (rect.width - scoreSize.width) / 2, y: 300, width: scoreSize.width, height: scoreSize.height)
-            scoreText.draw(in: scoreRect, withAttributes: scoreAttributes)
-            
-            // Score Value
+            // Score ring like Strava stat card
+            let center = CGPoint(x: rect.midX, y: 420)
+            let radius: CGFloat = 150
+            let ringBackground = UIBezierPath(arcCenter: center, radius: radius, startAngle: -.pi/2, endAngle: 1.5 * .pi, clockwise: true)
+            UIColor.white.withAlphaComponent(0.2).setStroke()
+            ringBackground.lineWidth = 24
+            ringBackground.stroke()
+
+            let progress = max(0.0, min(1.0, skinScore / 10.0))
+            let endAngle = (-.pi/2) + (2 * .pi * progress)
+            let ringPath = UIBezierPath(arcCenter: center, radius: radius, startAngle: -.pi/2, endAngle: endAngle, clockwise: true)
+            UIColor(red: 0.95, green: 0.75, blue: 0.35, alpha: 1.0).setStroke()
+            ringPath.lineWidth = 24
+            ringPath.lineCapStyle = .round
+            ringPath.stroke()
+
+            // Score value in the middle
             let scoreValueText = String(format: "%.1f", skinScore)
             let scoreValueAttributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: 72, weight: .bold),
+                .font: UIFont.systemFont(ofSize: 80, weight: .bold),
                 .foregroundColor: UIColor.white
             ]
             let scoreValueSize = scoreValueText.size(withAttributes: scoreValueAttributes)
-            let scoreValueRect = CGRect(x: (rect.width - scoreValueSize.width) / 2, y: 350, width: scoreValueSize.width, height: scoreValueSize.height)
+            let scoreValueRect = CGRect(x: center.x - scoreValueSize.width/2, y: center.y - scoreValueSize.height/2 - 10, width: scoreValueSize.width, height: scoreValueSize.height)
             scoreValueText.draw(in: scoreValueRect, withAttributes: scoreValueAttributes)
+
+            let outOfText = "out of 10"
+            let outOfAttributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 24, weight: .medium),
+                .foregroundColor: UIColor.white.withAlphaComponent(0.85)
+            ]
+            let outOfSize = outOfText.size(withAttributes: outOfAttributes)
+            let outOfRect = CGRect(x: center.x - outOfSize.width/2, y: center.y + scoreValueSize.height/2 - 4, width: outOfSize.width, height: outOfSize.height)
+            outOfText.draw(in: outOfRect, withAttributes: outOfAttributes)
             
             // Motivational message
             let messageText = getMotivationalMessage(for: skinScore)
@@ -129,7 +183,7 @@ class ShareManager: ObservableObject {
                 .foregroundColor: UIColor.white
             ]
             let messageSize = messageText.size(withAttributes: messageAttributes)
-            let messageRect = CGRect(x: (rect.width - messageSize.width) / 2, y: 500, width: messageSize.width, height: messageSize.height)
+            let messageRect = CGRect(x: (rect.width - messageSize.width) / 2, y: 620, width: messageSize.width, height: messageSize.height)
             messageText.draw(in: messageRect, withAttributes: messageAttributes)
             
             // Analysis details
@@ -139,11 +193,11 @@ class ShareManager: ObservableObject {
                 .foregroundColor: UIColor.white
             ]
             let detailsSize = detailsText.size(withAttributes: detailsAttributes)
-            let detailsRect = CGRect(x: 100, y: 700, width: detailsSize.width, height: detailsSize.height)
+            let detailsRect = CGRect(x: 100, y: 760, width: detailsSize.width, height: detailsSize.height)
             detailsText.draw(in: detailsRect, withAttributes: detailsAttributes)
             
             // Conditions
-            var yOffset: CGFloat = 750
+            var yOffset: CGFloat = 810
             for condition in analysis.conditions.prefix(3) {
                 let conditionText = "• \(condition.name.capitalized) (\(condition.severity.rawValue.capitalized))"
                 let conditionAttributes: [NSAttributedString.Key: Any] = [

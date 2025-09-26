@@ -47,10 +47,12 @@ class ChatManager: ObservableObject {
             timestamp: Date()
         )
         
-        messages.append(userMessage)
-        persistMessages()
-        isLoading = true
-        errorMessage = nil
+        DispatchQueue.main.async {
+            self.messages.append(userMessage)
+            self.persistMessages()
+            self.isLoading = true
+            self.errorMessage = nil
+        }
         
         Task { [weak self] in
             guard let self else { return }
@@ -78,7 +80,9 @@ class ChatManager: ObservableObject {
                         timestamp: Date()
                     )
                     // 1) Only attach product cards when the user explicitly asked for products this turn
-                    let userWantsProducts = ProductSearchManager.shared.detectProductQuery(trimmed) != nil
+                    // Prevent product search when the message came from barcode scan (contains a sentinel tag)
+                    let isBarcodeQuery = trimmed.contains("[barcode_query]")
+                    let userWantsProducts = !isBarcodeQuery && ProductSearchManager.shared.detectProductQuery(trimmed) != nil
                     let explicitNames = userWantsProducts ? ProductSearchManager.shared.extractProductNames(from: visible) : []
                     if userWantsProducts && !explicitNames.isEmpty {
                         print("🔎 Explicit product mentions detected: \(explicitNames)")

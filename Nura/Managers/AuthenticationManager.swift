@@ -572,6 +572,15 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
                                     updated_at: Date() // Parse date if needed
                                 )
                                 print("🔄 Created UserProfile with name: '\(updatedProfile.name)'")
+                                // Parse onboarding_answers dictionary if present
+                                if let oa = profile["onboarding_answers"] as? [String: Any] {
+                                    var dict: [String: String] = [:]
+                                    for (k, v) in oa {
+                                        if let s = v as? String { dict[k] = s }
+                                    }
+                                    updatedProfile.onboarding_answers = dict
+                                    print("🔄 Loaded onboarding_answers with \(dict.keys.count) keys")
+                                }
                                 // If name is empty but OAuth metadata has a name, update it
                                 if updatedProfile.name == "" {
                                     let userMetadata = currentSession.user.userMetadata
@@ -1498,17 +1507,64 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
             return nil
         }
         
+        // Normalize optional fields to nil when empty or whitespace-only
+        let trimmedPeriod = answers["period_cycle_info"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedPeriod = (trimmedPeriod?.isEmpty == false) ? trimmedPeriod : nil
+        let trimmedBirth = answers["birth_control_info"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedBirth = (trimmedBirth?.isEmpty == false) ? trimmedBirth : nil
+
+        // Map potentially free-form or older strings to the canonical options used by ResetOnboardingView
+        func canonicalAge(_ s: String?) -> String {
+            guard let s = s else { return "" }
+            let tokens = ["18-24","25-34","35-44","45-54","55-64","65+"]
+            return tokens.first(where: { s.contains($0) }) ?? s
+        }
+        func canonicalSex(_ s: String?) -> String { (s ?? "").replacingOccurrences(of: "Female", with: "Female") }
+        func canonicalActivity(_ s: String?) -> String {
+            guard let s = s else { return "" }
+            // Questionnaire used descriptive text; Reset view expects short labels
+            if s.lowercased().contains("sedentary") { return "Sedentary" }
+            if s.lowercased().contains("light") { return "Light activity" }
+            if s.lowercased().contains("moderate") { return "Moderate" }
+            if s.lowercased().contains("intense") || s.lowercased().contains("5+") { return "Intense" }
+            return s
+        }
+        func canonicalHydration(_ s: String?) -> String {
+            guard let s = s else { return "" }
+            // Normalize variants like "0.5–1 gal (2–4 L)" to short labels used in Reset view
+            if s.contains("<0.5") { return "<0.5 gal" }
+            if s.contains("0.5") { return "0.5–1 gal" }
+            if s.contains("1–1.5") || s.contains("1-1.5") { return "1–1.5 gal" }
+            if s.contains(">1.5") { return ">1.5 gal" }
+            return s
+        }
+        func canonicalHealth(_ s: String?) -> String {
+            guard let s = s else { return "" }
+            // Values may be saved like "Health: PCOS"; strip prefix
+            return s.replacingOccurrences(of: "Health: ", with: "")
+        }
+        func canonicalSmoking(_ s: String?) -> String {
+            guard let s = s else { return "" }
+            return s.replacingOccurrences(of: "Smoking: ", with: "")
+        }
+        func canonicalSleep(_ s: String?) -> String {
+            guard let s = s else { return "" }
+            return s.replacingOccurrences(of: "Sleep: ", with: "")
+        }
+
         return OnboardingAnswers(
-            age: answers["age"] ?? "",
-            sex: answers["sex"] ?? "",
-            activityLevel: answers["activity_level"] ?? "",
-            hydrationLevel: answers["hydration_level"] ?? "",
-            skincareGoal: answers["skincare_goal"] ?? "",
-            skinConditions: answers["skin_conditions"] ?? "",
-            dermatologistStatus: answers["dermatologist_status"] ?? "",
-            healthConditions: answers["health_conditions"] ?? "",
-            smokingStatus: answers["smoking_status"] ?? "",
-            sleepQuality: answers["sleep_quality"] ?? ""
+            age: canonicalAge(answers["age"] ?? answers["Age"]),
+            sex: (answers["sex"] ?? answers["Sex"]) ?? "",
+            activityLevel: canonicalActivity(answers["activity_level"] ?? answers["Activity Level"]),
+            hydrationLevel: canonicalHydration(answers["hydration_level"] ?? answers["Hydration Level"]),
+            skincareGoal: answers["skincare_goal"] ?? answers["Skincare Goal"] ?? "",
+            skinConditions: answers["skin_conditions"] ?? answers["Skin Conditions"] ?? "",
+            dermatologistStatus: answers["dermatologist_status"] ?? answers["Dermatologist Status"] ?? "",
+            healthConditions: canonicalHealth(answers["health_conditions"] ?? answers["Health Conditions"]),
+            smokingStatus: canonicalSmoking(answers["smoking_status"] ?? answers["Smoking Status"]),
+            sleepQuality: canonicalSleep(answers["sleep_quality"] ?? answers["Sleep Quality"]),
+            periodCycleInfo: normalizedPeriod,
+            birthControlInfo: normalizedBirth
         )
     }
     
