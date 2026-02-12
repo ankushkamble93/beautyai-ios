@@ -104,7 +104,24 @@ struct NuraApp: App {
             .environmentObject(urlHandler)
             .onOpenURL { url in
                 print("🔗 NuraApp: Received URL: \(url)")
-                urlHandler.handleURL(url)
+                print("🔗 URL scheme: \(url.scheme ?? "nil")")
+                print("🔗 URL host: \(url.host ?? "nil")")
+                print("🔗 URL path: \(url.path)")
+                print("🔗 URL query: \(url.query ?? "nil")")
+                print("🔗 Full URL string: \(url.absoluteString)")
+                
+                // Supabase OAuth callbacks use the custom scheme com.nura://
+                // Route those to AuthenticationManager so it can exchange the code for a session.
+                // Other custom URLs (like nura://reset-password) continue to flow through URLHandler.
+                if url.scheme == "com.nura" {
+                    print("🔗 Routing com.nura:// URL to AuthenticationManager.handleDeepLink")
+                    Task {
+                        await authManager.handleDeepLink(url: url)
+                    }
+                } else {
+                    print("🔗 Routing URL to URLHandler")
+                    urlHandler.handleURL(url)
+                }
             }
         }
     }

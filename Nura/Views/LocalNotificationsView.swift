@@ -5,9 +5,11 @@ struct LocalNotificationsView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @StateObject private var localNotificationService = LocalNotificationService.shared
+    @StateObject private var workoutNotificationManager = WorkoutNotificationManager.shared
     
     @State private var showAuthorizationAlert = false
     @State private var showSuccessBanner = false
+    @State private var isRequestingHealth = false
     
     private var cardBackground: Color {
         colorScheme == .dark ? Color.black.opacity(0.7) : .white
@@ -151,6 +153,20 @@ struct LocalNotificationsView: View {
                                     icon: "chart.line.uptrend.xyaxis",
                                     frequency: localNotificationService.localPreferences.progressReminder.frequency
                                 )
+                                
+                                // Apple Watch / Fitness workout congrats
+                                NotificationTypeRow(
+                                    title: "Workout congratulations",
+                                    subtitle: "After a workout, get a reminder to scan your face",
+                                    isOn: Binding(
+                                        get: { workoutNotificationManager.workoutNotificationsEnabled },
+                                        set: { newValue in
+                                            toggleWorkoutNotifications(enabled: newValue)
+                                        }
+                                    ),
+                                    icon: "figure.run",
+                                    frequency: .daily
+                                )
                             }
                         }
                         .padding()
@@ -158,7 +174,17 @@ struct LocalNotificationsView: View {
                         .cornerRadius(14)
                         .shadow(color: .black.opacity(0.07), radius: 4, x: 0, y: 2)
                         
-
+                        if !workoutNotificationManager.isHealthDataAvailable {
+                            HStack(spacing: 8) {
+                                Image(systemName: "info.circle.fill")
+                                    .foregroundColor(.orange)
+                                    .font(.caption)
+                                Text("Workout notifications require a real device with Apple Watch or Fitness data.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal)
+                        }
                         
                         // Coming Soon Banner
                         VStack(spacing: 12) {
@@ -206,6 +232,11 @@ struct LocalNotificationsView: View {
                                 
                                 Button("Test Progress Reminder") {
                                     testNotification(type: "progress")
+                                }
+                                .buttonStyle(TestButtonStyle())
+                                
+                                Button("Test Workout Congrats") {
+                                    LocalNotificationService.shared.sendWorkoutCongratsNotification()
                                 }
                                 .buttonStyle(TestButtonStyle())
                                 
@@ -277,6 +308,28 @@ struct LocalNotificationsView: View {
         }
         
         localNotificationService.updatePreferences(updatedPreferences)
+    }
+    
+    private func toggleWorkoutNotifications(enabled: Bool) {
+        if enabled {
+            guard workoutNotificationManager.isHealthDataAvailable else { return }
+            if !localNotificationService.isAuthorized {
+                showAuthorizationAlert = true
+                return
+            }
+            isRequestingHealth = true
+            Task {
+                let granted = await workoutNotificationManager.requestAuthorization()
+                await MainActor.run {
+                    isRequestingHealth = false
+                    if granted {
+                        workoutNotificationManager.workoutNotificationsEnabled = true
+                    }
+                }
+            }
+        } else {
+            workoutNotificationManager.workoutNotificationsEnabled = false
+        }
     }
     
     private func testNotification(type: String) {

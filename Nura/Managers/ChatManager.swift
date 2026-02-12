@@ -189,23 +189,29 @@ class ChatManager: ObservableObject {
     private func requestChatCompletion(userPrompt: String) async throws -> String {
         // No need to check API key - Supabase proxy handles authentication
         
-        // Build system prompt with current memory
+        // Build system prompt with current memory (includes productFeedback as 5th key)
         let memoryText = """
         You maintain concise, to-the-point skin coaching. Keep answers practical, in plain language. Avoid fluff.
-        You remember the user's routine and analysis notes. Update memory gently when the user gives new info.
+        You remember the user's routine, analysis notes, and product feedback. Update memory gently when the user gives new info.
         Current memory (arrays may be empty):
         morningRoutine: \(memory.morningRoutine)
         eveningRoutine: \(memory.eveningRoutine)
         weeklyTreatments: \(memory.weeklyTreatments)
         analysisNotes: \(memory.analysisNotes)
+        productFeedback: \(memory.productFeedback)
         Response rules:
         - Be brief and actionable.
         - If the user asks for a routine change or shares symptoms/preferences, incorporate them.
         - If memory has information, use it confidently and summarize what we know; do not say we have no info.
         - If memory is empty, ask for needed details.
+        - If the user mentions they tried a product and liked/disliked it, or had a skin reaction, add it to productFeedback as a concise string (e.g. "CeraVe Cleanser: loved, months" or "Niacinamide serum: broke out, redness").
+        - When recommending products, factor in productFeedback: prefer ingredients from loved products, avoid ingredients from products that caused breakouts or irritation.
+        - When recommending products, include a hidden structured block with ingredient data using this exact format:
+          <products>[{"name":"Product Name","brand":"Brand","ingredients":["ingredient1","ingredient2"],"category":"cleanser"}]</products>
+          Only include this block when you mention specific product names. The block must be valid JSON array. Do not mention this block in visible text.
         - At the END of your message, include a hidden memory block using this exact format:
-          <memory>{"morningRoutine":[...],"eveningRoutine":[...],"weeklyTreatments":[...],"analysisNotes":[...]}</memory>
-        - The memory block must be valid JSON with only those four keys. Do not mention the memory block in the visible text.
+          <memory>{"morningRoutine":[...],"eveningRoutine":[...],"weeklyTreatments":[...],"analysisNotes":[...],"productFeedback":[...]}</memory>
+        - The memory block must be valid JSON with exactly those five keys. Do not mention the memory block in the visible text.
         """
         
         let systemMessage = ChatGPTMessage(
@@ -294,25 +300,74 @@ class ChatManager: ObservableObject {
         return before.morningRoutine != memory.morningRoutine || before.eveningRoutine != memory.eveningRoutine || before.weeklyTreatments != memory.weeklyTreatments || before.analysisNotes != memory.analysisNotes
     }
 
-    // Extract <memory>{...}</memory> block, merge into stored memory, and return visible text
+    // Extract <memory>{...}</memory> and <products>[...]</products> blocks from GPT response.
+    // Memory block is merged into stored memory; products block enriches ProductSearchManager results with GPT-provided ingredients.
+    // Both blocks are stripped from the visible text shown to the user.
     private func extractAndApplyMemory(from fullText: String) -> String {
-        let pattern = #"<memory>(\{[\s\S]*?\})</memory>"#
-        if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
-            let range = NSRange(location: 0, length: (fullText as NSString).length)
-            if let match = regex.firstMatch(in: fullText, options: [], range: range), match.numberOfRanges > 1 {
+        var text = fullText
+        
+        // 1. Extract and apply <memory> block
+        let memoryPattern = #"<memory>(\{[\s\S]*?\})</memory>"#
+        if let memoryRegex = try? NSRegularExpression(pattern: memoryPattern, options: []) {
+            let range = NSRange(location: 0, length: (text as NSString).length)
+            if let match = memoryRegex.firstMatch(in: text, options: [], range: range), match.numberOfRanges > 1 {
                 let jsonRange = match.range(at: 1)
-                if let swiftRange = Range(jsonRange, in: fullText) {
-                    let jsonString = String(fullText[swiftRange])
+                if let swiftRange = Range(jsonRange, in: text) {
+                    let jsonString = String(text[swiftRange])
                     if let data = jsonString.data(using: .utf8), let update = try? JSONDecoder().decode(ChatMemoryUpdate.self, from: data) {
                         mergeMemory(with: update)
                     }
                 }
                 // Remove memory block from visible text
-                let visible = regex.stringByReplacingMatches(in: fullText, options: [], range: range, withTemplate: "").trimmingCharacters(in: .whitespacesAndNewlines)
-                return visible
+                text = memoryRegex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "")
             }
         }
-        return fullText
+        
+        // 2. Extract and apply <products> block — GPT-provided ingredient data for recommended products
+        let productsPattern = #"<products>(\[[\s\S]*?\])</products>"#
+        if let productsRegex = try? NSRegularExpression(pattern: productsPattern, options: []) {
+            let range = NSRange(location: 0, length: (text as NSString).length)
+            if let match = productsRegex.firstMatch(in: text, options: [], range: range), match.numberOfRanges > 1 {
+                let jsonRange = match.range(at: 1)
+                if let swiftRange = Range(jsonRange, in: text) {
+                    let jsonString = String(text[swiftRange])
+                    parseAndCacheGPTProductIngredients(jsonString)
+                }
+                // Remove products block from visible text
+                text = productsRegex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "")
+            }
+        }
+        
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    
+    /// Parse GPT-provided product ingredient data and cache it for use by ProductSearchManager.
+    /// Format: [{"name":"Product Name","brand":"Brand","ingredients":["ing1","ing2"],"category":"cleanser"}]
+    private func parseAndCacheGPTProductIngredients(_ jsonString: String) {
+        struct GPTProduct: Decodable {
+            let name: String
+            let brand: String?
+            let ingredients: [String]?
+            let category: String?
+        }
+        
+        guard let data = jsonString.data(using: .utf8),
+              let products = try? JSONDecoder().decode([GPTProduct].self, from: data) else {
+            print("⚠️ ChatManager: Failed to decode <products> block")
+            return
+        }
+        
+        print("🧬 ChatManager: Parsed \(products.count) products with GPT-provided ingredients")
+        for product in products {
+            let ingredients = product.ingredients ?? []
+            print("  → \(product.name) [\(product.brand ?? "?")] ingredients=\(ingredients.prefix(5))")
+            // Store ingredient data in UserDefaults keyed by normalized product name
+            // This allows ProductSearchManager and FitEvaluator to look up GPT-sourced ingredients
+            let key = "nura.gpt_ingredients.\(product.name.lowercased().trimmingCharacters(in: .whitespacesAndNewlines))"
+            if let encoded = try? JSONEncoder().encode(ingredients) {
+                UserDefaults.standard.set(encoded, forKey: key)
+            }
+        }
     }
     
     private func mergeMemory(with update: ChatMemoryUpdate) {
@@ -328,6 +383,7 @@ class ChatManager: ObservableObject {
         merge(&memory.eveningRoutine, update.eveningRoutine)
         merge(&memory.weeklyTreatments, update.weeklyTreatments)
         merge(&memory.analysisNotes, update.analysisNotes)
+        merge(&memory.productFeedback, update.productFeedback)
         memory.lastUpdated = Date()
         persistMemory()
     }

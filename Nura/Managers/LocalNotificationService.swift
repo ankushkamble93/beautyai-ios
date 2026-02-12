@@ -4,7 +4,7 @@ import SwiftUI
 
 // MARK: - Local Notification Service (Frugal Approach)
 
-class LocalNotificationService: ObservableObject {
+final class LocalNotificationService: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
     static let shared = LocalNotificationService()
     
     @Published var isAuthorized = false
@@ -14,7 +14,7 @@ class LocalNotificationService: ObservableObject {
     private let userDefaults = UserDefaults.standard
     private let preferencesKey = "local_notification_preferences"
     
-    private init() {
+    private override init() {
         // Load saved preferences or create defaults
         if let data = userDefaults.data(forKey: preferencesKey),
            let savedPreferences = try? JSONDecoder().decode(LocalNotificationPreferences.self, from: data) {
@@ -22,7 +22,8 @@ class LocalNotificationService: ObservableObject {
         } else {
             self.localPreferences = LocalNotificationPreferences.default
         }
-        
+        super.init()
+        notificationCenter.delegate = self
         checkAuthorizationStatus()
     }
     
@@ -212,8 +213,8 @@ class LocalNotificationService: ObservableObject {
             "test": true
         ]
         
-        // Use immediate trigger for testing
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        // Small delay so iOS has time to schedule consistently in foreground tests
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 2, repeats: false)
         
         let request = UNNotificationRequest(
             identifier: "immediate_\(Date().timeIntervalSince1970)",
@@ -286,6 +287,15 @@ class LocalNotificationService: ObservableObject {
         )
     }
     
+    /// Sent when we detect a workout from Apple Watch / Fitness (HealthKit). Prompts user to scan face.
+    func sendWorkoutCongratsNotification() {
+        sendImmediateNotification(
+            title: "Great workout! 🏃",
+            body: "Scan your face to see how you're doing — exercise and skin health go hand in hand.",
+            category: "workout"
+        )
+    }
+    
     // MARK: - Utility Methods
     
     func cancelAllNotifications() {
@@ -295,6 +305,27 @@ class LocalNotificationService: ObservableObject {
     
     func getPendingNotifications() async -> [UNNotificationRequest] {
         return await notificationCenter.pendingNotificationRequests()
+    }
+    
+    // MARK: - UNUserNotificationCenterDelegate
+    
+    /// Ensure notifications are presented while app is in foreground (simulator + real device).
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        print("📲 Foreground notification received: \(notification.request.content.title)")
+        if #available(iOS 14.0, *) {
+            completionHandler([.banner, .list, .sound, .badge])
+        } else {
+            completionHandler([.alert, .sound, .badge])
+        }
+    }
+    
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        print("📲 Notification tapped: \(response.notification.request.identifier)")
+        completionHandler()
     }
 }
 

@@ -10,6 +10,10 @@ struct ChatView: View {
     @FocusState private var isTextFieldFocused: Bool
     @State private var showNuraProSheet = false
     @State private var showGlobalChatSheet = false
+    @State private var showAskNuraTooltip = false
+    @AppStorage("nura_askNuraTooltipShownCount") private var tooltipShownCount: Int = 0
+    @AppStorage("nura_hasUsedAskNura") private var hasUsedAskNura: Bool = false
+    private let maxTooltipShows = 3
     
     var body: some View {
         NavigationView {
@@ -24,20 +28,37 @@ struct ChatView: View {
                         .environmentObject(skinAnalysisManager)
                         .environmentObject(routineOverrideManager)
                 }
-                // Global Ask Nura bubble (visible across pushes, including product detail)
+                // Global Ask Nura bubble + discovery tooltip
                 if userTierManager.tier != .free {
                     let isDark = appearanceManager.isDarkMode
-                    Button(action: { showGlobalChatSheet = true }) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "message.fill")
-                            Text("Ask Nura")
-                                .font(.callout).fontWeight(.semibold)
+                    VStack(alignment: .trailing, spacing: 10) {
+                        // Discovery tooltip (shown on first few visits)
+                        if showAskNuraTooltip {
+                            AskNuraTooltipBubble(onDismiss: {
+                                withAnimation(.easeOut(duration: 0.25)) {
+                                    showAskNuraTooltip = false
+                                }
+                            })
+                            .environmentObject(appearanceManager)
+                            .transition(.opacity.combined(with: .scale(scale: 0.85, anchor: .bottomTrailing)))
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(isDark ? NuraColors.cardDark : Color(red: 0.976, green: 0.965, blue: 0.949))
-                        .cornerRadius(24)
-                        .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
+                        
+                        Button(action: {
+                            showGlobalChatSheet = true
+                            hasUsedAskNura = true
+                            withAnimation(.easeOut(duration: 0.2)) { showAskNuraTooltip = false }
+                        }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "message.fill")
+                                Text("Ask Nura")
+                                    .font(.callout).fontWeight(.semibold)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .background(isDark ? NuraColors.cardDark : Color(red: 0.976, green: 0.965, blue: 0.949))
+                            .cornerRadius(24)
+                            .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
+                        }
                     }
                     .padding(20)
                     .padding(.bottom, 36)
@@ -69,9 +90,30 @@ struct ChatView: View {
             }
         }
         .id(appearanceManager.colorSchemePreference)
+        .onAppear {
+            guard tooltipShownCount < maxTooltipShows
+                    && !hasUsedAskNura
+                    && userTierManager.tier != .free
+                    && !showAskNuraTooltip else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                guard !showAskNuraTooltip else { return }
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                    showAskNuraTooltip = true
+                }
+                tooltipShownCount += 1
+                // Auto-dismiss after 6 seconds
+                DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        showAskNuraTooltip = false
+                    }
+                }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .nuraOpenMiniChatAndSend)) { note in
             if let text = note.object as? String {
                 showGlobalChatSheet = true
+                hasUsedAskNura = true
+                withAnimation(.easeOut(duration: 0.2)) { showAskNuraTooltip = false }
                 // Delay sending until sheet is presented
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                     chatManager.sendMessage(text)
@@ -1170,6 +1212,7 @@ private struct CompactProductCard: View {
 private struct ProductDetailView: View {
     let product: ProductSearchResult
     let reason: String
+    @Environment(\.dismiss) var dismiss
     @EnvironmentObject var appearanceManager: AppearanceManager
     @EnvironmentObject var userTierManager: UserTierManager
     @EnvironmentObject var routineOverrideManager: RoutineOverrideManager
@@ -1329,7 +1372,60 @@ private struct ProductDetailView: View {
                 .padding(.horizontal)
                 .padding(.top, 2)
 
-                // Removed bottom ingredients section (consolidated into Why this fits you)
+                // Ask Nura about this product
+                VStack(spacing: 12) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "sparkles")
+                            .font(.title3)
+                            .foregroundColor(Color(red: 0.29, green: 0.56, blue: 0.89))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Still have questions?")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                            Text("Get advice tailored to your skin profile")
+                                .font(.caption)
+                                .foregroundColor(isDark ? NuraColors.textSecondaryDark : .secondary)
+                        }
+                        Spacer()
+                    }
+                    
+                    Button(action: {
+                        let brandSuffix = product.brand.map { " by \($0)" } ?? ""
+                        let query = "Is \(product.name)\(brandSuffix) a good fit for my skin type and concerns? What should I know before using it?"
+                        dismiss()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                            NotificationCenter.default.post(name: .nuraOpenMiniChatAndSend, object: query)
+                        }
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "message.fill")
+                            Text("Ask Nura about this")
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(
+                            LinearGradient(
+                                gradient: Gradient(colors: [Color(red: 0.29, green: 0.56, blue: 0.89), Color.purple.opacity(0.8)]),
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .cornerRadius(20)
+                        .shadow(color: Color.blue.opacity(0.2), radius: 6, x: 0, y: 3)
+                    }
+                }
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(isDark ? NuraColors.cardDark : Color(.systemBackground))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color.blue.opacity(0.12), lineWidth: 1)
+                )
             }
             .padding()
         }
@@ -1532,6 +1628,45 @@ private struct RatingRow: View {
             Spacer()
         }
         .padding(.vertical, 6)
+    }
+}
+
+// MARK: - Ask Nura Discovery Tooltip
+
+private struct AskNuraTooltipBubble: View {
+    let onDismiss: () -> Void
+    @EnvironmentObject var appearanceManager: AppearanceManager
+    
+    var body: some View {
+        let isDark = appearanceManager.isDarkMode
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "sparkles")
+                .font(.subheadline)
+                .foregroundColor(Color(red: 0.29, green: 0.56, blue: 0.89))
+                .padding(.top, 2)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Get personalized advice")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                Text("Ask Nura about any product — tailored to your skin type & concerns.")
+                    .font(.caption)
+                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : .secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            
+            Button(action: onDismiss) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.caption)
+                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : Color.gray.opacity(0.5))
+            }
+        }
+        .padding(14)
+        .background(isDark ? NuraColors.cardDark : Color(.systemBackground))
+        .cornerRadius(14)
+        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
+        .frame(maxWidth: 280)
     }
 }
 

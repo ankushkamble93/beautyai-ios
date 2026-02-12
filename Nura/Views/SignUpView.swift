@@ -258,7 +258,7 @@ struct SignUpView: View {
                                         Image(systemName: "checkmark.circle.fill")
                                             .foregroundColor(NuraColors.success)
                                             .font(.system(size: 12))
-                                        Text("Email is available")
+                                        Text("Valid email")
                                             .font(.caption)
                                             .foregroundColor(NuraColors.success)
                                         Spacer()

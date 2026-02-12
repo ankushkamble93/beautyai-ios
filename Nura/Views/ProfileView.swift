@@ -1338,6 +1338,8 @@ struct PersonalInformationView: View {
     @State private var periodCycleInfo: String = ""
     @State private var birthControlInfo: String = ""
     
+    @State private var showingChangePassword = false
+    
     // Store original values to detect changes
     @State private var originalName: String = ""
     @State private var originalEmail: String = ""
@@ -1621,6 +1623,48 @@ struct PersonalInformationView: View {
                             }
                             .padding(.horizontal, 12)
                             
+                            // Change Password section
+                            VStack(spacing: 12) {
+                                Divider()
+                                    .padding(.vertical, 8)
+                                
+                                Button(action: { showingChangePassword = true }) {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "lock.rotation")
+                                            .font(.system(size: 18))
+                                            .foregroundColor(NuraColors.primary)
+                                            .frame(width: 32)
+                                        
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Change Password")
+                                                .font(.subheadline)
+                                                .fontWeight(.semibold)
+                                                .foregroundColor(colorScheme == .dark ? NuraColors.textPrimaryDark : .primary)
+                                            Text("Update your account password")
+                                                .font(.caption)
+                                                .foregroundColor(NuraColors.textSecondary)
+                                        }
+                                        
+                                        Spacer()
+                                        
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption)
+                                            .foregroundColor(NuraColors.textSecondary)
+                                    }
+                                    .padding()
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(colorScheme == .dark ? NuraColors.cardDark : Color(.systemBackground))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(NuraColors.primary.opacity(0.15), lineWidth: 1)
+                                    )
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                            .padding(.horizontal, 12)
+                            
                             Spacer(minLength: 20)
                         }
                         .padding()
@@ -1635,6 +1679,10 @@ struct PersonalInformationView: View {
             .onChange(of: name) { oldValue, newValue in updateHasChanges() }
             .onChange(of: email) { oldValue, newValue in updateHasChanges() }
             .onChange(of: phone) { oldValue, newValue in updateHasChanges() }
+            .sheet(isPresented: $showingChangePassword) {
+                PasswordResetView(isPresented: $showingChangePassword, email: email)
+                    .environmentObject(authManager)
+            }
         }
     }
     

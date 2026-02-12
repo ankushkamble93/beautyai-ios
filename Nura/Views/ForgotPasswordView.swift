@@ -9,7 +9,7 @@ struct ForgotPasswordView: View {
     @State private var isLoading = false
     @State private var errorMessage: String? = nil
     @State private var showEmailValidation = false
-    @State private var showPasswordResetSheet = false
+    @State private var showSuccess = false
     
     // Animation states
     @State private var animateBackground = false
@@ -34,12 +34,15 @@ struct ForgotPasswordView: View {
                     // Main content area
                     ScrollView {
                         VStack(spacing: 32) {
-                            // Title and description
-                            TitleSection()
-                            
-                            if showPasswordResetSheet {
-                                // This will be handled by the sheet
+                            if showSuccess {
+                                // Success: reset email sent
+                                ResetEmailSentSection(email: email, onBack: {
+                                    isPresented = false
+                                })
                             } else {
+                                // Title and description
+                                TitleSection()
+                                
                                 // Email input field
                                 EmailInputSection(
                                     email: $email,
@@ -52,15 +55,15 @@ struct ForgotPasswordView: View {
                                     isLoading: isLoading,
                                     action: sendReset
                                 )
+                                
+                                // Error message
+                                if let error = errorMessage {
+                                    ErrorSection(error: error)
+                                }
+                                
+                                // Helpful information
+                                HelpSection()
                             }
-                            
-                            // Error message
-                            if let error = errorMessage {
-                                ErrorSection(error: error)
-                            }
-                            
-                            // Helpful information
-                            HelpSection()
                         }
                         .padding(.horizontal, 24)
                         .padding(.top, 20)
@@ -79,43 +82,45 @@ struct ForgotPasswordView: View {
                     animateIcon = true
                 }
             }
-            .sheet(isPresented: $showPasswordResetSheet) {
-                PasswordResetView(isPresented: $showPasswordResetSheet, email: email)
-                    .environmentObject(authManager)
-            }
-            .onChange(of: showPasswordResetSheet) { oldValue, newValue in
-                if oldValue == false && newValue == true {
-                    print("📱 ForgotPasswordView: Presenting PasswordResetView sheet")
-                } else if oldValue == true && newValue == false {
-                    print("📱 ForgotPasswordView: PasswordResetView sheet was dismissed")
-                }
-            }
+            
         }
     }
     
     // MARK: - Helper Functions
     
     private func sendReset() {
-        print("🔐 ForgotPasswordView: Starting email verification for: \(email)")
+        print("🔐 ForgotPasswordView: Starting password reset for: \(email)")
         errorMessage = nil
         showEmailValidation = false
         
-        guard canSend else { 
+        guard canSend else {
             print("❌ ForgotPasswordView: Email validation failed")
             showEmailValidation = true
-            return 
+            return
         }
         
         isLoading = true
-        print("🔄 ForgotPasswordView: Loading started")
+        print("🔄 ForgotPasswordView: Sending reset email via Supabase...")
         
-        // Simulate a brief loading delay for better UX
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            print("✅ ForgotPasswordView: Email format validated, proceeding to password reset")
-            
-            self.isLoading = false
-            print("🎯 ForgotPasswordView: Showing password reset sheet")
-            self.showPasswordResetSheet = true
+        Task {
+            do {
+                try await authManager.client.auth.resetPasswordForEmail(email)
+                print("✅ ForgotPasswordView: Password reset email sent successfully")
+                
+                await MainActor.run {
+                    isLoading = false
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        showSuccess = true
+                    }
+                }
+            } catch {
+                print("❌ ForgotPasswordView: Error sending reset email: \(error.localizedDescription)")
+                
+                await MainActor.run {
+                    isLoading = false
+                    errorMessage = formatErrorMessage(error)
+                }
+            }
         }
     }
     
@@ -327,7 +332,7 @@ private struct ActionButtonSection: View {
                             .font(.system(size: 16, weight: .medium))
                     }
                     
-                    Text(isLoading ? "Verifying..." : "Verify Email")
+                    Text(isLoading ? "Sending..." : "Send Reset Link")
                         .font(.system(size: 17, weight: .semibold, design: .rounded))
                 }
                 .foregroundColor(.white)
@@ -357,7 +362,7 @@ private struct ActionButtonSection: View {
             .buttonStyle(PlainButtonStyle())
             
             // Additional help text
-            Text("We'll verify your email and help you reset your password")
+            Text("We'll send a secure reset link to your email")
                 .font(.system(size: 13, weight: .regular))
                 .foregroundColor(NuraColors.primary.opacity(0.7))
                 .multilineTextAlignment(.center)
@@ -421,6 +426,122 @@ private struct HelpSection: View {
                     .multilineTextAlignment(.center)
                     .lineSpacing(2)
                     .padding(.horizontal, 20)
+            }
+        }
+    }
+}
+
+// MARK: - Reset Email Sent (Success State)
+private struct ResetEmailSentSection: View {
+    let email: String
+    let onBack: () -> Void
+    @State private var animateCheckmark = false
+    
+    var body: some View {
+        VStack(spacing: 24) {
+            // Animated success icon
+            ZStack {
+                Circle()
+                    .fill(NuraColors.success.opacity(0.15))
+                    .frame(width: 100, height: 100)
+                
+                Circle()
+                    .fill(NuraColors.success.opacity(0.25))
+                    .frame(width: 80, height: 80)
+                    .scaleEffect(animateCheckmark ? 1.0 : 0.6)
+                
+                Image(systemName: "envelope.open.fill")
+                    .font(.system(size: 36, weight: .medium))
+                    .foregroundColor(NuraColors.success)
+                    .scaleEffect(animateCheckmark ? 1.0 : 0.5)
+            }
+            .animation(.spring(response: 0.6, dampingFraction: 0.6), value: animateCheckmark)
+            
+            // Title
+            Text("Check Your Email")
+                .font(.custom("DancingScript-Bold", size: 38))
+                .foregroundColor(NuraColors.primary)
+                .multilineTextAlignment(.center)
+            
+            // Description
+            VStack(spacing: 12) {
+                Text("We've sent a password reset link to:")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundColor(NuraColors.primary.opacity(0.8))
+                
+                Text(email)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundColor(NuraColors.primary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(NuraColors.card.opacity(0.12))
+                    )
+                
+                Text("Open the link in the email to set a new password. The link expires in 24 hours.")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundColor(NuraColors.primary.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+                    .padding(.horizontal, 12)
+            }
+            
+            // Tips
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Image(systemName: "tray.fill")
+                        .font(.caption)
+                        .foregroundColor(NuraColors.primary.opacity(0.6))
+                        .frame(width: 20)
+                    Text("Check your spam or junk folder if you don't see it")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(NuraColors.primary.opacity(0.7))
+                }
+                HStack(spacing: 10) {
+                    Image(systemName: "clock.fill")
+                        .font(.caption)
+                        .foregroundColor(NuraColors.primary.opacity(0.6))
+                        .frame(width: 20)
+                    Text("The email may take a minute to arrive")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(NuraColors.primary.opacity(0.7))
+                }
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(NuraColors.card.opacity(0.08))
+            )
+            
+            // Back to login button
+            Button(action: onBack) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.left")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Back to Login")
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: 280)
+                .frame(height: 52)
+                .background(
+                    LinearGradient(
+                        gradient: Gradient(colors: [NuraColors.primary, NuraColors.primary.opacity(0.8)]),
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .cornerRadius(26)
+                .shadow(color: NuraColors.primary.opacity(0.3), radius: 12, x: 0, y: 6)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .padding(.top, 8)
+        }
+        .padding(.top, 20)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.4).delay(0.1)) {
+                animateCheckmark = true
             }
         }
     }

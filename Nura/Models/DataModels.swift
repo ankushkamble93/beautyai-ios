@@ -140,8 +140,31 @@ struct ChatMemory: Codable {
     var eveningRoutine: [String]
     var weeklyTreatments: [String]
     var analysisNotes: [String]
+    var productFeedback: [String] // e.g. "CeraVe Cleanser: loved, used months" or "Niacinamide serum: broke out, caused redness"
     var lastUpdated: Date
     var lastAnalysisDate: Date?
+    
+    // Backward-compatible decoder: older persisted data won't have productFeedback
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        morningRoutine = try container.decode([String].self, forKey: .morningRoutine)
+        eveningRoutine = try container.decode([String].self, forKey: .eveningRoutine)
+        weeklyTreatments = try container.decode([String].self, forKey: .weeklyTreatments)
+        analysisNotes = try container.decode([String].self, forKey: .analysisNotes)
+        productFeedback = try container.decodeIfPresent([String].self, forKey: .productFeedback) ?? []
+        lastUpdated = try container.decode(Date.self, forKey: .lastUpdated)
+        lastAnalysisDate = try container.decodeIfPresent(Date.self, forKey: .lastAnalysisDate)
+    }
+    
+    init(morningRoutine: [String], eveningRoutine: [String], weeklyTreatments: [String], analysisNotes: [String], productFeedback: [String] = [], lastUpdated: Date, lastAnalysisDate: Date? = nil) {
+        self.morningRoutine = morningRoutine
+        self.eveningRoutine = eveningRoutine
+        self.weeklyTreatments = weeklyTreatments
+        self.analysisNotes = analysisNotes
+        self.productFeedback = productFeedback
+        self.lastUpdated = lastUpdated
+        self.lastAnalysisDate = lastAnalysisDate
+    }
 }
 
 struct ChatMemoryUpdate: Codable {
@@ -149,6 +172,7 @@ struct ChatMemoryUpdate: Codable {
     var eveningRoutine: [String]?
     var weeklyTreatments: [String]?
     var analysisNotes: [String]?
+    var productFeedback: [String]?
 }
 
 struct SkinAnalysisResult: Codable {
