@@ -70,6 +70,9 @@ struct ContentView: View {
                             }
                         }
                     }
+                    .onAppear {
+                        WorkoutNotificationManager.shared.startObservingWorkoutsIfAuthorized()
+                    }
                 }
             } else {
                 LoginView()

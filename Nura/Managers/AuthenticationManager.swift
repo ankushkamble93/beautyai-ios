@@ -373,121 +373,20 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
         print("🧪 Test email added to cache: \(normalizedEmail) (\(status))")
     }
     
-    // Alternative method using sign-in API (more reliable)
+    // Email existence pre-check is intentionally disabled.
+    //
+    // WHY: Supabase has no safe client-side way to check if an email exists:
+    //  - Sign-in API returns the same "invalid_credentials" for non-existent users
+    //    AND wrong passwords (anti-enumeration by design).
+    //  - Signup API actually CREATES an unconfirmed user as a side effect,
+    //    which then causes rate-limit errors on the real signup attempt.
+    //
+    // INSTEAD: We let the actual signup attempt happen and handle "user already
+    // registered" errors in the SignUpView. The green checkmark in the UI now
+    // indicates "valid email format" rather than "email is available".
     private func checkEmailExistsViaAuthAPI(email: String) async -> Bool {
-        print("🔄 Checking email existence via sign-in API...")
-        
-        do {
-            // Use the sign-in API with a dummy password to check if user exists
-            // This won't create a new user, just check if one exists
-            let url = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/auth/v1/token?grant_type=password")!
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.setValue(supabaseKey, forHTTPHeaderField: "apikey")
-            
-            let signInData: [String: Any] = [
-                "email": email,
-                "password": "dummy_password_for_existence_check"
-            ]
-            
-            request.httpBody = try? JSONSerialization.data(withJSONObject: signInData)
-            
-            let (data, response) = try await URLSession.shared.data(for: request)
-            
-            if let httpResponse = response as? HTTPURLResponse {
-                print("🔄 Sign-in API check status: \(httpResponse.statusCode)")
-                
-                if let responseString = String(data: data, encoding: .utf8) {
-                    print("🔄 Sign-in API response: \(responseString)")
-                }
-                
-                // If status is 400 with "Invalid login credentials", user exists but wrong password
-                if httpResponse.statusCode == 400 {
-                    if let responseString = String(data: data, encoding: .utf8) {
-                        let lowercasedResponse = responseString.lowercased()
-                        if lowercasedResponse.contains("invalid login credentials") ||
-                           lowercasedResponse.contains("invalid email") ||
-                           lowercasedResponse.contains("wrong password") {
-                            print("🔄 Sign-in API email exists check result: true (User exists, wrong password)")
-                            return true
-                        }
-                    }
-                }
-                
-                // If status is 200, user exists and password was correct (unlikely with dummy password)
-                if httpResponse.statusCode == 200 {
-                    print("🔄 Sign-in API email exists check result: true (User exists, password correct)")
-                    return true
-                }
-                
-                // If status is 404 or other errors, user doesn't exist
-                print("🔄 Sign-in API email exists check result: false (User not found)")
-                return false
-            }
-            
-            print("🔄 Sign-in API email exists check result: false (Unable to determine)")
-            return false
-        } catch {
-            print("❌ Error in sign-in API check: \(error)")
-            return false
-        }
-    }
-    
-    // Third method using sign in API
-    private func checkEmailExistsViaSignIn(email: String) async -> Bool {
-        print("🔄 Checking email existence via sign in API...")
-        
-        do {
-            // Try to sign in with a dummy password to see if user exists
-            let url = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co/auth/v1/token?grant_type=password")!
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.setValue(supabaseKey, forHTTPHeaderField: "apikey")
-            
-            let signInData: [String: Any] = [
-                "email": email,
-                "password": "dummy_password_for_check"
-            ]
-            
-            request.httpBody = try? JSONSerialization.data(withJSONObject: signInData)
-            
-            let (data, response) = try await URLSession.shared.data(for: request)
-            
-            if let httpResponse = response as? HTTPURLResponse {
-                print("🔄 Sign In API check status: \(httpResponse.statusCode)")
-                
-                if let responseString = String(data: data, encoding: .utf8) {
-                    print("🔄 Sign In API response: \(responseString)")
-                }
-                
-                // If status is 400 with "Invalid login credentials", user exists but wrong password
-                if httpResponse.statusCode == 400 {
-                    if let responseString = String(data: data, encoding: .utf8) {
-                        let lowercasedResponse = responseString.lowercased()
-                        if lowercasedResponse.contains("invalid login credentials") ||
-                           lowercasedResponse.contains("invalid email") ||
-                           lowercasedResponse.contains("wrong password") {
-                            print("🔄 Sign In API email exists check result: true (User exists, wrong password)")
-                            return true
-                        }
-                    }
-                }
-                
-                // If status is 200, user exists and password was correct (unlikely with dummy password)
-                if httpResponse.statusCode == 200 {
-                    print("🔄 Sign In API email exists check result: true (User exists, password correct)")
-                    return true
-                }
-            }
-            
-            print("🔄 Sign In API email exists check result: false (Unable to determine)")
-            return false
-        } catch {
-            print("❌ Error in sign in API check: \(error)")
-            return false
-        }
+        print("🔄 Email pre-check skipped (format-only validation). Actual signup will handle conflicts.")
+        return false
     }
     
     // MARK: - User Profile Management
@@ -877,17 +776,31 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
         
         do {
             print("🔗 Initiating Google OAuth with Supabase...")
+            print("🔗 Redirect URL: com.nura://")
+            print("🔗 Provider: google")
+            print("🔗 Scopes: email profile")
+            
+            // signInWithOAuth opens ASWebAuthenticationSession and handles the full
+            // PKCE flow (code_verifier generation, Google redirect, token exchange).
+            // Do NOT call signOut() before this — it corrupts the PKCE code verifier storage.
             try await client.auth.signInWithOAuth(
                 provider: .google,
-                redirectTo: URL(string: "com.nura://"),
+                redirectTo: URL(string: "com.nura://")!,
                 scopes: "email profile"
             )
-            print("🔗 Google OAuth sign-in initiated successfully")
-            // OAuth sign-in initiates the flow but doesn't return a session immediately
-            // The session will be handled by listenForAuthChanges when the OAuth flow completes
+            
+            print("🔗 Google OAuth sign-in completed successfully")
+            print("🔗 Session should be established - checking status...")
+            
+            // The SDK should handle the callback automatically via ASWebAuthenticationSession
+            // But we'll also listen for it via our deep link handler as a backup
         } catch {
             print("❌ Google OAuth sign-in error: \(error)")
             print("❌ Error details: \(error.localizedDescription)")
+            print("❌ Error type: \(type(of: error))")
+            if let authError = error as? AuthError {
+                print("❌ AuthError instance: \(authError)")
+            }
             errorMessage = error.localizedDescription
         }
     }
@@ -932,6 +845,18 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
     func handleDeepLink(url: URL) async {
         do {
             print("🔗 Handling deep link: \(url)")
+            print("🔗 Deep link scheme: \(url.scheme ?? "nil")")
+            print("🔗 Deep link host: \(url.host ?? "nil")")
+            print("🔗 Deep link path: \(url.path)")
+            print("🔗 Deep link query: \(url.query ?? "nil")")
+            print("🔗 Full deep link: \(url.absoluteString)")
+            
+            // Check if this looks like a Supabase OAuth callback
+            if url.query?.contains("code=") == true || url.query?.contains("error=") == true {
+                print("🔗 This appears to be an OAuth callback URL")
+            }
+            
+            print("🔗 Calling client.auth.session(from: url)...")
             try await client.auth.session(from: url)
             print("✅ Session from URL processed successfully")
             
@@ -943,6 +868,11 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
             
         } catch {
             print("❌ Error handling deep link: \(error)")
+            print("❌ Error type: \(type(of: error))")
+            print("❌ Error details: \(error.localizedDescription)")
+            if let authError = error as? AuthError {
+                print("❌ AuthError instance: \(authError)")
+            }
             errorMessage = error.localizedDescription
             isAuthenticated = false
         }

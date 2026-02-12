@@ -54,5 +54,7 @@
 		<string>instagram-stories</string>
 		<string>snapchat</string>
 	</array>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Nura uses your workout data from Apple Watch and Fitness to congratulate you after a workout and suggest scanning your face to see how exercise is affecting your skin.</string>
 </dict>
 </plist>

@@ -664,32 +664,70 @@ final class ProductSearchManager {
     }
     
     // UX: Get product images to make results more appealing
+    // Priority: Open Beauty Facts (free, unlimited, actual product photos) → Google CSE (rate-limited)
     private func getProductImage(for productName: String) async -> String? {
-        // Prefer Google CSE image search for consistency
-        if let google = try? await googleCustomSearch(query: productName, category: nil), 
-           let first = google.first?.imageURL, 
+        // 1. Try Open Beauty Facts text search (free, no rate limit, real product photos)
+        if let obfImage = await openBeautyFactsImageSearch(query: productName), !obfImage.isEmpty {
+            print("✅ ProductSearch: OBF image hit for '\(productName)'")
+            return obfImage
+        }
+        // 2. Fallback: Google CSE image search (rate-limited, 100/day free)
+        if !googleBlocked,
+           let google = try? await googleCustomSearch(query: productName, category: nil),
+           let first = google.first?.imageURL,
            !first.isEmpty {
             return first
         }
-        // Fallback: Unsplash featured search (requires key; optional)
-        let searchQuery = productName.replacingOccurrences(of: " ", with: "+")
-        if let url = URL(string: "https://api.unsplash.com/search/photos?query=\(searchQuery)+skincare&per_page=1") {
-            var request = URLRequest(url: url)
-            request.setValue("Client-ID YOUR_UNSPLASH_KEY", forHTTPHeaderField: "Authorization")
-            if let (data, response) = try? await URLSession.shared.data(for: request), 
-               let http = response as? HTTPURLResponse, 
-               http.statusCode == 200 {
-                struct UnsplashResponse: Decodable { let results: [UnsplashResult]? }
-                struct UnsplashResult: Decodable { let urls: UnsplashURLs? }
-                struct UnsplashURLs: Decodable { let small: String? }
-                if let decoded = try? JSONDecoder().decode(UnsplashResponse.self, from: data),
-                   let imageURL = decoded.results?.first?.urls?.small,
-                   !imageURL.isEmpty {
+        return nil
+    }
+    
+    // MARK: - Open Beauty Facts Image Search (free, unlimited, actual product photos)
+    
+    /// Search Open Beauty Facts by product name and return the best image URL.
+    /// OBF is a free, open-source cosmetics database with real product photos.
+    /// Endpoint: https://world.openbeautyfacts.org/cgi/search.pl?search_terms=QUERY&json=1&page_size=3
+    private func openBeautyFactsImageSearch(query: String) async -> String? {
+        let searchTerms = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        guard let url = URL(string: "https://world.openbeautyfacts.org/cgi/search.pl?search_terms=\(searchTerms)&json=1&page_size=3&fields=product_name,image_url,image_small_url,image_front_small_url") else {
+            return nil
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 8
+        request.setValue("NuraApp/1.0 (iOS; contact: support@nura.app)", forHTTPHeaderField: "User-Agent")
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                print("⚠️ ProductSearch: OBF search HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1) for query=\(query)")
+                return nil
+            }
+            
+            // Parse the search response — products array with image fields
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let products = json["products"] as? [[String: Any]] else {
+                return nil
+            }
+            
+            // Return the first product that has a usable image
+            for product in products {
+                // Prefer full image, then small, then front small
+                if let imageURL = product["image_url"] as? String, !imageURL.isEmpty {
+                    return imageURL
+                }
+                if let imageURL = product["image_small_url"] as? String, !imageURL.isEmpty {
+                    return imageURL
+                }
+                if let imageURL = product["image_front_small_url"] as? String, !imageURL.isEmpty {
                     return imageURL
                 }
             }
+            
+            print("ℹ️ ProductSearch: OBF search found \(products.count) products but none had images for query=\(query)")
+            return nil
+        } catch {
+            print("⚠️ ProductSearch: OBF search failed for query=\(query): \(error.localizedDescription)")
+            return nil
         }
-        return nil
     }
     
     // Enhanced caching for SkincareAPI (longer TTL since it's free)
