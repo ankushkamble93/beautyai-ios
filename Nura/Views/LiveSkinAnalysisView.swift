@@ -9,8 +9,10 @@ struct LiveSkinAnalysisView: View {
     @Environment(\.scenePhase) private var scenePhase
     
     private enum Angle: String { case front = "Front", left = "Left", right = "Right" }
+    private let requiredAngles: [Angle] = [.front, .left, .right]
     @State private var targetAngle: Angle = .front
-    @State private var captured: [UIImage] = []
+    @State private var capturedByAngle: [Angle: UIImage] = [:]
+    @State private var captureOrder: [Angle] = []
     @State private var holdProgress: Double = 0.0
     @State private var speakQueue: String = ""
     @State private var isVoiceEnabled: Bool = false
@@ -108,12 +110,25 @@ struct LiveSkinAnalysisView: View {
                 }
                 .padding(.bottom, 12)
                 // Thumbnails + undo
-                if !captured.isEmpty {
+                if !captureOrder.isEmpty {
                     HStack(spacing: 8) {
-                        ForEach(0..<captured.count, id: \.self) { i in
-                            Image(uiImage: captured[i])
-                                .resizable().scaledToFill()
-                                .frame(width: 48, height: 72).clipped().cornerRadius(6)
+                        ForEach(captureOrder, id: \.rawValue) { angle in
+                            if let img = capturedByAngle[angle] {
+                                Image(uiImage: img)
+                                    .resizable().scaledToFill()
+                                    .frame(width: 48, height: 72).clipped().cornerRadius(6)
+                                    .overlay(
+                                        Text(angle.rawValue.prefix(1))
+                                            .font(.caption2)
+                                            .fontWeight(.bold)
+                                            .foregroundColor(.white)
+                                            .padding(4)
+                                            .background(Color.black.opacity(0.5))
+                                            .clipShape(Circle())
+                                            .padding(4),
+                                        alignment: .topLeading
+                                    )
+                            }
                         }
                         Button(action: undoLast) {
                             HStack(spacing: 4) { Image(systemName: "arrow.uturn.left.circle"); Text("Undo") }
@@ -138,11 +153,11 @@ struct LiveSkinAnalysisView: View {
                         HStack { Image(systemName: "checkmark.circle.fill"); Text("Use 3 photos") }
                             .font(.headline)
                             .padding(.vertical, 10).padding(.horizontal, 16)
-                            .background(captured.count >= 3 ? Color.blue : Color.gray.opacity(0.6))
+                            .background(isReadyToUse ? Color.blue : Color.gray.opacity(0.6))
                             .foregroundColor(.white)
                             .clipShape(Capsule())
                     }
-                    .disabled(captured.count < 3)
+                    .disabled(!isReadyToUse)
                     Button(action: { isVoiceEnabled.toggle(); softHaptic.impactOccurred() }) {
                         Image(systemName: isVoiceEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
                             .foregroundColor(.white)
@@ -166,7 +181,16 @@ struct LiveSkinAnalysisView: View {
     }
     
     private var canCapture: Bool {
-        camera.faceDetected && camera.exposureOk && camera.glareOk && angleSatisfied
+        camera.faceDetected &&
+        camera.exposureOk &&
+        camera.glareOk &&
+        angleSatisfied &&
+        captureOrder.count < requiredAngles.count &&
+        capturedByAngle[targetAngle] == nil
+    }
+
+    private var isReadyToUse: Bool {
+        requiredAngles.allSatisfy { capturedByAngle[$0] != nil }
     }
     
     private var angleSatisfied: Bool {
@@ -215,25 +239,32 @@ struct LiveSkinAnalysisView: View {
     }
     
     private func capture() {
+        guard capturedByAngle[targetAngle] == nil else { return }
         guard let image = camera.captureCurrentImage() else { return }
-        captured.append(image)
+        capturedByAngle[targetAngle] = image
+        captureOrder.append(targetAngle)
         successHaptic.notificationOccurred(.success)
-        // Move to next angle
-        switch targetAngle {
-        case .front: targetAngle = .left
-        case .left: targetAngle = .right
-        case .right: targetAngle = .right
+        holdProgress = 0.0
+
+        if let next = requiredAngles.first(where: { capturedByAngle[$0] == nil }) {
+            targetAngle = next
         }
     }
     
     private func finishIfReady() {
-        guard captured.count >= 3 else { return }
-        onComplete(Array(captured.prefix(3)))
+        guard isReadyToUse else { return }
+        let orderedImages = requiredAngles.compactMap { capturedByAngle[$0] }
+        guard orderedImages.count == requiredAngles.count else { return }
+        onComplete(orderedImages)
         dismiss()
     }
     
     private func undoLast() {
-        if !captured.isEmpty { captured.removeLast(); softHaptic.impactOccurred() }
+        guard let last = captureOrder.popLast() else { return }
+        capturedByAngle[last] = nil
+        targetAngle = last
+        holdProgress = 0.0
+        softHaptic.impactOccurred()
     }
     
     private func updateAutoCapture() {
@@ -406,12 +437,14 @@ final class CameraVisionController: NSObject, ObservableObject {
         
         if let connection = videoOutput.connection(with: .video) {
             // iOS 17+: prefer rotationAngle API, otherwise fall back
-            if connection.responds(to: Selector(("isVideoRotationAngleSupported:"))) {
+            if #available(iOS 17.0, *) {
                 if connection.isVideoRotationAngleSupported(90) {
                     connection.videoRotationAngle = 90
                 }
-            } else if connection.isVideoOrientationSupported {
-                connection.videoOrientation = .portrait
+            } else {
+                if connection.isVideoOrientationSupported {
+                    connection.videoOrientation = .portrait
+                }
             }
             if connection.isVideoMirroringSupported { connection.automaticallyAdjustsVideoMirroring = true }
         }
@@ -508,9 +541,11 @@ final class PreviewView: UIView {
         previewLayer.videoGravity = .resizeAspectFill
         previewLayer.backgroundColor = UIColor.black.cgColor
         if let connection = previewLayer.connection {
-            if connection.responds(to: Selector(("isVideoRotationAngleSupported:"))) {
+            if #available(iOS 17.0, *) {
                 if connection.isVideoRotationAngleSupported(90) { connection.videoRotationAngle = 90 }
-            } else if connection.isVideoOrientationSupported { connection.videoOrientation = .portrait }
+            } else {
+                if connection.isVideoOrientationSupported { connection.videoOrientation = .portrait }
+            }
             if connection.isVideoMirroringSupported { connection.automaticallyAdjustsVideoMirroring = true }
         }
     }
@@ -519,10 +554,12 @@ final class PreviewView: UIView {
         super.layoutSubviews()
         previewLayer.frame = bounds
         if let connection = previewLayer.connection {
-            if connection.responds(to: Selector(("isVideoRotationAngleSupported:"))) {
+            if #available(iOS 17.0, *) {
                 if connection.isVideoRotationAngleSupported(90) { connection.videoRotationAngle = 90 }
-            } else if connection.isVideoOrientationSupported {
-                connection.videoOrientation = .portrait
+            } else {
+                if connection.isVideoOrientationSupported {
+                    connection.videoOrientation = .portrait
+                }
             }
         }
     }

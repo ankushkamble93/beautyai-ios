@@ -8,6 +8,9 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
 
     internal let supabaseURL = URL(string: "https://zmstyicgzplmuaehtloe.supabase.co")!
     internal let supabaseKey = "sb_publishable_HE1YdE-9m3t2NeS81VC1VQ_cDMqNhDY"
+    // Use a canonical callback with host/path instead of a bare scheme URL.
+    // Bare custom-scheme redirects (e.g. com.nura://) can cause PKCE flow-state mismatches.
+    private let oauthRedirectURL = URL(string: "com.nura://auth-callback")!
     // TODO: Get fresh API key from Supabase Dashboard → Settings → API → anon public key
     // REVERTED: Back to anon key (service_role should not be used in client apps)
     internal nonisolated let client: SupabaseClient
@@ -36,6 +39,8 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
             print("🔄 AuthenticationManager: isInitialized changed to \(isInitialized)")
         }
     }
+    // Prevent duplicate PKCE token exchanges between SDK-managed and manual callbacks.
+    private var oauthSignInInProgress: Bool = false
     
     // Testing flag to control email cache clearing
     private var preserveEmailCacheOnSignOut: Bool = false
@@ -769,14 +774,16 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
     func signInWithGoogle() async {
         print("🔗 Starting Google OAuth sign-in")
         isLoading = true
+        oauthSignInInProgress = true
         defer { 
             isLoading = false
+            oauthSignInInProgress = false
             print("🔗 Google OAuth sign-in completed (loading state cleared)")
         }
         
         do {
             print("🔗 Initiating Google OAuth with Supabase...")
-            print("🔗 Redirect URL: com.nura://")
+            print("🔗 Redirect URL: \(oauthRedirectURL.absoluteString)")
             print("🔗 Provider: google")
             print("🔗 Scopes: email profile")
             
@@ -785,7 +792,7 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
             // Do NOT call signOut() before this — it corrupts the PKCE code verifier storage.
             try await client.auth.signInWithOAuth(
                 provider: .google,
-                redirectTo: URL(string: "com.nura://")!,
+                redirectTo: oauthRedirectURL,
                 scopes: "email profile"
             )
             
@@ -808,15 +815,17 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
     func signInWithApple() async {
         print("🔗 Starting Apple OAuth sign-in")
         isLoading = true
+        oauthSignInInProgress = true
         defer { 
             isLoading = false
+            oauthSignInInProgress = false
             print("🔗 Apple OAuth sign-in completed (loading state cleared)")
         }
         do {
             print("🔗 Initiating Apple OAuth with Supabase...")
             try await client.auth.signInWithOAuth(
                 provider: .apple,
-                redirectTo: URL(string: "com.nura://"),
+                redirectTo: oauthRedirectURL,
                 scopes: "email profile"
             )
             print("🔗 Apple OAuth sign-in initiated successfully")
@@ -850,12 +859,29 @@ final class AuthenticationManager: ObservableObject, @unchecked Sendable {
             print("🔗 Deep link path: \(url.path)")
             print("🔗 Deep link query: \(url.query ?? "nil")")
             print("🔗 Full deep link: \(url.absoluteString)")
-            
-            // Check if this looks like a Supabase OAuth callback
-            if url.query?.contains("code=") == true || url.query?.contains("error=") == true {
-                print("🔗 This appears to be an OAuth callback URL")
+
+            guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+                print("⚠️ Could not parse deep link components; skipping auth callback handling")
+                return
             }
-            
+
+            let hasOAuthCode = components.queryItems?.contains(where: { $0.name == "code" }) == true
+            let hasOAuthError = components.queryItems?.contains(where: { $0.name == "error" }) == true
+            let hasOAuthState = components.queryItems?.contains(where: { $0.name == "state" }) == true
+
+            // Ignore non-auth links on this scheme.
+            guard hasOAuthCode || hasOAuthError || hasOAuthState else {
+                print("ℹ️ Deep link does not contain OAuth callback params; skipping session exchange")
+                return
+            }
+
+            // signInWithOAuth() already performs PKCE exchange on iOS.
+            // Calling session(from:) again during that flow can trigger flow_state_not_found.
+            guard !oauthSignInInProgress else {
+                print("ℹ️ OAuth flow is SDK-managed and in progress; skipping manual session(from:)")
+                return
+            }
+
             print("🔗 Calling client.auth.session(from: url)...")
             try await client.auth.session(from: url)
             print("✅ Session from URL processed successfully")

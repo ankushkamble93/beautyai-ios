@@ -13,6 +13,12 @@ final class ProductSearchManager {
     // Enhanced SkincareAPI caching: separate cache with longer TTL since it's free
     private var skincareAPICache: [String: (results: [ProductSearchResult], timestamp: Date)] = [:]
     private let skincareAPICacheTTL: TimeInterval = 24 * 60 * 60 // 24 hours
+    // Circuit breaker for dead/unavailable upstream to avoid repeated failed calls.
+    private var skincareAPIUnavailableUntil: Date?
+    private let skincareAPIRetryInterval: TimeInterval = 6 * 60 * 60 // 6 hours
+    // LauraAddams/skincareAPI GitHub dataset fallback (loaded lazily, in-memory only).
+    private var githubSkincareSeed: [GitHubSkincareSeedItem] = []
+    private var githubSkincareSeedLoaded: Bool = false
     
     // MARK: - Persistent Cache Management
     
@@ -60,8 +66,13 @@ final class ProductSearchManager {
                     print("⚠️ [Cache] Cached results for '\(query)' missing descriptions - will regenerate")
                 }
             }
-        } catch {
-            print("ℹ️ ProductSearchManager: No disk cache or failed to decode cached results: \(error)")
+        } catch let nsError as NSError {
+            // First launch/common case: cache file has not been created yet.
+            if nsError.domain == NSCocoaErrorDomain && nsError.code == 260 {
+                print("ℹ️ ProductSearchManager: No existing disk cache yet (first run or cache cleared).")
+            } else {
+                print("ℹ️ ProductSearchManager: No disk cache or failed to decode cached results: \(nsError)")
+            }
             recentQueryToResults = [:]
         }
     }
@@ -352,6 +363,25 @@ final class ProductSearchManager {
 
     // MARK: - SkincareAPI (Secondary, Free Dataset)
     private func skincareAPISearch(query: String) async throws -> [ProductSearchResult] {
+        if isSkincareAPIAvailable() {
+            if let hosted = try? await skincareAPIHostedSearch(query: query), !hosted.isEmpty {
+                return hosted
+            }
+        }
+        // LauraAddams/skincareAPI GitHub dataset fallback
+        if let githubSeedResults = try? await skincareAPIGitHubSeedSearch(query: query), !githubSeedResults.isEmpty {
+            print("✅ ProductSearch: SkincareAPI GitHub seed returned \(githubSeedResults.count) results for query=\(query)")
+            return githubSeedResults
+        }
+        // Open Beauty Facts product search fallback
+        if let obfResults = await openBeautyFactsProductSearch(query: query), !obfResults.isEmpty {
+            print("✅ ProductSearch: OpenBeautyFacts returned \(obfResults.count) results for query=\(query)")
+            return obfResults
+        }
+        return []
+    }
+
+    private func skincareAPIHostedSearch(query: String) async throws -> [ProductSearchResult] {
         guard let encoded = ("https://skincare-api.herokuapp.com/product?q=" + query).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed), let url = URL(string: encoded) else { 
             print("⚠️ ProductSearch: Failed to encode SkincareAPI query=\(query)")
             return [] 
@@ -359,8 +389,12 @@ final class ProductSearchManager {
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { 
-            print("⚠️ ProductSearch: SkincareAPI HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1)) for query=\(query)")
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            if statusCode == 404 || statusCode == 410 {
+                markSkincareAPIUnavailable(statusCode: statusCode)
+            }
+            print("⚠️ ProductSearch: SkincareAPI HTTP \(statusCode) for query=\(query)")
             return [] 
         }
         
@@ -406,6 +440,49 @@ final class ProductSearchManager {
         
         print("✅ ProductSearch: SkincareAPI returned \(mapped.count) results for query=\(query)")
         return mapped
+    }
+
+    private func skincareAPIGitHubSeedSearch(query: String) async throws -> [ProductSearchResult] {
+        let seedItems = try await loadGitHubSkincareSeedIfNeeded()
+        guard !seedItems.isEmpty else { return [] }
+
+        let loweredQuery = query.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !loweredQuery.isEmpty else { return [] }
+        let queryTokens = loweredQuery.split(separator: " ").map(String.init)
+
+        func matches(_ haystack: String) -> Bool {
+            let lower = haystack.lowercased()
+            if lower.contains(loweredQuery) { return true }
+            return queryTokens.allSatisfy { token in lower.contains(token) }
+        }
+
+        var mapped: [ProductSearchResult] = []
+        for item in seedItems {
+            let corpus = "\(item.brand) \(item.name) \(item.ingredients.joined(separator: " "))"
+            guard matches(corpus) else { continue }
+
+            let title = cleanProductTitle([item.brand, item.name].filter { !$0.isEmpty }.joined(separator: " "))
+            let ingredientList = item.ingredients
+            let benefits = parseBenefitsFromIngredients(ingredientList)
+            let productType = Self.classifyType(from: title)
+            let description = generateProductDescription(name: title, brand: item.brand, ingredients: ingredientList, productType: productType)
+            let imageURL = await getProductImage(for: title)
+
+            mapped.append(ProductSearchResult(
+                name: title,
+                brand: item.brand.isEmpty ? nil : item.brand,
+                priceText: nil,
+                benefits: benefits,
+                imageURL: imageURL,
+                destinationURL: nil,
+                ingredients: ingredientList,
+                productType: productType,
+                description: description
+            ))
+
+            if mapped.count >= 10 { break }
+        }
+        return Self.deduplicate(mapped)
     }
 
     // Query for a single product name, prefer thumbnail link for reliability
@@ -535,14 +612,21 @@ final class ProductSearchManager {
     
     // Try canonicalizing a noisy title using SkincareAPI; returns combined brand+name if available
     private func resolveCanonicalFromSkincareAPI(_ noisyTitle: String) async -> String? {
+        guard isSkincareAPIAvailable() else { return nil }
         let q = noisyTitle
         guard let encoded = ("https://skincare-api.herokuapp.com/product?q=" + q).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let url = URL(string: encoded) else { return nil }
         var request = URLRequest(url: url)
         request.timeoutInterval = 8
         guard let (data, response) = try? await URLSession.shared.data(for: request),
-              let http = response as? HTTPURLResponse, http.statusCode == 200,
-              let decoded = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+              let http = response as? HTTPURLResponse else { return nil }
+        guard http.statusCode == 200 else {
+            if http.statusCode == 404 || http.statusCode == 410 {
+                markSkincareAPIUnavailable(statusCode: http.statusCode)
+            }
+            return nil
+        }
+        guard let decoded = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
               let first = decoded.first else { return nil }
         let brand = (first["brand"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let name = (first["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -550,6 +634,24 @@ final class ProductSearchManager {
             return [brand, name].compactMap { $0 }.joined(separator: " ")
         }
         return nil
+    }
+
+    private func isSkincareAPIAvailable() -> Bool {
+        if let unavailableUntil = skincareAPIUnavailableUntil {
+            if Date() < unavailableUntil {
+                return false
+            }
+            skincareAPIUnavailableUntil = nil
+        }
+        return true
+    }
+
+    private func markSkincareAPIUnavailable(statusCode: Int) {
+        let wasAlreadyUnavailable = skincareAPIUnavailableUntil != nil
+        skincareAPIUnavailableUntil = Date().addingTimeInterval(skincareAPIRetryInterval)
+        if !wasAlreadyUnavailable {
+            print("🛑 ProductSearch: SkincareAPI returned HTTP \(statusCode); disabling SkincareAPI network calls for 6h and using Google/local fallback.")
+        }
     }
     
     // Deduplicate by normalized name and destination URL
@@ -729,6 +831,113 @@ final class ProductSearchManager {
             return nil
         }
     }
+
+    /// Search Open Beauty Facts for product metadata (name/brand/ingredients) as a data fallback.
+    private func openBeautyFactsProductSearch(query: String) async -> [ProductSearchResult]? {
+        let searchTerms = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        guard let url = URL(string: "https://world.openbeautyfacts.org/cgi/search.pl?search_terms=\(searchTerms)&json=1&page_size=8&fields=product_name,brands,ingredients_text_en,ingredients_text,image_url,image_small_url,image_front_small_url") else {
+            return nil
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 8
+        request.setValue("NuraApp/1.0 (iOS; contact: support@nura.app)", forHTTPHeaderField: "User-Agent")
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              http.statusCode == 200,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let products = json["products"] as? [[String: Any]] else {
+            return nil
+        }
+
+        var mapped: [ProductSearchResult] = []
+        for product in products {
+            guard let name = (product["product_name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
+                continue
+            }
+            let brand = (product["brands"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let title = cleanProductTitle([brand, name].compactMap { $0 }.joined(separator: " "))
+            let ingredientsText = ((product["ingredients_text_en"] as? String) ?? (product["ingredients_text"] as? String) ?? "")
+            let ingredientCandidates: [String] = ingredientsText
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            let ingredients = Array(ingredientCandidates.prefix(30))
+            let benefits = parseBenefitsFromIngredients(ingredients)
+            let productType = Self.classifyType(from: title)
+            let description = generateProductDescription(name: title, brand: brand, ingredients: ingredients, productType: productType)
+            let imageURL =
+                (product["image_url"] as? String) ??
+                (product["image_small_url"] as? String) ??
+                (product["image_front_small_url"] as? String)
+
+            mapped.append(ProductSearchResult(
+                name: title,
+                brand: brand,
+                priceText: nil,
+                benefits: benefits,
+                imageURL: imageURL,
+                destinationURL: nil,
+                ingredients: ingredients,
+                productType: productType,
+                description: description
+            ))
+        }
+        return Self.deduplicate(mapped)
+    }
+
+    private func loadGitHubSkincareSeedIfNeeded() async throws -> [GitHubSkincareSeedItem] {
+        if githubSkincareSeedLoaded {
+            return githubSkincareSeed
+        }
+        githubSkincareSeedLoaded = true
+
+        let urls = [
+            "https://raw.githubusercontent.com/LauraAddams/skincareAPI/master/db/seed_data/Prod1.csv",
+            "https://raw.githubusercontent.com/LauraAddams/skincareAPI/master/db/seed_data/Prod2.csv"
+        ]
+
+        var loaded: [GitHubSkincareSeedItem] = []
+        for urlString in urls {
+            guard let url = URL(string: urlString) else { continue }
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 10
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let content = String(data: data, encoding: .utf8) else {
+                continue
+            }
+            loaded.append(contentsOf: parseLauraSeedCSV(content))
+        }
+
+        githubSkincareSeed = loaded
+        if !loaded.isEmpty {
+            print("✅ ProductSearch: Loaded \(loaded.count) GitHub skincare seed rows")
+        } else {
+            print("⚠️ ProductSearch: GitHub skincare seed unavailable")
+        }
+        return loaded
+    }
+
+    private func parseLauraSeedCSV(_ content: String) -> [GitHubSkincareSeedItem] {
+        var items: [GitHubSkincareSeedItem] = []
+        let rows = content.components(separatedBy: .newlines)
+        for row in rows.dropFirst() {
+            let line = row.trimmingCharacters(in: .whitespacesAndNewlines)
+            if line.isEmpty { continue }
+            // Seed format is effectively: brand,product_name,ingredients...
+            let parts = line.split(separator: ",", omittingEmptySubsequences: false)
+            if parts.count < 3 { continue }
+            let brand = String(parts[0]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let name = String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if name.isEmpty { continue }
+            let ingredients = parts.dropFirst(2)
+                .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            items.append(GitHubSkincareSeedItem(brand: brand, name: name, ingredients: ingredients))
+        }
+        return items
+    }
     
     // Enhanced caching for SkincareAPI (longer TTL since it's free)
     private func getSkincareAPICache(for query: String) -> [ProductSearchResult]? {
@@ -822,6 +1031,12 @@ private struct GCItem: Codable {
 private struct GCImageInfo: Codable {
     let contextLink: String?
     let thumbnailLink: String?
+}
+
+private struct GitHubSkincareSeedItem {
+    let brand: String
+    let name: String
+    let ingredients: [String]
 }
 
 

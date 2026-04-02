@@ -47,20 +47,22 @@ final class WorkoutNotificationManager: ObservableObject {
         
         let workoutType = HKObjectType.workoutType()
         let typesToRead: Set<HKObjectType> = [workoutType]
+        let healthStore = self.healthStore
         
         return await withCheckedContinuation { continuation in
-            healthStore.requestAuthorization(toShare: [], read: typesToRead) { [weak self] _, error in
+            healthStore.requestAuthorization(toShare: [], read: typesToRead) { [healthStore] _, error in
                 if let error = error {
                     print("❌ WorkoutNotificationManager: Authorization failed: \(error.localizedDescription)")
                     continuation.resume(returning: false)
                     return
                 }
-                let status = self?.healthStore.authorizationStatus(for: workoutType) ?? .notDetermined
+                let status = healthStore.authorizationStatus(for: workoutType)
                 DispatchQueue.main.async {
-                    self?.authorizationStatus = status
+                    let manager = WorkoutNotificationManager.shared
+                    manager.authorizationStatus = status
                     print("🏃 WorkoutNotificationManager: Authorization result: \(status.rawValue)")
                     if status == .sharingAuthorized {
-                        self?.startObservingWorkoutsIfAuthorized()
+                        manager.startObservingWorkoutsIfAuthorized()
                         continuation.resume(returning: true)
                     } else {
                         continuation.resume(returning: false)
@@ -79,12 +81,12 @@ final class WorkoutNotificationManager: ObservableObject {
         
         let workoutType = HKObjectType.workoutType()
         
-        let query = HKObserverQuery(sampleType: workoutType, predicate: nil) { [weak self] _, _, error in
+        let query = HKObserverQuery(sampleType: workoutType, predicate: nil) { _, _, error in
             if let error = error {
                 print("❌ WorkoutNotificationManager: Observer error: \(error.localizedDescription)")
                 return
             }
-            self?.handleNewWorkoutData()
+            WorkoutNotificationManager.shared.handleNewWorkoutData()
         }
         
         healthStore.execute(query)
@@ -118,8 +120,7 @@ final class WorkoutNotificationManager: ObservableObject {
             predicate: nil,
             limit: 1,
             sortDescriptors: [sort]
-        ) { [weak self] _, samples, error in
-            guard let self = self else { return }
+        ) { [userDefaults, lastNotifiedWorkoutKey] _, samples, error in
             if let error = error {
                 print("❌ WorkoutNotificationManager: Query error: \(error.localizedDescription)")
                 return
@@ -128,7 +129,7 @@ final class WorkoutNotificationManager: ObservableObject {
             
             let workoutId = workout.uuid.uuidString
             let endDate = workout.endDate
-            let lastNotified = self.userDefaults.string(forKey: self.lastNotifiedWorkoutKey)
+            let lastNotified = userDefaults.string(forKey: lastNotifiedWorkoutKey)
             
             // Only notify if this is a new workout we haven't notified for
             guard workoutId != lastNotified else { return }
@@ -138,8 +139,8 @@ final class WorkoutNotificationManager: ObservableObject {
             guard endDate >= thirtyMinutesAgo else { return }
             
             DispatchQueue.main.async {
-                self.userDefaults.set(workoutId, forKey: self.lastNotifiedWorkoutKey)
-                self.sendWorkoutCongratsNotification()
+                userDefaults.set(workoutId, forKey: lastNotifiedWorkoutKey)
+                LocalNotificationService.shared.sendWorkoutCongratsNotification()
             }
         }
         

@@ -21,6 +21,8 @@ struct SkinAnalysisView: View {
     @State private var photoValidationResults: [Int: PhotoValidationResult] = [:] // Cache validation results
     @State private var imageToPhotosPickerMapping: [Int: PhotosPickerItem] = [:] // Map uploaded image index to PhotosPicker item
     @State private var showAnalyzeSuccess: Bool = false
+    @State private var showIssueHighlightsSheet: Bool = false
+    @State private var analysisRequestDate: Date? = nil
     
     var body: some View {
         NavigationView {
@@ -188,10 +190,11 @@ struct SkinAnalysisView: View {
                     
                     // Analysis button with progress bar
                     if !skinAnalysisManager.uploadedImages.isEmpty {
-                        VStack(spacing: 4) { // Reduced spacing from 8 to 4
+                        VStack(spacing: 14) {
                             let canAnalyzeNow: Bool = userTierManager.canPerformAnalysis() && skinAnalysisManager.uploadedImages.count >= 3
                             Button(action: {
                                 if canAnalyzeNow {
+                                    analysisRequestDate = Date()
                                     skinAnalysisManager.uploadImages(skinAnalysisManager.uploadedImages)
                                 } else {
                                     // Show limit reached banner (hidden for Pro Unlimited)
@@ -221,7 +224,7 @@ struct SkinAnalysisView: View {
                             
                             // Loading bar + percent during analysis
                             if skinAnalysisManager.isAnalyzing {
-                                VStack(spacing: 4) {
+                                VStack(spacing: 6) {
                                     GeometryReader { geometry in
                                         ZStack(alignment: .leading) {
                                             RoundedRectangle(cornerRadius: 4)
@@ -237,6 +240,35 @@ struct SkinAnalysisView: View {
                                     Text("\(Int(skinAnalysisManager.analysisProgress * 100))%")
                                         .font(.caption)
                                         .foregroundColor(.gray)
+                                }
+                            }
+
+                            if shouldShowIssueHighlightsButton {
+                                Button(action: {
+                                    showIssueHighlightsSheet = true
+                                }) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "photo.stack.fill")
+                                        Text("See Highlighted Areas")
+                                            .fontWeight(.semibold)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 50)
+                                    .background(
+                                        LinearGradient(
+                                            colors: isDark
+                                            ? [Color(red: 0.22, green: 0.16, blue: 0.34), Color(red: 0.17, green: 0.12, blue: 0.29)]
+                                            : [Color(red: 0.36, green: 0.25, blue: 0.56), Color(red: 0.26, green: 0.18, blue: 0.46)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .foregroundColor(.white)
+                                    .cornerRadius(12)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                                    )
                                 }
                             }
                         }
@@ -283,6 +315,7 @@ struct SkinAnalysisView: View {
             LiveSkinAnalysisView { images in
                 // Replace current images with those returned from Live Scan
                 skinAnalysisManager.uploadedImages = images
+                analysisRequestDate = nil
                 // Clear picker-related state
                 selectedImages.removeAll()
                 imageToPhotosPickerMapping.removeAll()
@@ -296,6 +329,13 @@ struct SkinAnalysisView: View {
                     print("✅ SkinAnalysisView: Live Scan images validated immediately (\(images.count))")
                 }
             }
+        }
+        .sheet(isPresented: $showIssueHighlightsSheet) {
+            SkinIssueHighlightsView(
+                images: Array(skinAnalysisManager.uploadedImages.prefix(3)),
+                conditions: validDetectedConditions
+            )
+            .environmentObject(appearanceManager)
         }
         .overlay(
             Group {
@@ -331,6 +371,7 @@ struct SkinAnalysisView: View {
     // Handle images coming from Live Scan (kept for clarity if we later reuse)
     private func handleLiveScanImages(_ images: [UIImage]) {
         skinAnalysisManager.uploadedImages = images
+        analysisRequestDate = nil
         selectedImages.removeAll()
         imageToPhotosPickerMapping.removeAll()
         photoValidationResults.removeAll()
@@ -356,6 +397,7 @@ struct SkinAnalysisView: View {
         }
         
         DispatchQueue.main.async {
+            analysisRequestDate = nil
             // Clear existing validation results when new images are loaded
             photoValidationResults.removeAll()
             
@@ -408,6 +450,7 @@ struct SkinAnalysisView: View {
         }
         
         withAnimation(.easeInOut(duration: 0.3)) {
+            analysisRequestDate = nil
             // Get the PhotosPicker item that corresponds to this image
             let photosPickerItem = imageToPhotosPickerMapping[index]
             
@@ -1165,6 +1208,25 @@ struct SkinAnalysisView: View {
     }
     
     // Removed fake progress; progress is bound to SkinAnalysisManager
+    private var validDetectedConditions: [SkinCondition] {
+        guard let result = skinAnalysisManager.analysisResults else { return [] }
+        return result.conditions.filter { condition in
+            let lowerName = condition.name.lowercased()
+            let isFallback = lowerName.contains("analysis failed") ||
+                lowerName.contains("review required") ||
+                lowerName.contains("analysis completed")
+            return !isFallback
+        }
+    }
+
+    private var shouldShowIssueHighlightsButton: Bool {
+        guard skinAnalysisManager.uploadedImages.count == 3 else { return false }
+        guard !skinAnalysisManager.isAnalyzing else { return false }
+        guard let requestedAt = analysisRequestDate else { return false }
+        guard let result = skinAnalysisManager.analysisResults else { return false }
+        return result.imageCount == 3 && result.analysisDate >= requestedAt
+    }
+
     private var isDark: Bool { 
         appearanceManager.colorSchemePreference == "dark" || 
         (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark) 
@@ -1511,6 +1573,635 @@ struct PhotoValidationView: View {
 struct PhotoValidationResult {
     let isValid: Bool
     let message: String
+}
+
+private struct ConditionOverlayRegion: Identifiable {
+    enum HighlightStyle {
+        case acne
+        case oily
+        case contour
+    }
+
+    let id = UUID()
+    let conditionName: String
+    let areaName: String
+    let color: Color
+    let normalizedRect: CGRect
+    let style: HighlightStyle
+}
+
+struct SkinIssueHighlightsView: View {
+    let images: [UIImage]
+    let conditions: [SkinCondition]
+
+    @EnvironmentObject var appearanceManager: AppearanceManager
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedImageIndex: Int = 0
+    @State private var faceLayouts: [Int: FaceOverlayLayout] = [:]
+
+    private let issueColors: [Color] = [
+        Color(red: 0.89, green: 0.36, blue: 0.36),
+        Color(red: 0.95, green: 0.62, blue: 0.20),
+        Color(red: 0.34, green: 0.67, blue: 0.99),
+        Color(red: 0.51, green: 0.42, blue: 0.93),
+        Color(red: 0.31, green: 0.78, blue: 0.64),
+        Color(red: 0.98, green: 0.44, blue: 0.70)
+    ]
+
+    enum PhotoPose {
+        case front
+        case sideLeft
+        case sideRight
+    }
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 16) {
+                if images.isEmpty {
+                    VStack(spacing: 8) {
+                        Text("No photos available yet.")
+                            .font(.headline)
+                        Text("Add and analyze 3 photos to view detailed highlights.")
+                            .font(.caption)
+                            .foregroundColor(isDark ? NuraColors.textSecondaryDark : NuraColors.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    TabView(selection: $selectedImageIndex) {
+                        ForEach(Array(images.prefix(3).enumerated()), id: \.offset) { index, image in
+                            LuxeHighlightedImageSlide(
+                                image: image,
+                                title: photoTitle(for: index),
+                                index: index,
+                                total: min(images.count, 3),
+                                regions: overlayRegions(for: index)
+                            )
+                            .padding(.horizontal, 14)
+                            .padding(.top, 8)
+                            .tag(index)
+                        }
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .always))
+                    .frame(maxHeight: .infinity)
+                }
+
+                issueLegendCard
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 8)
+            }
+            .background(
+                LinearGradient(
+                    colors: isDark
+                    ? [Color(red: 0.11, green: 0.09, blue: 0.16), Color(red: 0.15, green: 0.11, blue: 0.20)]
+                    : [Color(red: 0.95, green: 0.93, blue: 0.98), Color(red: 0.92, green: 0.89, blue: 0.97)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .navigationTitle("Issue Highlights")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .task {
+            await computeFaceLayouts()
+        }
+    }
+
+    private var issueLegendCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Issue Colors")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+
+            if conditions.isEmpty {
+                Text("No visible concerns were flagged in this analysis.")
+                    .font(.caption)
+                    .foregroundColor(isDark ? NuraColors.textSecondaryDark : NuraColors.textSecondary)
+            } else {
+                ForEach(Array(conditions.enumerated()), id: \.element.id) { index, condition in
+                    HStack(spacing: 9) {
+                        Circle()
+                            .fill(issueColors[index % issueColors.count])
+                            .frame(width: 10, height: 10)
+                        Text(condition.name.capitalized)
+                            .font(.caption)
+                            .foregroundColor(isDark ? NuraColors.textPrimaryDark : .primary)
+                        Spacer()
+                        Text(condition.severity.rawValue.capitalized)
+                            .font(.caption2)
+                            .foregroundColor(isDark ? NuraColors.textSecondaryDark : NuraColors.textSecondary)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(isDark ? NuraColors.cardDark.opacity(0.9) : .white.opacity(0.9))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.white.opacity(isDark ? 0.14 : 0.55), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(isDark ? 0.35 : 0.08), radius: 10, x: 0, y: 5)
+    }
+
+    private func overlayRegions(for imageIndex: Int) -> [ConditionOverlayRegion] {
+        guard !conditions.isEmpty else { return [] }
+        let fallbackPose = pose(for: imageIndex)
+        let layout = faceLayouts[imageIndex] ?? FaceOverlayLayout(
+            faceRect: CGRect(x: 0.18, y: 0.16, width: 0.64, height: 0.72),
+            pose: fallbackPose,
+            browLineY: nil
+        )
+
+        var regions: [ConditionOverlayRegion] = []
+        for (conditionIndex, condition) in conditions.enumerated() {
+            let color = issueColors[conditionIndex % issueColors.count]
+            let areas = sanitizedAffectedAreas(for: condition)
+            let style = highlightStyle(for: condition.name)
+            for area in areas {
+                for rect in normalizedRects(for: area, layout: layout) {
+                    regions.append(
+                        ConditionOverlayRegion(
+                            conditionName: condition.name,
+                            areaName: area,
+                            color: color,
+                            normalizedRect: rect,
+                            style: style
+                        )
+                    )
+                }
+            }
+        }
+        return regions
+    }
+
+    private func sanitizedAffectedAreas(for condition: SkinCondition) -> [String] {
+        let conditionName = condition.name.lowercased()
+        let isOily = conditionName.contains("oily") || conditionName.contains("oil") || conditionName.contains("sebum")
+        let isScar = conditionName.contains("scar")
+        let isAcneLike = conditionName.contains("acne") || conditionName.contains("blemish") || conditionName.contains("breakout")
+
+        var sourceAreas = condition.affectedAreas
+        if sourceAreas.isEmpty {
+            sourceAreas = ["face"]
+        }
+
+        var cleaned: [String] = []
+        for raw in sourceAreas {
+            let area = raw.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+
+            // Never draw overlays on eyebrow/eyelid labels.
+            if area.contains("brow") || area.contains("eyebrow") || area.contains("eyelid") {
+                continue
+            }
+
+            if area == "face" {
+                if isOily {
+                    cleaned.append(contentsOf: ["nose", "left cheek", "right cheek"])
+                } else if isScar || isAcneLike {
+                    cleaned.append(contentsOf: ["left cheek", "right cheek", "chin"])
+                } else {
+                    cleaned.append("face")
+                }
+                continue
+            }
+
+            // Oily/Scar overlays on forehead tend to look like eyebrow highlights.
+            if (isOily || isScar) && (area.contains("forehead") || area.contains("t-zone")) {
+                continue
+            }
+
+            cleaned.append(area)
+        }
+
+        let deduped = Array(Set(cleaned))
+        if !deduped.isEmpty {
+            return deduped
+        }
+
+        if isOily {
+            return ["nose", "left cheek", "right cheek"]
+        }
+        if isScar || isAcneLike {
+            return ["left cheek", "right cheek", "chin"]
+        }
+        return ["face"]
+    }
+
+    private func pose(for index: Int) -> PhotoPose {
+        switch index {
+        case 0: return .front
+        case 1: return .sideLeft
+        case 2: return .sideRight
+        default: return .front
+        }
+    }
+
+    private func highlightStyle(for conditionName: String) -> ConditionOverlayRegion.HighlightStyle {
+        let value = conditionName.lowercased()
+        if value.contains("acne") || value.contains("pimple") || value.contains("blemish") || value.contains("breakout") || value.contains("blackhead") || value.contains("whitehead") {
+            return .acne
+        }
+        if value.contains("oily") || value.contains("oil") || value.contains("sebum") || value.contains("shine") {
+            return .oily
+        }
+        return .contour
+    }
+
+    private func photoTitle(for index: Int) -> String {
+        switch index {
+        case 0: return "Photo 1 (Front)"
+        case 1: return "Photo 2 (Side)"
+        case 2: return "Photo 3 (Side)"
+        default: return "Photo \(index + 1)"
+        }
+    }
+
+    private func normalizedRects(for area: String, layout: FaceOverlayLayout) -> [CGRect] {
+        let value = area.lowercased()
+        let isLeftNamed = value.contains("left")
+        let isRightNamed = value.contains("right")
+        let isGenericCheek = value.contains("cheek") && !isLeftNamed && !isRightNamed
+        let isGenericEye = value.contains("eye") && !isLeftNamed && !isRightNamed
+        let isGenericTemple = value.contains("temple") && !isLeftNamed && !isRightNamed
+
+        if layout.pose == .sideLeft && isRightNamed { return [] }
+        if layout.pose == .sideRight && isLeftNamed { return [] }
+
+        if value.contains("forehead") || value.contains("t-zone") {
+            // Forehead band: upper-mid forehead only (avoid eyebrows).
+            let base = faceRelativeRect(0.26, 0.10, 0.48, 0.12, layout: layout)
+            if let browY = layout.browLineY {
+                var adjusted = base
+                let maxAllowedY = browY - 0.032
+                if adjusted.maxY > maxAllowedY {
+                    adjusted.size.height = max(0.04, maxAllowedY - adjusted.minY)
+                }
+                return [adjusted]
+            }
+            return [base]
+        }
+        if value.contains("left cheek") {
+            return [faceRelativeRect(0.12, 0.40, 0.24, 0.21, layout: layout)]
+        }
+        if value.contains("right cheek") {
+            return [faceRelativeRect(0.64, 0.40, 0.24, 0.21, layout: layout)]
+        }
+        if isGenericCheek {
+            if layout.pose == .sideLeft {
+                return [faceRelativeRect(0.14, 0.40, 0.30, 0.22, layout: layout)]
+            }
+            if layout.pose == .sideRight {
+                return [faceRelativeRect(0.56, 0.40, 0.30, 0.22, layout: layout)]
+            }
+            return [
+                faceRelativeRect(0.12, 0.40, 0.24, 0.21, layout: layout),
+                faceRelativeRect(0.64, 0.40, 0.24, 0.21, layout: layout)
+            ]
+        }
+        if value.contains("nose") {
+            return [faceRelativeRect(0.43, 0.35, 0.14, 0.24, layout: layout)]
+        }
+        if value.contains("chin") {
+            return [faceRelativeRect(0.34, 0.73, 0.32, 0.16, layout: layout)]
+        }
+        if value.contains("jaw") {
+            return [faceRelativeRect(0.22, 0.69, 0.56, 0.20, layout: layout)]
+        }
+        if value.contains("under eye") || value.contains("under-eye") {
+            if layout.pose == .sideLeft {
+                return [faceRelativeRect(0.24, 0.31, 0.20, 0.10, layout: layout)]
+            }
+            if layout.pose == .sideRight {
+                return [faceRelativeRect(0.56, 0.31, 0.20, 0.10, layout: layout)]
+            }
+            return [
+                faceRelativeRect(0.25, 0.31, 0.19, 0.10, layout: layout),
+                faceRelativeRect(0.56, 0.31, 0.19, 0.10, layout: layout)
+            ]
+        }
+        if isGenericEye || value.contains("eye") {
+            if layout.pose == .sideLeft {
+                return [faceRelativeRect(0.24, 0.28, 0.22, 0.12, layout: layout)]
+            }
+            if layout.pose == .sideRight {
+                return [faceRelativeRect(0.54, 0.28, 0.22, 0.12, layout: layout)]
+            }
+            return [
+                faceRelativeRect(0.24, 0.28, 0.20, 0.12, layout: layout),
+                faceRelativeRect(0.56, 0.28, 0.20, 0.12, layout: layout)
+            ]
+        }
+        if isGenericTemple || value.contains("temple") {
+            if layout.pose == .sideLeft {
+                return [faceRelativeRect(0.10, 0.24, 0.18, 0.16, layout: layout)]
+            }
+            if layout.pose == .sideRight {
+                return [faceRelativeRect(0.72, 0.24, 0.18, 0.16, layout: layout)]
+            }
+            return [
+                faceRelativeRect(0.10, 0.24, 0.16, 0.16, layout: layout),
+                faceRelativeRect(0.74, 0.24, 0.16, 0.16, layout: layout)
+            ]
+        }
+        if value.contains("mouth") || value.contains("lip") {
+            return [faceRelativeRect(0.36, 0.59, 0.28, 0.11, layout: layout)]
+        }
+        if value.contains("face") {
+            if layout.pose == .sideLeft {
+                return [faceRelativeRect(0.05, 0.08, 0.65, 0.84, layout: layout)]
+            }
+            if layout.pose == .sideRight {
+                return [faceRelativeRect(0.30, 0.08, 0.65, 0.84, layout: layout)]
+            }
+            return [faceRelativeRect(0.10, 0.08, 0.80, 0.84, layout: layout)]
+        }
+
+        return [faceRelativeRect(0.10, 0.10, 0.80, 0.82, layout: layout)]
+    }
+
+    private func faceRelativeRect(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, layout: FaceOverlayLayout) -> CGRect {
+        let r = layout.faceRect
+        let rect = CGRect(
+            x: r.minX + (x * r.width),
+            y: r.minY + (y * r.height),
+            width: w * r.width,
+            height: h * r.height
+        )
+        return clamp(rect)
+    }
+
+    private func clamp(_ rect: CGRect) -> CGRect {
+        let minX = max(0.0, min(1.0, rect.minX))
+        let minY = max(0.0, min(1.0, rect.minY))
+        let maxX = max(minX, min(1.0, rect.maxX))
+        let maxY = max(minY, min(1.0, rect.maxY))
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    private func computeFaceLayouts() async {
+        var updated: [Int: FaceOverlayLayout] = [:]
+        for (index, image) in Array(images.prefix(3).enumerated()) {
+            if let layout = await detectFaceLayout(in: image, fallbackPose: pose(for: index)) {
+                updated[index] = layout
+            }
+        }
+        await MainActor.run {
+            faceLayouts = updated
+        }
+    }
+
+    private func detectFaceLayout(in image: UIImage, fallbackPose: PhotoPose) async -> FaceOverlayLayout? {
+        guard let cgImage = image.cgImage else { return nil }
+        return await withCheckedContinuation { continuation in
+            let request = VNDetectFaceLandmarksRequest { req, _ in
+                let observations = (req.results as? [VNFaceObservation]) ?? []
+                guard let face = observations.max(by: {
+                    $0.boundingBox.width * $0.boundingBox.height < $1.boundingBox.width * $1.boundingBox.height
+                }) else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+
+                let pose: PhotoPose
+                if let yaw = face.yaw?.doubleValue {
+                    if yaw > 0.20 {
+                        pose = .sideLeft
+                    } else if yaw < -0.20 {
+                        pose = .sideRight
+                    } else {
+                        pose = .front
+                    }
+                } else {
+                    pose = fallbackPose
+                }
+
+                let faceTopLeftRect = CGRect(
+                    x: face.boundingBox.minX,
+                    y: 1.0 - face.boundingBox.maxY,
+                    width: face.boundingBox.width,
+                    height: face.boundingBox.height
+                )
+                var padded = faceTopLeftRect.insetBy(dx: -0.015, dy: -0.012)
+                padded = clamp(padded)
+
+                let browY = eyebrowLineTopLeftY(face: face)
+                continuation.resume(returning: FaceOverlayLayout(faceRect: padded, pose: pose, browLineY: browY))
+            }
+
+            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+            do {
+                try handler.perform([request])
+            } catch {
+                continuation.resume(returning: nil)
+            }
+        }
+    }
+
+    private func eyebrowLineTopLeftY(face: VNFaceObservation) -> CGFloat? {
+        guard let landmarks = face.landmarks else { return nil }
+        let points = (landmarks.leftEyebrow?.normalizedPoints ?? []) + (landmarks.rightEyebrow?.normalizedPoints ?? [])
+        guard !points.isEmpty else { return nil }
+
+        let ysTopLeft = points.map { point -> CGFloat in
+            let globalBottomY = face.boundingBox.minY + (CGFloat(point.y) * face.boundingBox.height)
+            return 1.0 - globalBottomY
+        }
+        return ysTopLeft.reduce(0, +) / CGFloat(ysTopLeft.count)
+    }
+
+    private var isDark: Bool {
+        appearanceManager.colorSchemePreference == "dark" ||
+        (appearanceManager.colorSchemePreference == "system" && UITraitCollection.current.userInterfaceStyle == .dark)
+    }
+}
+
+private struct FaceOverlayLayout {
+    let faceRect: CGRect
+    let pose: SkinIssueHighlightsView.PhotoPose
+    let browLineY: CGFloat?
+}
+
+private struct LuxeHighlightedImageSlide: View {
+    let image: UIImage
+    let title: String
+    let index: Int
+    let total: Int
+    let regions: [ConditionOverlayRegion]
+
+    var body: some View {
+        GeometryReader { outer in
+            let cardSize = CGSize(width: max(120, outer.size.width - 12), height: outer.size.height)
+
+            VStack(spacing: 10) {
+                HStack {
+                    Text(title)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Spacer()
+                    Text("\(index + 1)/\(total)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                DetailedHighlightedImageCard(
+                    image: image,
+                    regions: regions
+                )
+                .frame(width: cardSize.width, height: max(260, outer.size.height - 44))
+            }
+            .padding(.horizontal, 6)
+        }
+    }
+}
+
+private struct DetailedHighlightedImageCard: View {
+    let image: UIImage
+    let regions: [ConditionOverlayRegion]
+
+    var body: some View {
+        GeometryReader { geometry in
+            let imageRect = fittedImageRect(containerSize: geometry.size, imageSize: image.size)
+
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.black.opacity(0.06), Color.black.opacity(0.12)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                ForEach(regions) { region in
+                    let mapped = CGRect(
+                        x: imageRect.origin.x + (region.normalizedRect.origin.x * imageRect.size.width),
+                        y: imageRect.origin.y + (region.normalizedRect.origin.y * imageRect.size.height),
+                        width: region.normalizedRect.size.width * imageRect.size.width,
+                        height: region.normalizedRect.size.height * imageRect.size.height
+                    )
+                    IssueRegionOverlay(region: region, rect: mapped)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(Color.white.opacity(0.28), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 8)
+        }
+    }
+
+    private func fittedImageRect(containerSize: CGSize, imageSize: CGSize) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0, containerSize.width > 0, containerSize.height > 0 else {
+            return CGRect(origin: .zero, size: containerSize)
+        }
+
+        let imageAspect = imageSize.width / imageSize.height
+        let containerAspect = containerSize.width / containerSize.height
+        if imageAspect > containerAspect {
+            let width = containerSize.width
+            let height = width / imageAspect
+            return CGRect(x: 0, y: (containerSize.height - height) / 2, width: width, height: height)
+        } else {
+            let height = containerSize.height
+            let width = height * imageAspect
+            return CGRect(x: (containerSize.width - width) / 2, y: 0, width: width, height: height)
+        }
+    }
+}
+
+private struct IssueRegionOverlay: View {
+    let region: ConditionOverlayRegion
+    let rect: CGRect
+
+    var body: some View {
+        ZStack {
+            switch region.style {
+            case .acne:
+                ForEach(0..<9, id: \.self) { idx in
+                    let point = seededPoint(index: idx)
+                    let dotSize = 3.0 + CGFloat((idx % 3))
+                    Circle()
+                        .fill(region.color.opacity(0.20))
+                        .overlay(Circle().stroke(region.color.opacity(0.82), lineWidth: 0.8))
+                        .frame(width: dotSize, height: dotSize)
+                        .position(
+                            x: rect.minX + point.x * rect.width,
+                            y: rect.minY + point.y * rect.height
+                        )
+                }
+                organicStroke(width: 1.6, opacity: 0.70)
+
+            case .oily:
+                ForEach(0..<11, id: \.self) { idx in
+                    let x = rect.minX + (CGFloat(idx) / 10.0) * rect.width
+                    let y = rect.minY + (0.25 + 0.5 * abs(sin(CGFloat(idx) * 0.7))) * rect.height
+                    Path { path in
+                        path.move(to: CGPoint(x: x - 7, y: y - 5))
+                        path.addQuadCurve(
+                            to: CGPoint(x: x + 7, y: y + 5),
+                            control: CGPoint(x: x, y: y + 11)
+                        )
+                    }
+                    .stroke(region.color.opacity(0.65), style: StrokeStyle(lineWidth: 1.1, lineCap: .round))
+                }
+                organicStroke(width: 2.0, opacity: 0.8)
+
+            case .contour:
+                organicStroke(width: 2.2, opacity: 0.92)
+                organicStroke(scale: 0.9, width: 1.0, opacity: 0.42)
+            }
+        }
+    }
+
+    private func organicStroke(scale: CGFloat = 1.0, width: CGFloat, opacity: CGFloat) -> some View {
+        Path { path in
+            let insetX = rect.width * (1 - scale) / 2
+            let insetY = rect.height * (1 - scale) / 2
+            let w = rect.width * scale
+            let h = rect.height * scale
+            let origin = CGPoint(x: rect.minX + insetX, y: rect.minY + insetY)
+
+            let p1 = CGPoint(x: origin.x + 0.06 * w, y: origin.y + 0.30 * h)
+            let p2 = CGPoint(x: origin.x + 0.18 * w, y: origin.y + 0.08 * h)
+            let p3 = CGPoint(x: origin.x + 0.50 * w, y: origin.y + 0.05 * h)
+            let p4 = CGPoint(x: origin.x + 0.83 * w, y: origin.y + 0.10 * h)
+            let p5 = CGPoint(x: origin.x + 0.94 * w, y: origin.y + 0.36 * h)
+            let p6 = CGPoint(x: origin.x + 0.90 * w, y: origin.y + 0.68 * h)
+            let p7 = CGPoint(x: origin.x + 0.72 * w, y: origin.y + 0.90 * h)
+            let p8 = CGPoint(x: origin.x + 0.42 * w, y: origin.y + 0.94 * h)
+            let p9 = CGPoint(x: origin.x + 0.14 * w, y: origin.y + 0.81 * h)
+
+            path.move(to: p1)
+            path.addQuadCurve(to: p3, control: p2)
+            path.addQuadCurve(to: p5, control: p4)
+            path.addQuadCurve(to: p7, control: p6)
+            path.addQuadCurve(to: p9, control: p8)
+            path.addQuadCurve(to: p1, control: CGPoint(x: origin.x - 0.02 * w, y: origin.y + 0.52 * h))
+        }
+        .stroke(region.color.opacity(opacity), style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round))
+    }
+
+    private func seededPoint(index: Int) -> CGPoint {
+        let seedText = "\(region.conditionName)-\(region.areaName)-\(index)"
+        let hash = abs(seedText.hashValue)
+        let x = CGFloat((hash % 1000)) / 1000.0
+        let y = CGFloat((hash / 1000 % 1000)) / 1000.0
+        return CGPoint(x: 0.08 + x * 0.84, y: 0.08 + y * 0.84)
+    }
 }
 
 #Preview {

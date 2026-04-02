@@ -64,9 +64,7 @@ struct DashboardView: View {
     @State private var welcomeCardOffset: CGFloat = 0
     @State private var welcomeCardOpacity: Double = 1
     
-    init() {
-        print("🔍 DashboardView: Initialized")
-    }
+    init() {}
     @State private var dashboardData = DashboardData(
         currentRoutine: [],
         progress: ProgressMetrics(
