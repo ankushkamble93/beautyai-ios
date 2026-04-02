@@ -190,6 +190,9 @@ struct SkinAnalysisResult: Codable {
     enum AnalysisProvider: String, Codable {
         case chatGPT35 = "gpt-3.5-turbo"
         case chatGPT4 = "gpt-4-vision-preview"
+        case visionLocal = "vision-local"
+        case coreMLLocal = "coreml-local"
+        case hybridLocalCloud = "hybrid-local-cloud"
         case replicate = "replicate"
         case mock = "mock"
     }

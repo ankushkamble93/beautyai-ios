@@ -65,6 +65,11 @@ class ChatGPTServiceManager: ObservableObject {
                 throw ChatGPTError.invalidResponse
             }
 
+            if isModelRefusalResponse(content) {
+                print("⚠️ ChatGPTServiceManager: Model returned refusal/non-compliant response; using graceful fallback result")
+                return createFallbackResult(content, images.count, model)
+            }
+
             let extractedJSON = extractJSONFromResponse(content)
             let responseLength = content.count
             print("🔍 ChatGPTServiceManager: Raw response content length: \(responseLength)")
@@ -119,6 +124,11 @@ class ChatGPTServiceManager: ObservableObject {
                         throw error
                     }
                     
+                    if isModelRefusalResponse(retryContent) {
+                        print("⚠️ ChatGPTServiceManager: Retry also returned refusal; using graceful fallback result")
+                        return createFallbackResult(retryContent, images.count, model)
+                    }
+
                     let retryJSON = extractJSONFromResponse(retryContent)
                     print("🔍 ChatGPTServiceManager: Retry JSON extracted, length: \(retryJSON.count)")
                     
@@ -169,12 +179,10 @@ class ChatGPTServiceManager: ObservableObject {
             ],
             "overallAssessment": "<brief assessment>",
             "recommendations": ["<rec1>", "<rec2>"],
-            "confidence": <0.0-1.0>,
-            "skinAgeYears": <18-65>
+            "confidence": <0.0-1.0>
         }
         
         CRITICAL RULES:
-        - skinAgeYears is REQUIRED (estimate based on wrinkles, texture, tone)
         - Use SHORT descriptions (2-3 words max)
         - MAX 2 conditions to stay under character limit
         - MAX 2 recommendations
@@ -205,12 +213,10 @@ class ChatGPTServiceManager: ObservableObject {
             ],
             "overallAssessment": "<5 words>",
             "recommendations": ["<rec>"],
-            "confidence": <0.0-1.0>,
-            "skinAgeYears": <18-65>
+            "confidence": <0.0-1.0>
         }
         
         RULES:
-        - skinAgeYears REQUIRED
         - MAX 1 condition
         - MAX 1 recommendation
         - SHORT descriptions only
@@ -265,7 +271,7 @@ class ChatGPTServiceManager: ObservableObject {
             content: [
                 ChatGPTContent(
                     type: "text",
-                    text: "You are a professional dermatologist and skin analysis expert. You MUST analyze the provided images and provide detailed skin health assessments. CRITICAL: You MUST respond with ONLY valid JSON in the exact format requested. No markdown, no explanations, no additional text. The response must be a single JSON object starting with { and ending with }. MOST IMPORTANT: The skinAgeYears field is REQUIRED and must be a realistic estimate based on visible skin aging signs. If you cannot analyze the images for any reason, still respond with valid JSON using placeholder values.",
+                    text: "You are a skincare analysis assistant. Provide non-diagnostic cosmetic skin observations from the provided images. CRITICAL: respond with ONLY valid JSON in the exact format requested. No markdown, no explanations, no additional text. The response must be a single JSON object starting with { and ending with }. If you cannot analyze the images for any reason, still respond with valid JSON using placeholder values.",
                     imageURL: nil
                 )
             ]
@@ -359,6 +365,11 @@ class ChatGPTServiceManager: ObservableObject {
             
             guard !parsedResponse.conditions.isEmpty else {
                 print("❌ ChatGPTServiceManager: No conditions found in response")
+                throw ChatGPTError.invalidResponse
+            }
+
+            guard !isPlaceholderAnalysis(parsedResponse) else {
+                print("❌ ChatGPTServiceManager: Placeholder/refusal analysis detected")
                 throw ChatGPTError.invalidResponse
             }
             
@@ -485,6 +496,23 @@ class ChatGPTServiceManager: ObservableObject {
         print("⚠️ ChatGPTServiceManager: Could not extract valid JSON, returning original content")
         return content
     }
+
+    private func isModelRefusalResponse(_ content: String) -> Bool {
+        let normalized = content.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let refusalPhrases = [
+            "i'm sorry",
+            "i cannot assist",
+            "i can't assist",
+            "i cannot help",
+            "i can't help",
+            "unable to assist",
+            "cannot comply",
+            "can't comply"
+        ]
+        let looksLikeRefusal = refusalPhrases.contains { normalized.contains($0) }
+        let hasJSONEnvelope = normalized.contains("{") && normalized.contains("}")
+        return looksLikeRefusal && !hasJSONEnvelope
+    }
     
     private func createFallbackResult(_ content: String, _ imageCount: Int, _ model: String) -> SkinAnalysisResult {
         print("⚠️ ChatGPTServiceManager: Creating fallback result due to parsing failure")
@@ -593,7 +621,7 @@ class ChatGPTServiceManager: ObservableObject {
         }
 
         // Check if response contains required JSON keys
-        let requiredKeys = ["skinHealthScore", "conditions", "overallAssessment", "recommendations", "confidence", "skinAgeYears"]
+        let requiredKeys = ["skinHealthScore", "conditions", "overallAssessment", "recommendations", "confidence"]
         for key in requiredKeys {
             guard trimmedContent.contains("\"\(key)\"") else {
                 print("❌ ChatGPTServiceManager: Missing required key in extracted JSON: \(key)")
@@ -609,6 +637,25 @@ class ChatGPTServiceManager: ObservableObject {
 
         print("✅ ChatGPTServiceManager: Extracted JSON validation passed")
         return true
+    }
+
+    private func isPlaceholderAnalysis(_ response: ChatGPTParsedResponse) -> Bool {
+        let names = response.conditions.map { $0.name.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }
+        let descriptions = response.conditions.map { $0.description.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }
+        let areas = response.conditions.flatMap { $0.affectedAreas.map { $0.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) } }
+        let blockedTokens: Set<String> = ["unknown", "n/a", "na", "unable", "unavailable"]
+
+        let allNamesPlaceholder = !names.isEmpty && names.allSatisfy { name in
+            blockedTokens.contains(where: { name.contains($0) })
+        }
+        let allDescriptionsPlaceholder = !descriptions.isEmpty && descriptions.allSatisfy { desc in
+            blockedTokens.contains(where: { desc.contains($0) })
+        }
+        let allAreasPlaceholder = !areas.isEmpty && areas.allSatisfy { area in
+            blockedTokens.contains(where: { area.contains($0) })
+        }
+
+        return allNamesPlaceholder || (allDescriptionsPlaceholder && allAreasPlaceholder)
     }
 
     private func validateChatGPTResponse(_ response: ChatGPTVisionResponse) -> Bool {

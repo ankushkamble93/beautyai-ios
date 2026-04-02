@@ -1,6 +1,8 @@
 import Foundation
 import UIKit
 import Supabase
+import Vision
+import CoreML
 
 struct LocalUserProfile: Codable {
     let age: Int
@@ -11,6 +13,390 @@ struct LocalUserProfile: Codable {
     let concerns: [String]
     let allergies: [String]
     let currentProducts: [String]
+}
+
+struct LocalSkinAnalysisDecision {
+    let result: SkinAnalysisResult
+    let confidence: Double
+    let shouldCallCloud: Bool
+    let usedCoreML: Bool
+}
+
+final class LocalSkinAnalysisService {
+    private let cloudEscalationThreshold: Double = 0.80
+    private let optionalCoreMLModelNames: [String] = ["AcneDetection", "SkinConditionSegmentation", "SkinIssueSegmentation"]
+
+    func analyze(images: [UIImage]) async -> LocalSkinAnalysisDecision? {
+        guard !images.isEmpty else { return nil }
+
+        var imageInsights: [LocalImageInsight] = []
+        for image in images.prefix(3) {
+            guard let insight = await inspectImage(image) else { continue }
+            imageInsights.append(insight)
+        }
+        guard !imageInsights.isEmpty else { return nil }
+
+        let faceCoverage = Double(imageInsights.count) / Double(min(images.count, 3))
+        let avgAcne = imageInsights.map(\.acneScore).average
+        let avgOil = imageInsights.map(\.oilScore).average
+        let avgDryness = imageInsights.map(\.drynessScore).average
+        let avgBrightness = imageInsights.map(\.brightness).average
+
+        var conditions: [SkinCondition] = []
+        if avgAcne >= 0.16 {
+            conditions.append(
+                SkinCondition(
+                    name: "Acne",
+                    severity: severity(for: avgAcne),
+                    confidence: min(0.92, 0.50 + avgAcne * 1.8),
+                    description: "Visible blemish clustering",
+                    affectedAreas: dominantAreas(from: imageInsights, metric: { $0.acneByArea })
+                )
+            )
+        }
+        if avgOil >= 0.14 {
+            conditions.append(
+                SkinCondition(
+                    name: "Oily Skin",
+                    severity: severity(for: avgOil),
+                    confidence: min(0.90, 0.48 + avgOil * 1.7),
+                    description: "Excess shine in T-zone",
+                    affectedAreas: dominantAreas(from: imageInsights, metric: { $0.oilByArea })
+                )
+            )
+        }
+        if avgDryness >= 0.22 {
+            conditions.append(
+                SkinCondition(
+                    name: "Dryness",
+                    severity: severity(for: avgDryness * 0.8),
+                    confidence: min(0.84, 0.45 + avgDryness * 1.1),
+                    description: "Low hydration texture signs",
+                    affectedAreas: dominantAreas(from: imageInsights, metric: { $0.drynessByArea })
+                )
+            )
+        }
+
+        let coreML = await runOptionalCoreMLAcnePass(images: Array(images.prefix(3)))
+        if coreML.used, coreML.acneProbability > 0.60 {
+            if let acneIndex = conditions.firstIndex(where: { $0.name.lowercased().contains("acne") }) {
+                let existing = conditions[acneIndex]
+                let boostedConfidence = min(0.96, max(existing.confidence, coreML.acneProbability))
+                let boostedSeverity: SkinCondition.Severity = coreML.acneProbability > 0.8 ? .moderate : existing.severity
+                conditions[acneIndex] = SkinCondition(
+                    id: existing.id,
+                    name: existing.name,
+                    severity: boostedSeverity,
+                    confidence: boostedConfidence,
+                    description: existing.description,
+                    affectedAreas: existing.affectedAreas
+                )
+            } else {
+                conditions.append(
+                    SkinCondition(
+                        name: "Acne",
+                        severity: coreML.acneProbability > 0.8 ? .moderate : .mild,
+                        confidence: coreML.acneProbability,
+                        description: "Model-detected breakout pattern",
+                        affectedAreas: ["cheek", "forehead"]
+                    )
+                )
+            }
+        }
+
+        if conditions.isEmpty {
+            conditions.append(
+                SkinCondition(
+                    name: "Healthy Skin Pattern",
+                    severity: .mild,
+                    confidence: max(0.55, faceCoverage * 0.8),
+                    description: "No strong local concerns",
+                    affectedAreas: ["face"]
+                )
+            )
+        }
+
+        let baseConfidence = min(
+            0.95,
+            (faceCoverage * 0.55) +
+            (poseSpreadConfidence(from: imageInsights) * 0.20) +
+            ((1.0 - abs(avgBrightness - 0.58)) * 0.20) +
+            (coreML.used ? 0.08 : 0.0)
+        )
+
+        let skinHealthScore = max(35, min(96, Int(round(88 - (avgAcne * 38) - (avgOil * 24) - (avgDryness * 20)))))
+        let provider: SkinAnalysisResult.AnalysisProvider = coreML.used ? .coreMLLocal : .visionLocal
+        let result = SkinAnalysisResult(
+            conditions: conditions,
+            confidence: baseConfidence,
+            analysisDate: Date(),
+            recommendations: localRecommendations(for: conditions),
+            skinHealthScore: skinHealthScore,
+            analysisVersion: "2.0-local",
+            routineGenerationTimestamp: nil,
+            analysisProvider: provider,
+            imageCount: min(images.count, 3),
+            skinAgeYears: nil
+        )
+
+        let shouldEscalateToCloud = (!coreML.used) || (baseConfidence < cloudEscalationThreshold)
+
+        return LocalSkinAnalysisDecision(
+            result: result,
+            confidence: baseConfidence,
+            shouldCallCloud: shouldEscalateToCloud,
+            usedCoreML: coreML.used
+        )
+    }
+
+    private func inspectImage(_ image: UIImage) async -> LocalImageInsight? {
+        guard let cgImage = image.cgImage else { return nil }
+        guard let face = await detectPrimaryFace(in: cgImage) else { return nil }
+        guard let rgba = makeRGBAContext(from: cgImage) else { return nil }
+        defer { free(rgba.data) }
+
+        let pose = classifyPose(yaw: face.yaw?.doubleValue)
+        let areaMap = areaRects(for: face.boundingBox, pose: pose)
+        var acneByArea: [String: Double] = [:]
+        var oilByArea: [String: Double] = [:]
+        var dryByArea: [String: Double] = [:]
+        var brightnessByArea: [Double] = []
+
+        for (name, rect) in areaMap {
+            let stats = regionStats(in: rect, rgba: rgba, width: cgImage.width, height: cgImage.height)
+            acneByArea[name] = stats.redSpotRatio
+            oilByArea[name] = stats.highlightRatio
+            dryByArea[name] = stats.lowSaturationRatio
+            brightnessByArea.append(stats.meanLuma)
+        }
+
+        return LocalImageInsight(
+            pose: pose,
+            acneScore: Array(acneByArea.values).average,
+            oilScore: Array(oilByArea.values).average,
+            drynessScore: Array(dryByArea.values).average,
+            brightness: brightnessByArea.average,
+            acneByArea: acneByArea,
+            oilByArea: oilByArea,
+            drynessByArea: dryByArea
+        )
+    }
+
+    private func detectPrimaryFace(in cgImage: CGImage) async -> VNFaceObservation? {
+        await withCheckedContinuation { continuation in
+            let request = VNDetectFaceLandmarksRequest { req, _ in
+                let faces = (req.results as? [VNFaceObservation]) ?? []
+                let primary = faces.sorted { $0.boundingBox.width * $0.boundingBox.height > $1.boundingBox.width * $1.boundingBox.height }.first
+                continuation.resume(returning: primary)
+            }
+            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+            do {
+                try handler.perform([request])
+            } catch {
+                continuation.resume(returning: nil)
+            }
+        }
+    }
+
+    private func classifyPose(yaw: Double?) -> LocalPose {
+        let y = yaw ?? 0
+        if y > 0.20 { return .left }
+        if y < -0.20 { return .right }
+        return .front
+    }
+
+    private func areaRects(for face: CGRect, pose: LocalPose) -> [String: CGRect] {
+        func region(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> CGRect {
+            CGRect(x: face.minX + face.width * x, y: face.minY + face.height * y, width: face.width * w, height: face.height * h)
+        }
+        switch pose {
+        case .front:
+            return [
+                "forehead": region(0.22, 0.68, 0.56, 0.18),
+                "left cheek": region(0.08, 0.34, 0.25, 0.24),
+                "right cheek": region(0.67, 0.34, 0.25, 0.24),
+                "nose": region(0.43, 0.33, 0.14, 0.25),
+                "chin": region(0.34, 0.12, 0.32, 0.16)
+            ]
+        case .left:
+            return [
+                "forehead": region(0.15, 0.68, 0.50, 0.18),
+                "left cheek": region(0.08, 0.34, 0.30, 0.26),
+                "nose": region(0.35, 0.34, 0.14, 0.23),
+                "chin": region(0.28, 0.12, 0.32, 0.16)
+            ]
+        case .right:
+            return [
+                "forehead": region(0.35, 0.68, 0.50, 0.18),
+                "right cheek": region(0.62, 0.34, 0.30, 0.26),
+                "nose": region(0.51, 0.34, 0.14, 0.23),
+                "chin": region(0.40, 0.12, 0.32, 0.16)
+            ]
+        }
+    }
+
+    private func severity(for score: Double) -> SkinCondition.Severity {
+        if score >= 0.34 { return .severe }
+        if score >= 0.20 { return .moderate }
+        return .mild
+    }
+
+    private func dominantAreas(from insights: [LocalImageInsight], metric: (LocalImageInsight) -> [String: Double]) -> [String] {
+        var merged: [String: Double] = [:]
+        for insight in insights {
+            for (area, value) in metric(insight) {
+                merged[area, default: 0] += value
+            }
+        }
+        return merged.sorted(by: { $0.value > $1.value }).prefix(2).map(\.key)
+    }
+
+    private func localRecommendations(for conditions: [SkinCondition]) -> [String] {
+        var tips: [String] = []
+        if conditions.contains(where: { $0.name.lowercased().contains("acne") }) { tips.append("Use non-comedogenic cleanser and spot treatment.") }
+        if conditions.contains(where: { $0.name.lowercased().contains("oily") }) { tips.append("Use lightweight gel moisturizer and niacinamide.") }
+        if conditions.contains(where: { $0.name.lowercased().contains("dry") }) { tips.append("Add ceramide moisturizer and reduce harsh exfoliation.") }
+        if tips.isEmpty { tips.append("Maintain consistent cleanser, moisturizer, and SPF routine.") }
+        return Array(tips.prefix(3))
+    }
+
+    private func poseSpreadConfidence(from insights: [LocalImageInsight]) -> Double {
+        switch Set(insights.map(\.pose)).count {
+        case 3: return 1.0
+        case 2: return 0.75
+        default: return 0.55
+        }
+    }
+
+    private func runOptionalCoreMLAcnePass(images: [UIImage]) async -> (used: Bool, acneProbability: Double) {
+        guard let model = loadOptionalCoreMLModel() else { return (false, 0.0) }
+        var probs: [Double] = []
+        for image in images {
+            guard let cg = image.cgImage else { continue }
+            let result = await withCheckedContinuation { continuation in
+                let request = VNCoreMLRequest(model: model) { req, _ in
+                    if let classification = (req.results as? [VNClassificationObservation])?.first {
+                        let acneLike = classification.identifier.lowercased().contains("acne")
+                        continuation.resume(returning: acneLike ? Double(classification.confidence) : 1.0 - Double(classification.confidence))
+                    } else {
+                        continuation.resume(returning: 0.0)
+                    }
+                }
+                let handler = VNImageRequestHandler(cgImage: cg, options: [:])
+                do { try handler.perform([request]) } catch { continuation.resume(returning: 0.0) }
+            }
+            probs.append(result)
+        }
+        return (true, probs.average)
+    }
+
+    private func loadOptionalCoreMLModel() -> VNCoreMLModel? {
+        for name in optionalCoreMLModelNames {
+            if let compiledURL = Bundle.main.url(forResource: name, withExtension: "mlmodelc"),
+               let model = try? MLModel(contentsOf: compiledURL),
+               let vn = try? VNCoreMLModel(for: model) { return vn }
+        }
+        return nil
+    }
+
+    private func makeRGBAContext(from cgImage: CGImage) -> (data: UnsafeMutableRawPointer, bytesPerRow: Int)? {
+        let width = cgImage.width
+        let height = cgImage.height
+        let bytesPerRow = width * 4
+        guard let data = malloc(height * bytesPerRow) else { return nil }
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: data,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
+        ) else {
+            free(data)
+            return nil
+        }
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return (data, bytesPerRow)
+    }
+
+    private func regionStats(in normalizedRect: CGRect, rgba: (data: UnsafeMutableRawPointer, bytesPerRow: Int), width: Int, height: Int) -> RegionStats {
+        let xMin = max(0, min(width - 1, Int(normalizedRect.minX * CGFloat(width))))
+        let xMax = max(0, min(width - 1, Int(normalizedRect.maxX * CGFloat(width))))
+        let yMin = max(0, min(height - 1, Int((1.0 - normalizedRect.maxY) * CGFloat(height))))
+        let yMax = max(0, min(height - 1, Int((1.0 - normalizedRect.minY) * CGFloat(height))))
+        guard xMax > xMin, yMax > yMin else {
+            return RegionStats(meanLuma: 0.5, highlightRatio: 0, redSpotRatio: 0, lowSaturationRatio: 0)
+        }
+
+        let ptr = rgba.data.bindMemory(to: UInt8.self, capacity: height * rgba.bytesPerRow)
+        let stepX = max(1, (xMax - xMin) / 32)
+        let stepY = max(1, (yMax - yMin) / 32)
+        var lumaTotal: Double = 0
+        var sampleCount: Double = 0
+        var brightCount: Double = 0
+        var redSpotCount: Double = 0
+        var lowSatCount: Double = 0
+
+        for y in stride(from: yMin, through: yMax, by: stepY) {
+            let rowStart = y * rgba.bytesPerRow
+            for x in stride(from: xMin, through: xMax, by: stepX) {
+                let i = rowStart + x * 4
+                let r = Double(ptr[i])
+                let g = Double(ptr[i + 1])
+                let b = Double(ptr[i + 2])
+                let maxC = max(r, max(g, b))
+                let minC = min(r, min(g, b))
+                let sat = maxC == 0 ? 0 : (maxC - minC) / maxC
+                let luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
+                sampleCount += 1
+                lumaTotal += luma
+                if luma > 0.90 { brightCount += 1 }
+                if r > (g * 1.14), r > (b * 1.14), luma > 0.22, luma < 0.88 { redSpotCount += 1 }
+                if sat < 0.17 && luma > 0.30 && luma < 0.75 { lowSatCount += 1 }
+            }
+        }
+
+        let denom = max(1, sampleCount)
+        return RegionStats(
+            meanLuma: lumaTotal / denom,
+            highlightRatio: brightCount / denom,
+            redSpotRatio: redSpotCount / denom,
+            lowSaturationRatio: lowSatCount / denom
+        )
+    }
+}
+
+private struct LocalImageInsight {
+    let pose: LocalPose
+    let acneScore: Double
+    let oilScore: Double
+    let drynessScore: Double
+    let brightness: Double
+    let acneByArea: [String: Double]
+    let oilByArea: [String: Double]
+    let drynessByArea: [String: Double]
+}
+
+private enum LocalPose: Hashable {
+    case front
+    case left
+    case right
+}
+
+private struct RegionStats {
+    let meanLuma: Double
+    let highlightRatio: Double
+    let redSpotRatio: Double
+    let lowSaturationRatio: Double
+}
+
+private extension Array where Element == Double {
+    var average: Double {
+        guard !isEmpty else { return 0.0 }
+        return reduce(0, +) / Double(count)
+    }
 }
 
 @MainActor
@@ -29,6 +415,7 @@ class SkinAnalysisManager: ObservableObject {
     @Published var isExplicitRefresh: Bool = false // Track if this is an explicit refresh vs cache load
     
     private let chatGPTService = ChatGPTServiceManager()
+    private let localSkinAnalysisService = LocalSkinAnalysisService()
     private let userTierManager: UserTierManager
     private var analysisTimer: Timer?
     
@@ -89,38 +476,68 @@ class SkinAnalysisManager: ObservableObject {
         uploadedImages = images
         startAnalysisProgress()
         
-        Task {
+        Task<Void, Never> {
+            var localDecisionForFallback: LocalSkinAnalysisDecision?
             do {
-                print("🔍 SkinAnalysisManager: Starting ChatGPT Vision API analysis...")
-                // Analyze images using ChatGPT Vision API
-                let result = try await chatGPTService.analyzeSkinImages(images, userTier: userTierManager.tier)
-                
+                print("🔍 SkinAnalysisManager: Running local Vision/CoreML analysis first...")
+                let localDecision = await localSkinAnalysisService.analyze(images: images)
+                localDecisionForFallback = localDecision
+                if let localDecision = localDecision {
+                    print("🔍 SkinAnalysisManager: Local confidence=\(String(format: "%.2f", localDecision.confidence)) usedCoreML=\(localDecision.usedCoreML)")
+                    if !localDecision.usedCoreML {
+                        print("🔍 SkinAnalysisManager: No bundled CoreML segmentation model found; using cloud for final analysis quality")
+                    }
+                } else {
+                    print("⚠️ SkinAnalysisManager: Local analysis unavailable, escalating to cloud")
+                }
+
+                if let localDecision = localDecision, !localDecision.shouldCallCloud {
+                    print("✅ SkinAnalysisManager: Local confidence high, skipping cloud AI")
+                    await MainActor.run {
+                        self.completeAnalysis(with: localDecision.result)
+                    }
+                    return
+                }
+
+                print("🔍 SkinAnalysisManager: Local confidence low, escalating to ChatGPT Vision API...")
+                let cloudResult = try await chatGPTService.analyzeSkinImages(images, userTier: userTierManager.tier)
+                let finalResult: SkinAnalysisResult
+                if localDecision != nil {
+                    // Preserve provider trace for analytics.
+                    finalResult = SkinAnalysisResult(
+                        conditions: cloudResult.conditions,
+                        confidence: cloudResult.confidence,
+                        analysisDate: cloudResult.analysisDate,
+                        recommendations: cloudResult.recommendations,
+                        skinHealthScore: cloudResult.skinHealthScore,
+                        analysisVersion: cloudResult.analysisVersion,
+                        routineGenerationTimestamp: cloudResult.routineGenerationTimestamp,
+                        analysisProvider: .hybridLocalCloud,
+                        imageCount: cloudResult.imageCount,
+                        skinAgeYears: cloudResult.skinAgeYears
+                    )
+                } else {
+                    finalResult = cloudResult
+                }
+
                 print("🔍 SkinAnalysisManager: Analysis completed successfully")
                 await MainActor.run {
-                    self.analysisResults = result
-                    self.analysisProgress = 1.0
-                    self.stopAnalysisProgress()
-                    self.isAnalyzing = false
-                    
-                    // Increment analysis count for tier tracking
-                    self.userTierManager.incrementAnalysisCount()
-                    
-                    // Send notification when analysis is complete
-                    LocalNotificationService.shared.sendSkinAnalysisCompleteNotification()
-                    NotificationCenter.default.post(name: .nuraAnalysisCompleted, object: result)
-                    
-                    // Trigger product loading after analysis is complete
-                    NotificationCenter.default.post(name: .nuraTriggerProductLoading, object: nil)
+                    self.completeAnalysis(with: finalResult)
                 }
                 
             } catch {
                 print("❌ SkinAnalysisManager: Analysis failed with error: \(error)")
                 print("❌ SkinAnalysisManager: Error details: \(error.localizedDescription)")
                 await MainActor.run {
-                    self.errorMessage = error.localizedDescription
-                    self.stopAnalysisProgress()
-                    self.analysisProgress = 0.0
-                    self.isAnalyzing = false
+                    if let localFallback = localDecisionForFallback {
+                        print("⚠️ SkinAnalysisManager: Falling back to local analysis due to cloud failure")
+                        self.completeAnalysis(with: localFallback.result)
+                    } else {
+                        self.errorMessage = error.localizedDescription
+                        self.stopAnalysisProgress()
+                        self.analysisProgress = 0.0
+                        self.isAnalyzing = false
+                    }
                 }
             }
         }
@@ -1135,6 +1552,23 @@ class SkinAnalysisManager: ObservableObject {
     private func stopAnalysisProgress() {
         analysisTimer?.invalidate()
         analysisTimer = nil
+    }
+
+    private func completeAnalysis(with result: SkinAnalysisResult) {
+        self.analysisResults = result
+        self.analysisProgress = 1.0
+        self.stopAnalysisProgress()
+        self.isAnalyzing = false
+
+        // Increment analysis count for tier tracking
+        self.userTierManager.incrementAnalysisCount()
+
+        // Send notification when analysis is complete
+        LocalNotificationService.shared.sendSkinAnalysisCompleteNotification()
+        NotificationCenter.default.post(name: .nuraAnalysisCompleted, object: result)
+
+        // Trigger product loading after analysis is complete
+        NotificationCenter.default.post(name: .nuraTriggerProductLoading, object: nil)
     }
     
     // MARK: - Local Rules Engine

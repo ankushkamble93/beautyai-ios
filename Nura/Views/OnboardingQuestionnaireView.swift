@@ -141,23 +141,6 @@ struct OnboardingQuestionnaireView: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
             
-            // True floating debug button - overlays everything
-            Button("Sign Out & Clear All") {
-                Task {
-                    await authManager.signOut()
-                    await authManager.clearAllCachedState()
-                }
-            }
-            .font(.caption)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Color.red.opacity(0.9))
-            .foregroundColor(.white)
-            .cornerRadius(8)
-            .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
-            .position(x: UIScreen.main.bounds.width - 100, y: 100)
-            .allowsHitTesting(true)
-            .zIndex(9999)
         }
         .onAppear {
             print("🔍 OnboardingQuestionnaireView: Appeared")

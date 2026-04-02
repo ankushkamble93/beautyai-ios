@@ -110,7 +110,7 @@ struct NuraApp: App {
                 print("🔗 URL query: \(url.query ?? "nil")")
                 print("🔗 Full URL string: \(url.absoluteString)")
                 
-                // Supabase OAuth callbacks use the custom scheme com.nura://
+                // Supabase OAuth callbacks use the custom scheme com.nura://auth-callback
                 // Route those to AuthenticationManager so it can exchange the code for a session.
                 // Other custom URLs (like nura://reset-password) continue to flow through URLHandler.
                 if url.scheme == "com.nura" {

@@ -8,7 +8,6 @@ struct LocalNotificationsView: View {
     @StateObject private var workoutNotificationManager = WorkoutNotificationManager.shared
     
     @State private var showAuthorizationAlert = false
-    @State private var showSuccessBanner = false
     @State private var isRequestingHealth = false
     
     private var cardBackground: Color {
@@ -212,45 +211,6 @@ struct LocalNotificationsView: View {
                                 )
                         )
                         
-                        // Test Notifications
-                        VStack(spacing: 16) {
-                            Text("Test Notifications")
-                                .font(.headline)
-                                .fontWeight(.semibold)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            
-                            VStack(spacing: 8) {
-                                Button("Test Daily Reminder") {
-                                    testNotification(type: "daily")
-                                }
-                                .buttonStyle(TestButtonStyle())
-                                
-                                Button("Test Routine Reminder") {
-                                    testNotification(type: "routine")
-                                }
-                                .buttonStyle(TestButtonStyle())
-                                
-                                Button("Test Progress Reminder") {
-                                    testNotification(type: "progress")
-                                }
-                                .buttonStyle(TestButtonStyle())
-                                
-                                Button("Test Workout Congrats") {
-                                    LocalNotificationService.shared.sendWorkoutCongratsNotification()
-                                }
-                                .buttonStyle(TestButtonStyle())
-                                
-                                Button("Debug Notification Settings") {
-                                    debugNotificationSettings()
-                                }
-                                .buttonStyle(TestButtonStyle())
-                            }
-                        }
-                        .padding()
-                        .background(cardBackground)
-                        .cornerRadius(14)
-                        .shadow(color: .black.opacity(0.07), radius: 4, x: 0, y: 2)
-                        
                         Spacer(minLength: 20)
                     }
                     .padding()
@@ -269,17 +229,6 @@ struct LocalNotificationsView: View {
                 Text("Please enable notifications in Settings to receive updates about your skin journey.")
             }
         }
-        .overlay(
-            // Success Banner
-            VStack {
-                if showSuccessBanner {
-                    SuccessBanner(message: "Test notification sent!")
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-                Spacer()
-            }
-        )
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showSuccessBanner)
     }
     
     // MARK: - Helper Methods
@@ -332,81 +281,6 @@ struct LocalNotificationsView: View {
         }
     }
     
-    private func testNotification(type: String) {
-        // First check if notifications are authorized
-        guard localNotificationService.isAuthorized else {
-            showAuthorizationAlert = true
-            return
-        }
-        
-        // Send the appropriate test notification
-        switch type {
-        case "daily":
-            localNotificationService.sendImmediateNotification(
-                title: "📸 Time for your daily skin check!",
-                body: "Take a photo and track your skin's progress. Consistency is key to beautiful skin!",
-                category: "reminder"
-            )
-        case "routine":
-            localNotificationService.sendImmediateNotification(
-                title: "🌟 Don't forget your skincare routine!",
-                body: "Your personalized routine is waiting. A few minutes now for glowing skin later!",
-                category: "routine"
-            )
-        case "progress":
-            localNotificationService.sendImmediateNotification(
-                title: "📊 Weekly Progress Check-in",
-                body: "Share your skin health progress and celebrate your journey!",
-                category: "progress"
-            )
-        default:
-            break
-        }
-        
-        // Show success feedback
-        showSuccessBanner = true
-        
-        // Auto-hide success banner after 3 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-            showSuccessBanner = false
-        }
-    }
-    
-    private func debugNotificationSettings() {
-        print("🔍 === NOTIFICATION DEBUG INFO ===")
-        print("🔍 Is Authorized: \(localNotificationService.isAuthorized)")
-        
-        // Check notification settings
-        UNUserNotificationCenter.current().getNotificationSettings { settings in
-            print("🔍 Authorization Status: \(settings.authorizationStatus.rawValue)")
-            print("🔍 Alert Setting: \(settings.alertSetting.rawValue)")
-            print("🔍 Badge Setting: \(settings.badgeSetting.rawValue)")
-            print("🔍 Sound Setting: \(settings.soundSetting.rawValue)")
-            print("🔍 Notification Center: \(settings.notificationCenterSetting.rawValue)")
-            print("🔍 Lock Screen: \(settings.lockScreenSetting.rawValue)")
-            
-            // Check pending notifications
-            UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
-                print("🔍 Pending Notifications: \(requests.count)")
-                for request in requests {
-                    print("🔍 - \(request.identifier): \(request.content.title)")
-                }
-            }
-            
-            // Check delivered notifications
-            UNUserNotificationCenter.current().getDeliveredNotifications { notifications in
-                print("🔍 Delivered Notifications: \(notifications.count)")
-                for notification in notifications {
-                    print("🔍 - \(notification.request.identifier): \(notification.request.content.title)")
-                }
-            }
-        }
-        
-        showSuccessBanner = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-            showSuccessBanner = false
-        }
-    }
 }
 
 // MARK: - Supporting Types

@@ -57,22 +57,6 @@ struct LoginView: View {
                 }
             }
             
-            // True floating debug button - overlays everything
-            Button("Clear All Cache") {
-                Task {
-                    await authManager.clearAllCachedState()
-                }
-            }
-            .font(.caption)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Color.orange.opacity(0.9))
-            .foregroundColor(.white)
-            .cornerRadius(8)
-            .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
-            .position(x: UIScreen.main.bounds.width - 80, y: 100)
-            .allowsHitTesting(true)
-            .zIndex(9999)
         }
         .sheet(isPresented: $showSignUp) {
             SignUpView(isPresented: $showSignUp)
